@@ -70,10 +70,18 @@ const rebind: Record<string, (pin: number) => boolean> = {
   pwm: pwm.setPin,
 };
 
+// Assigned by the mode shell below; called whenever wiring changes.
+let refreshConnections: () => void = () => {};
+
 const workspace = createWorkspace({
   onBind: (componentId, pin) => {
-    if (pin === null) return true;
-    return rebind[componentId]?.(pin) ?? false;
+    if (pin === null) {
+      refreshConnections();
+      return true;
+    }
+    const bound = rebind[componentId]?.(pin) ?? false;
+    if (bound) refreshConnections();
+    return bound;
   },
 });
 
@@ -95,12 +103,85 @@ for (const node of ioNodes) {
 
 document.getElementById("workspace-slot")!.append(workspace.element);
 document.getElementById("controls-slot")!.replaceWith(controls.element);
-document.getElementById("serial-slot")!.replaceWith(serial.element);
-document.getElementById("inspector-slot")!.replaceWith(inspector.element);
-document.querySelector(".side-panels")?.append(analyzer.element);
+
+// --- Circuit / Run / Debug mode shell ---
+// The workspace (board + draggable parts) is the shared stage, always visible.
+// Tabs swap the right-hand panel and which control groups show (via body[data-mode]).
+const sidePanels = document.querySelector(".side-panels")!;
+document.getElementById("serial-slot")?.remove();
+document.getElementById("inspector-slot")?.remove();
+
+const modePanel = (mode: string): HTMLElement => {
+  const panel = document.createElement("div");
+  panel.className = "mode-panel";
+  panel.dataset.mode = mode;
+  return panel;
+};
+
+const circuitPanel = modePanel("circuit");
+const runPanel = modePanel("run");
+const debugPanel = modePanel("debug");
+runPanel.append(serial.element);
+debugPanel.append(inspector.element, analyzer.element);
+
+const connTitle = document.createElement("div");
+connTitle.className = "panel-title";
+connTitle.textContent = "Connections";
+const connList = document.createElement("ul");
+connList.className = "conn-list";
+const connHint = document.createElement("p");
+connHint.className = "panel-hint";
+connHint.textContent =
+  "Drag a wire from a component's connector dot to a board pin to (re)bind it. PWM only accepts PWM pins (~).";
+const circuitCard = document.createElement("div");
+circuitCard.append(connTitle, connList, connHint);
+circuitPanel.append(circuitCard);
+sidePanels.append(circuitPanel, runPanel, debugPanel);
+
+refreshConnections = (): void => {
+  const conns = [...workspace.connections()].sort((a, b) => a.componentId.localeCompare(b.componentId));
+  connList.replaceChildren(
+    ...conns.map((c) => {
+      const li = document.createElement("li");
+      li.textContent = `${c.componentId} → D${c.pin}`;
+      return li;
+    }),
+  );
+};
+
+const MODES: Array<[string, string]> = [
+  ["circuit", "Circuit"],
+  ["run", "Run"],
+  ["debug", "Debug"],
+];
+const tabBar = document.createElement("nav");
+tabBar.className = "mode-tabs";
+const tabButtons = new Map<string, HTMLButtonElement>();
+const panels: Record<string, HTMLElement> = { circuit: circuitPanel, run: runPanel, debug: debugPanel };
+
+const setMode = (mode: string): void => {
+  document.body.dataset.mode = mode;
+  for (const [m, b] of tabButtons) b.classList.toggle("active", m === mode);
+  for (const [m, p] of Object.entries(panels)) p.classList.toggle("active", m === mode);
+  if (mode === "circuit") refreshConnections();
+};
+
+for (const [mode, labelText] of MODES) {
+  const tab = document.createElement("button");
+  tab.type = "button";
+  tab.className = "mode-tab";
+  tab.dataset.mode = mode;
+  tab.textContent = labelText;
+  tab.addEventListener("click", () => setMode(mode));
+  tabButtons.set(mode, tab);
+  tabBar.append(tab);
+}
+document.querySelector("main.layout")!.before(tabBar);
 
 // Draw the default wires (which also binds each component through onBind).
 for (const node of ioNodes) workspace.connect(node.id, node.pin);
+refreshConnections();
+setMode("run"); // start in Run: running sketch + serial, with the stage visible
 
 // Program selector.
 const programSelect = document.getElementById("program-select") as HTMLSelectElement;
