@@ -62,6 +62,9 @@ const TIMER1_FLAG_MASK = (1 << TOV1) | (1 << OCF1A) | (1 << OCF1B);
 export class Timer1 implements PwmSource {
   private count = 0;
   private prescalerRemainder = 0;
+  // Cached prescaler divisor, recomputed only when the CS bits (TCCR1B) change.
+  // tick() runs every instruction, so it must not re-read/re-map the register.
+  private cachedPrescaler: number | undefined = undefined;
   private readonly pwm = new PwmBroadcaster();
 
   constructor(
@@ -85,6 +88,7 @@ export class Timer1 implements PwmSource {
   reset(): void {
     this.count = 0;
     this.prescalerRemainder = 0;
+    this.refreshPrescaler();
     this.driveOutput("A", undefined);
     this.driveOutput("B", undefined);
     this.notifyPwm("A");
@@ -92,7 +96,7 @@ export class Timer1 implements PwmSource {
   }
 
   tick(cycles: number): void {
-    const prescaler = this.prescaler();
+    const prescaler = this.cachedPrescaler;
     if (prescaler === undefined) return;
     this.prescalerRemainder += cycles;
     while (this.prescalerRemainder >= prescaler) {
@@ -127,6 +131,7 @@ export class Timer1 implements PwmSource {
   @OnWrite(TCCR1B)
   onWriteTccr1b(): void {
     this.prescalerRemainder = 0;
+    this.refreshPrescaler();
     this.notifyPwm("A");
     this.notifyPwm("B");
   }
@@ -217,6 +222,11 @@ export class Timer1 implements PwmSource {
   private prescaler(): number | undefined {
     const bits = this.cpu.readData(TCCR1B) & ((1 << CS12) | (1 << CS11) | (1 << CS10));
     return TIMER1_PRESCALER[bits];
+  }
+
+  /** Recompute the cached prescaler from TCCR1B; call on every CS-bit change. */
+  private refreshPrescaler(): void {
+    this.cachedPrescaler = this.prescaler();
   }
 
   private notifyPwm(channel: PwmChannel): void {
@@ -313,5 +323,6 @@ export class Timer1 implements PwmSource {
   restore(snap: Timer1Snapshot): void {
     this.count = snap.count & 0xffff;
     this.prescalerRemainder = snap.prescalerRemainder | 0;
+    this.refreshPrescaler();
   }
 }
