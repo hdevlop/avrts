@@ -1,0 +1,27 @@
+{
+  "name": "avrts",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "bench": "bun run scripts/benchmark.ts",
+    "fixtures:avr-gcc": "bun run scripts/fixtures-avr-gcc.ts",
+    "fixtures:arduino": "bun run scripts/fixtures-arduino.ts",
+    "fixtures": "bun run fixtures:avr-gcc && bun run fixtures:arduino",
+    "build:demo": "bun build examples/browser-simulator/src/main.ts --outdir examples/browser-simulator/dist --target browser --minify",
+    "demo": "bun run build:demo && bun run examples/browser-simulator/serve.ts",
+    "serve:demo": "bun run examples/browser-simulator/serve.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>avrts browser simulator</title>
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>avrts browser simulator</h1>
+      <p class="subtitle">ATmega328P AVR runtime using the public <code>AVR(...)</code> facade</p>
+    </div>
+  </header>
+
+  <section class="program-row">
+    <label for="program-select">Program:</label>
+    <select id="program-select">
+      <option value="arduino-digital-read">Arduino digital-read (LED + button)</option>
+      <option value="arduino-serial-print">Arduino serial print</option>
+      <option value="arduino-analog-write">Arduino analog write (PWM)</option>
+      <option value="attachInterrupt-blink">attachInterrupt (rising-edge ISR)</option>
+    </select>
+    <button id="upload-btn" type="button">Upload HEX</button>
+    <input id="file-input" type="file" accept=".hex,text/plain" hidden>
+  </section>
+
+  <section id="controls-slot" class="controls-row"></section>
+
+  <main class="layout">
+    <!-- Free-form canvas: board pin headers + draggable LED/button/PWM nodes,
+         wired together by the Phase 20 wiring model. -->
+    <section id="workspace-slot" class="workspace-host"></section>
+
+    <aside class="side-panels">
+      <div id="serial-slot"></div>
+      <div id="inspector-slot"></div>
+    </aside>
+  </main>
+
+  <!-- Legacy mount anchors kept so the Phase 18 demo smoke test stays valid;
+       Phase 20 mounts these widgets inside #workspace-slot instead. -->
+  <div class="legacy-anchors" hidden>
+    <div id="led-slot"></div>
+    <div id="button-slot"></div>
+    <div id="pwm-slot"></div>
+  </div>
+
+  <footer>
+    <p>Board pins, components, serial output, and CPU state update live from the running AVR facade.</p>
+  </footer>
+
+  <script type="module" src="./dist/main.js"></script>
+</body>
+</html>

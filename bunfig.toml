@@ -1,0 +1,5 @@
+# Keep `bun test` scoped to the unit suite in test/. The Playwright e2e specs
+# under examples/browser-simulator/tests/ are dev-only (run via `bun run test:e2e`)
+# and must not be discovered by the bun test runner.
+[test]
+root = "test"
