@@ -9,6 +9,19 @@ const X = 26;
 const Y = 28;
 const Z = 30;
 
+// SREG bit masks for the flag helpers (positions per Sreg): C,Z,N,V,S,H.
+// The hot helpers below assemble these into the whole status byte and write it
+// once, instead of routing each flag through a named setter (read-modify-write
+// + map lookup per flag). T and I are never touched here, so they persist.
+const SREG_C = 1 << 0;
+const SREG_Z = 1 << 1;
+const SREG_N = 1 << 2;
+const SREG_V = 1 << 3;
+const SREG_S = 1 << 4;
+const SREG_H = 1 << 5;
+// Bits written by add8/sub8 (all arithmetic flags; T and I preserved).
+const SREG_ARITH_MASK = SREG_C | SREG_Z | SREG_N | SREG_V | SREG_S | SREG_H;
+
 // --- operand field extractors (decode a 16-bit opcode into its fields) ---
 
 /** 5-bit register at bits 8..4 (R0..R31) — destination for most ops, source for OUT/ST. */
@@ -859,13 +872,17 @@ export class InstructionSet {
   private add8(cpu: CPU, d: number, r: number, carryIn: number): number {
     const sum = d + r + carryIn;
     const result = sum & 0xff;
+    const n = (result & 0x80) !== 0;
+    const v = (~(d ^ r) & (d ^ result) & 0x80) !== 0;
+    const flags =
+      ((d & 0x0f) + (r & 0x0f) + carryIn > 0x0f ? SREG_H : 0) |
+      (v ? SREG_V : 0) |
+      (n ? SREG_N : 0) |
+      (result === 0 ? SREG_Z : 0) |
+      (sum > 0xff ? SREG_C : 0) |
+      (n !== v ? SREG_S : 0);
     const sreg = cpu.sreg;
-    sreg.H = (d & 0x0f) + (r & 0x0f) + carryIn > 0x0f;
-    sreg.V = (~(d ^ r) & (d ^ result) & 0x80) !== 0;
-    sreg.N = (result & 0x80) !== 0;
-    sreg.Z = result === 0;
-    sreg.C = sum > 0xff;
-    sreg.S = sreg.N !== sreg.V;
+    sreg.value = (sreg.value & ~SREG_ARITH_MASK) | flags;
     return result;
   }
 
@@ -876,36 +893,45 @@ export class InstructionSet {
    */
   private sub8(cpu: CPU, d: number, r: number, carryIn: number, carryUsed: boolean): number {
     const result = (d - r - carryIn) & 0xff;
+    const n = (result & 0x80) !== 0;
+    const v = ((d ^ r) & (d ^ result) & 0x80) !== 0;
     const sreg = cpu.sreg;
-    sreg.H = (d & 0x0f) - (r & 0x0f) - carryIn < 0;
-    sreg.V = ((d ^ r) & (d ^ result) & 0x80) !== 0;
-    sreg.N = (result & 0x80) !== 0;
-    sreg.Z = carryUsed ? result === 0 && sreg.Z : result === 0;
-    sreg.C = d - r - carryIn < 0;
-    sreg.S = sreg.N !== sreg.V;
+    const prev = sreg.value;
+    const zero = carryUsed ? result === 0 && (prev & SREG_Z) !== 0 : result === 0;
+    const flags =
+      ((d & 0x0f) - (r & 0x0f) - carryIn < 0 ? SREG_H : 0) |
+      (v ? SREG_V : 0) |
+      (n ? SREG_N : 0) |
+      (zero ? SREG_Z : 0) |
+      (d - r - carryIn < 0 ? SREG_C : 0) |
+      (n !== v ? SREG_S : 0);
+    sreg.value = (prev & ~SREG_ARITH_MASK) | flags;
     return result;
   }
 
-  /** Flags for AND/OR/EOR/ANDI/ORI (V cleared, S = N). Returns the masked result. */
+  /** Flags for AND/OR/EOR/ANDI/ORI (V cleared, S = N; C and H preserved). */
   private logic(cpu: CPU, result: number): number {
     const masked = result & 0xff;
+    // N set => S set (S = N here); V always cleared.
+    const flags = ((masked & 0x80) !== 0 ? SREG_N | SREG_S : 0) | (masked === 0 ? SREG_Z : 0);
     const sreg = cpu.sreg;
-    sreg.V = false;
-    sreg.N = (masked & 0x80) !== 0;
-    sreg.Z = masked === 0;
-    sreg.S = sreg.N;
+    sreg.value = (sreg.value & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
     return masked;
   }
 
-  /** Flags for LSR/ROR/ASR (C from shifted-out bit, V = N xor C). Returns the result. */
+  /** Flags for LSR/ROR/ASR (C from shifted-out bit, V = N xor C; H preserved). */
   private shiftFlags(cpu: CPU, result: number, carryOut: boolean): number {
     const masked = result & 0xff;
+    const n = (masked & 0x80) !== 0;
+    const v = n !== carryOut;
+    const flags =
+      (carryOut ? SREG_C : 0) |
+      (n ? SREG_N : 0) |
+      (masked === 0 ? SREG_Z : 0) |
+      (v ? SREG_V : 0) |
+      (n !== v ? SREG_S : 0);
     const sreg = cpu.sreg;
-    sreg.C = carryOut;
-    sreg.N = (masked & 0x80) !== 0;
-    sreg.Z = masked === 0;
-    sreg.V = sreg.N !== sreg.C;
-    sreg.S = sreg.N !== sreg.V;
+    sreg.value = (sreg.value & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;
     return masked;
   }
 
