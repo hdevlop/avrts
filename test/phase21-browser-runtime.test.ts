@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createAVRWorkerRuntime,
+  decodeLogicChunk,
   installAVRWorker,
   PORTB,
   type AVRWorkerCommand,
@@ -10,6 +11,9 @@ import {
 } from "../src";
 
 const BLINK_HEX = ":0E00000000E204B900E205B900E005B9FFCF47\n:00000001FF\n";
+
+// sbi DDRB,5 ; loop: sbi PINB,5 (toggle PB5/D13) ; rjmp loop  -> an edge every 4 cycles.
+const TOGGLE_HEX = ":06000000259A1D9AFECFB7\n:00000001FF\n";
 
 class FakeClientWorker implements WorkerLike {
   readonly commands: AVRWorkerCommand[] = [];
@@ -166,6 +170,29 @@ describe("Phase 21 - browser worker host", () => {
     expect(watch.events.find((frame) => frame.address === PORTB)!.writes.length).toBeGreaterThan(0);
 
     scope.send({ type: "stop" });
+  });
+
+  test("captureEdges emits exact (non-coalesced) edges as logicChunk", async () => {
+    const scope = new FakeWorkerScope();
+    installAVRWorker(scope);
+
+    scope.send({ type: "loadHex", hex: TOGGLE_HEX });
+    scope.send({ type: "captureEdges", pins: [13], id: "la1" });
+    scope.send({ type: "start" });
+
+    const chunkEvent = await waitForEvent(scope, "logicChunk", (event) => event.chunk.analyzerId === "la1");
+    scope.send({ type: "stopCapture" });
+    scope.send({ type: "stop" });
+
+    const samples = decodeLogicChunk(chunkEvent.chunk).filter((s) => s.pin === 13);
+    // Far more than one-per-frame: coalescing would collapse these to a single edge.
+    expect(samples.length).toBeGreaterThan(5);
+    // Strictly increasing cycles + alternating levels => exact edges preserved.
+    const head = samples.slice(0, 32);
+    const monotonic = head.every((s, i) => i === 0 || s.cycles > head[i - 1]!.cycles);
+    const alternating = head.every((s, i) => i === 0 || s.high !== head[i - 1]!.high);
+    expect(monotonic).toBe(true);
+    expect(alternating).toBe(true);
   });
 
   test("restore uses payload first, snapshot id second, and errors for missing input", async () => {

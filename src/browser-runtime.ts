@@ -38,6 +38,43 @@ export interface LogicAnalyzerChunk {
   buffer: ArrayBuffer;
 }
 
+/** One captured exact edge (no coalescing). */
+export interface LogicSampleRecord {
+  pin: number;
+  high: boolean;
+  cycles: number;
+}
+
+const LOGIC_SAMPLE_BYTES = 6; // u32 cycles + u8 pin + u8 high
+
+/** Pack exact edges into a transferable `ArrayBuffer` (see `LogicAnalyzerChunk.format`). */
+export function encodeLogicSamples(samples: ReadonlyArray<LogicSampleRecord>): ArrayBuffer {
+  const buffer = new ArrayBuffer(samples.length * LOGIC_SAMPLE_BYTES);
+  const view = new DataView(buffer);
+  let offset = 0;
+  for (const sample of samples) {
+    view.setUint32(offset, sample.cycles >>> 0, true);
+    view.setUint8(offset + 4, sample.pin & 0xff);
+    view.setUint8(offset + 5, sample.high ? 1 : 0);
+    offset += LOGIC_SAMPLE_BYTES;
+  }
+  return buffer;
+}
+
+/** Decode a `LogicAnalyzerChunk` back into exact edges. */
+export function decodeLogicChunk(chunk: LogicAnalyzerChunk): LogicSampleRecord[] {
+  const view = new DataView(chunk.buffer);
+  const samples: LogicSampleRecord[] = [];
+  for (let offset = 0; offset + LOGIC_SAMPLE_BYTES <= chunk.buffer.byteLength; offset += LOGIC_SAMPLE_BYTES) {
+    samples.push({
+      cycles: view.getUint32(offset, true),
+      pin: view.getUint8(offset + 4),
+      high: view.getUint8(offset + 5) === 1,
+    });
+  }
+  return samples;
+}
+
 export type AVRWorkerCommand =
   | { type: "loadHex"; hex: string }
   | { type: "start" }
@@ -58,7 +95,9 @@ export type AVRWorkerCommand =
   | { type: "clearBreakpoints" }
   | { type: "watchData"; address: number }
   | { type: "unwatchData"; address: number }
-  | { type: "pauseOnUnknownOpcode"; enabled: boolean };
+  | { type: "pauseOnUnknownOpcode"; enabled: boolean }
+  | { type: "captureEdges"; pins: number[]; id?: string }
+  | { type: "stopCapture" };
 
 export type AVRWorkerEvent =
   | { type: "ready"; status: AVRStatus }
@@ -104,6 +143,9 @@ export interface AVRWorkerRuntime {
   watchData(address: number): void;
   unwatchData(address: number): void;
   pauseOnUnknownOpcode(enabled: boolean): void;
+  /** Start exact (non-coalesced) edge capture on the given pins for analyzer/scope. */
+  captureEdges(pins: number[], id?: string): void;
+  stopCapture(): void;
   status(): AVRStatus | null;
   on<T extends AVRWorkerEventType>(type: T, handler: AVRWorkerEventHandler<T>): () => void;
   destroy(): void;
@@ -187,6 +229,8 @@ export function createAVRWorkerRuntime(options: AVRWorkerRuntimeOptions = {}): A
     watchData: (address) => post({ type: "watchData", address }),
     unwatchData: (address) => post({ type: "unwatchData", address }),
     pauseOnUnknownOpcode: (enabled) => post({ type: "pauseOnUnknownOpcode", enabled }),
+    captureEdges: (pins, id) => post({ type: "captureEdges", pins, id }),
+    stopCapture: () => post({ type: "stopCapture" }),
     status: () => latestStatus,
     on(type, handler) {
       let set = listeners.get(type);
@@ -219,6 +263,12 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   const snapshots = new Map<string, AVRSnapshot>();
   const watchFrames = new Map<number, DataWatchFrame>();
   const watchUnsubscribers = new Map<number, () => void>();
+  // Exact-edge capture (logic analyzer / scope): every edge on captured pins,
+  // independent of the coalesced `frame` stream.
+  const capturePins = new Set<number>();
+  const edgeBuffer: LogicSampleRecord[] = [];
+  let captureId = "capture";
+  const MAX_EDGE_BUFFER = 8192;
 
   const setTimer = scope.setTimeout?.bind(scope) ?? setTimeout;
   const clearTimer = scope.clearTimeout?.bind(scope) ?? clearTimeout;
@@ -254,6 +304,7 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     const pwm = readPwmFrames();
     post({ type: "frame", pins, pwm, status: status() });
     flushWatchFrames();
+    flushLogicChunk();
   };
 
   const readPwmFrames = (): PwmFrame[] => {
@@ -273,6 +324,16 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     const events = [...watchFrames.values()];
     watchFrames.clear();
     post({ type: "watchFrame", events });
+  };
+
+  const flushLogicChunk = (): void => {
+    if (edgeBuffer.length === 0) return;
+    const samples = edgeBuffer.splice(0, edgeBuffer.length);
+    const buffer = encodeLogicSamples(samples);
+    post(
+      { type: "logicChunk", chunk: { analyzerId: captureId, format: "u32-cycles-u8-pin-u8-high", buffer } },
+      [buffer],
+    );
   };
 
   const ensureFrameTimer = (): void => {
@@ -370,7 +431,13 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   };
 
   const bindAvrEvents = (): void => {
-    avr.pins.onChange((event) => pendingPins.set(event.pin, pinFrame(event)));
+    avr.pins.onChange((event) => {
+      pendingPins.set(event.pin, pinFrame(event));
+      if (capturePins.has(event.pin)) {
+        edgeBuffer.push({ pin: event.pin, high: event.high, cycles: event.cycles });
+        if (edgeBuffer.length >= MAX_EDGE_BUFFER) flushLogicChunk();
+      }
+    });
     avr.serial.onText((text) => post({ type: "serial", text }));
     avr.on("breakpoint", (event) => {
       paused = true;
@@ -515,6 +582,16 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
         case "pauseOnUnknownOpcode":
           avr.pauseOnUnknownOpcode(command.enabled);
           postStatus();
+          return;
+        case "captureEdges":
+          capturePins.clear();
+          for (const pin of command.pins) capturePins.add(pin);
+          captureId = command.id ?? "capture";
+          edgeBuffer.length = 0;
+          return;
+        case "stopCapture":
+          capturePins.clear();
+          edgeBuffer.length = 0;
           return;
       }
     } catch (error) {

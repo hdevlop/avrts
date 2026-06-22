@@ -82,6 +82,12 @@ class FakeWorkerRuntime implements AVRWorkerRuntime {
   pauseOnUnknownOpcode(enabled: boolean): void {
     this.commands.push({ type: "pauseOnUnknownOpcode", enabled });
   }
+  captureEdges(pins: number[], id?: string): void {
+    this.commands.push({ type: "captureEdges", pins, id });
+  }
+  stopCapture(): void {
+    this.commands.push({ type: "stopCapture" });
+  }
   status(): null {
     return null;
   }
