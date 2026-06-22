@@ -224,7 +224,9 @@ export class CPU {
 
   /** Fetch, decode, and execute one instruction (or idle one cycle while asleep). */
   tick(): void {
-    if (this.breakpoints.has(this.pc)) {
+    // Guard on size first: the common case has no breakpoints, so this skips
+    // the Set hash lookup on every instruction.
+    if (this.breakpoints.size > 0 && this.breakpoints.has(this.pc)) {
       this._breakpointHit = true;
       return;
     }
@@ -299,7 +301,12 @@ export class CPU {
   /** Fire cycle listeners for `elapsed` consumed cycles (peripherals advance time). */
   private notifyCycles(elapsed: number): void {
     if (elapsed <= 0) return;
-    for (const listener of [...this.cycleListeners]) listener(elapsed, this);
+    // Iterate the live array directly — no defensive copy. Cycle listeners are
+    // registered once during peripheral wiring and never added/removed mid-tick,
+    // so this hot path (once per instruction in "fast" mode, once per cycle in
+    // "cycle-exact") must not allocate. Matches the write-hook loop above.
+    const listeners = this.cycleListeners;
+    for (let i = 0; i < listeners.length; i += 1) listeners[i]!(elapsed, this);
   }
 
   /**
@@ -316,7 +323,9 @@ export class CPU {
   }
 
   private serviceNextInterrupt(): void {
-    if (!this.sreg.I || this.pendingInterrupts.length === 0) return;
+    // Check the cheap array length before the SREG accessor: most ticks have no
+    // pending interrupt, so this avoids the flag bit-math on the common path.
+    if (this.pendingInterrupts.length === 0 || !this.sreg.I) return;
     const interrupt = this.pendingInterrupts.shift()!;
     this.sleeping = false; // an enabled interrupt wakes the CPU from sleep
     interrupt.acknowledge?.();
