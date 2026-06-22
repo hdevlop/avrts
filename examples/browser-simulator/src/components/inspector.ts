@@ -163,30 +163,21 @@ export function createInspector(worker: AVRWorkerRuntime): InspectorHandle {
       }
     }),
     worker.on("error", (event) => log(`error: ${event.message}`)),
+    // Refresh immediately on any status change (pause / step / restore / reset),
+    // so the inspector is correct even when rAF would be throttled.
+    worker.on("status", () => worker.readRegisters()),
   ];
 
-  // Throttled poll so registers track a running sketch without flooding the worker.
+  // Poll on a timer (not rAF, which Chrome suspends in backgrounded tabs) so the
+  // registers track a running sketch without flooding the worker.
   worker.readRegisters();
-  const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame;
-  let rafHandle: number | null = null;
-  let lastPoll = 0;
-  const loop = (): void => {
-    const now = performance.now();
-    if (now - lastPoll >= 250) {
-      worker.readRegisters();
-      lastPoll = now;
-    }
-    if (raf) rafHandle = raf(loop);
-  };
-  if (raf) rafHandle = raf(loop);
+  const pollHandle = setInterval(() => worker.readRegisters(), 250);
 
   return {
     element: root,
     destroy() {
       for (const off of offs) off();
-      if (rafHandle !== null) {
-        (globalThis as { cancelAnimationFrame?: (h: number) => void }).cancelAnimationFrame?.(rafHandle);
-      }
+      clearInterval(pollHandle);
       root.remove();
     },
   };
