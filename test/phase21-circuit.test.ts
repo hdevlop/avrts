@@ -185,6 +185,47 @@ describe("import / export round-trip", () => {
     expect(circuit.wires()).toHaveLength(1);
   });
 
+  test("import rejects duplicate node ids", () => {
+    const doc: AVRCircuitDocument = {
+      version: 1,
+      runtime: { chip: "atmega328p", clockHz: 16_000_000 },
+      parts: [
+        { id: "x", type: "board", x: 0, y: 0 },
+        { id: "x", type: "led", x: 1, y: 1 },
+      ],
+      wires: [],
+    };
+    expect(() => createCircuit(doc)).toThrow(/Duplicate node id/);
+  });
+
+  test("import drops invalid wires and records them in importIssues", () => {
+    const doc: AVRCircuitDocument = {
+      version: 1,
+      runtime: { chip: "atmega328p", clockHz: 16_000_000 },
+      parts: [
+        { id: "board1", type: "board", x: 0, y: 0 },
+        { id: "led1", type: "led", x: 1, y: 1 },
+      ],
+      wires: [
+        { from: { part: "led1", port: "anode" }, to: { part: "board1", port: "A0" } }, // invalid: digital sink to analog
+        { from: { part: "led1", port: "anode" }, to: { part: "board1", port: "D13" } }, // valid
+      ],
+    };
+    const circuit = createCircuit(doc);
+    expect(circuit.wires()).toHaveLength(1);
+    expect(circuit.wires()[0]!.to.port).toBe("D13");
+    expect(circuit.importIssues()).toHaveLength(1);
+    expect(circuit.importIssues()[0]).toContain("not a digital pin");
+  });
+
+  test("a valid imported document has no import issues", () => {
+    const circuit = newCircuit();
+    circuit.connect(led(), board("D13"));
+    const reimported = createCircuit(circuit.toJSON());
+    expect(reimported.importIssues()).toEqual([]);
+    expect(reimported.wires()).toHaveLength(1);
+  });
+
   test("export preserves positions and exact endpoint ports", () => {
     const circuit = newCircuit();
     circuit.moveNode("led1", 7, 9);

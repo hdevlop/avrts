@@ -339,6 +339,10 @@ Implementation progress:
   never mutates.
 - Wires use `{ part, port }` endpoints, so export preserves exact ports and
   import/export round-trips.
+- Import is hardened (review follow-up): `createCircuit(doc)` rejects duplicate
+  node ids and replays imported wires through the same validation as `connect`,
+  dropping invalid ones and surfacing them via `importIssues()` — a persisted or
+  hand-edited document can no longer smuggle in bad wiring.
 - Exported via the `src/circuit` barrel and the main `src` barrel.
 - Added `test/phase21-circuit.test.ts` (catalog, validation rejections, source
   exclusivity, sink/probe sharing, round-trip). Full suite green.
@@ -645,9 +649,12 @@ export interface ComponentAdapter<State> {
 - [x] Tests: bun for ring buffer + VCD, pin-activity counters, frequency/duty estimate.
 - [ ] Demo widgets (pin-activity strip, analyzer waveform, scope) + inspector → Debug tab — built in 21E against the mode shell.
 
-**21E — Demo UX**
+**21E — Demo UX** (must also close the review findings below)
+- [ ] **Worker-backed demo (review High #1):** switch `main.ts` from `createLocalSimulatorRuntime(AVR(...))` to the worker runtime so firmware runs off the main thread; migrate the demo `runtime.ts` onto the `src/` `ComponentRuntime` port (removes the duplicate worker runtime).
+- [ ] **Deployable worker bundle (review High #2):** `new Worker(new URL("./browser-worker.ts", ...))` 404s because `build:demo` emits only `main.js`. Add a `build:worker` step that bundles `src/browser-worker.ts` to the demo `dist/`, serve it, and point the worker URL at the built artifact (or construct the `Worker` in `main.ts` and pass it in).
+- [ ] **Exact-edge capture for analyzer/scope (review Medium #3):** coalesced `frame` events drop edges, so worker-mode logic-analyzer/scope/PWM-frequency are inaccurate. Add an exact-edge capture path in the worker host that emits `LogicAnalyzerChunk` (the type exists but is never posted) for subscribed pins, and feed analyzer/scope from it instead of coalesced frames.
 - [ ] Tab shell `app.ts` + `modes/{circuit,run,debug}.ts`; first paint shows a running starter.
-- [ ] Bridge the Phase 20 workspace to `createCircuit`: workspace `onBind` → `circuit.connect()`; refuse the wire when `ok` is false and surface `reason`.
+- [ ] Bridge the Phase 20 workspace to `createCircuit`: workspace `onBind` → `circuit.connect()`; refuse the wire when `ok` is false and surface `reason` (+ `importIssues()` on load).
 - [ ] `starters.ts`: Blink, Button→LED, Serial echo, PWM fade, attachInterrupt.
 - [ ] Default speed back to responsive (drop the `0.25x` workaround) once worker-backed.
 - [ ] Playwright: clickable-while-running, button→LED, program switch clears state, rewire, fast Stop/Pause, one analyzer edge.

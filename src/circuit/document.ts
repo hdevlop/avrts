@@ -112,6 +112,8 @@ export interface CircuitModel {
   parts(): ReadonlyArray<CircuitNode<CircuitPartType>>;
   instruments(): ReadonlyArray<CircuitNode<CircuitInstrumentType>>;
   wires(): ReadonlyArray<CircuitWire>;
+  /** Wires from an imported document that failed validation and were dropped. */
+  importIssues(): ReadonlyArray<string>;
   toJSON(): AVRCircuitDocument;
 }
 
@@ -122,11 +124,24 @@ export function createCircuit(doc?: AVRCircuitDocument): CircuitModel {
 
   const runtime = doc?.runtime ?? { chip: "atmega328p" as const, clockHz: DEFAULT_CLOCK_HZ };
   const program = doc?.program ? { ...doc.program } : undefined;
-  const parts: Array<CircuitNode<CircuitPartType>> = (doc?.parts ?? []).map((n) => ({ ...n }));
-  const instruments: Array<CircuitNode<CircuitInstrumentType>> = (doc?.instruments ?? []).map((n) => ({ ...n }));
-  // A persisted document is trusted: load its wires verbatim so import/export
-  // round-trips. New connections still go through `validate`.
-  const wires: CircuitWire[] = (doc?.wires ?? []).map((w) => ({ from: { ...w.from }, to: { ...w.to } }));
+
+  // Node ids must be unique across parts + instruments, or `findNode` is ambiguous.
+  const seenIds = new Set<string>();
+  const takeNodes = <T extends AnyNode>(nodes: ReadonlyArray<T>): T[] => {
+    const out: T[] = [];
+    for (const node of nodes) {
+      if (seenIds.has(node.id)) throw new Error(`Duplicate node id: ${node.id}`);
+      seenIds.add(node.id);
+      out.push({ ...node } as T);
+    }
+    return out;
+  };
+  const parts = takeNodes(doc?.parts ?? []);
+  const instruments = takeNodes(doc?.instruments ?? []);
+  // Imported wires are replayed through `validate` (below) rather than trusted
+  // verbatim, so an invalid persisted document can't smuggle in bad wiring.
+  const wires: CircuitWire[] = [];
+  const issues: string[] = [];
 
   const allNodes = (): AnyNode[] => [...parts, ...instruments];
   const findNode = (id: string): AnyNode | undefined => allNodes().find((n) => n.id === id);
@@ -195,6 +210,21 @@ export function createCircuit(doc?: AVRCircuitDocument): CircuitModel {
     return ok;
   };
 
+  // Replay imported wires through validation; drop (and record) any invalid ones.
+  for (const wire of doc?.wires ?? []) {
+    const result = validate(wire.from, wire.to);
+    if (result.ok) {
+      wires.push({ from: { ...wire.from }, to: { ...wire.to } });
+      continue;
+    }
+    // `in` narrows reliably under this tsconfig's `strict: false` (boolean
+    // discriminant narrowing on `result.ok` does not).
+    const reason = "reason" in result ? result.reason : "invalid connection";
+    issues.push(
+      `dropped wire ${wire.from.part}:${wire.from.port} <-> ${wire.to.part}:${wire.to.port} (${reason})`,
+    );
+  }
+
   return {
     addPart(node) {
       assertUniqueId(node.id);
@@ -239,6 +269,7 @@ export function createCircuit(doc?: AVRCircuitDocument): CircuitModel {
     parts: () => parts,
     instruments: () => instruments,
     wires: () => wires,
+    importIssues: () => issues,
     toJSON: () => ({
       version: 1,
       runtime: { ...runtime },
