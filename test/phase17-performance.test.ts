@@ -2,6 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { AVR } from "../src";
 import { createBenchmarkCases, runBenchmarkCase } from "../scripts/benchmark";
 
+interface BenchmarkBaseline {
+  cases: Record<string, { reference: number; floor: number }>;
+}
+
+const baseline = (await Bun.file(
+  new URL("../scripts/benchmark-baseline.json", import.meta.url),
+).json()) as BenchmarkBaseline;
+
+/** Best throughput over a few short runs — using the max damps single-run noise. */
+function bestCyclesPerSecond(name: string, cycles: number, runs = 3): number {
+  const testCase = createBenchmarkCases(cycles).find((c) => c.name === name);
+  if (!testCase) throw new Error(`missing benchmark case "${name}"`);
+  let best = 0;
+  for (let i = 0; i < runs; i += 1) {
+    best = Math.max(best, runBenchmarkCase(testCase, 1).cyclesPerSecond);
+  }
+  return best;
+}
+
 function ldiR16(value: number): number {
   return 0xe000 | ((value & 0xf0) << 4) | (value & 0x0f);
 }
@@ -70,5 +89,24 @@ describe("Phase 17 — browser performance", () => {
     expect(result.elapsedMs).toBeGreaterThan(0);
     expect(result.cyclesPerSecond).toBeGreaterThan(0);
     expect(result.realtimeFactor).toBeGreaterThan(0);
+  });
+
+  // Regression floors: catch large dispatch-throughput drops (e.g. a reintroduced
+  // per-instruction allocation) without flaking on machine/CI variance. Floors
+  // live in scripts/benchmark-baseline.json, set ~2.5-3x below measured numbers.
+  describe("throughput stays above the regression floor", () => {
+    // Moderate cycle counts: enough to be representative, fast enough for CI.
+    const CYCLES: Record<string, number> = {
+      "tight-loop": 1_000_000,
+      "delay-blink": 1_000_000,
+      "serial-print": 250_000,
+      "analog-write": 500_000,
+    };
+    for (const [name, { floor }] of Object.entries(baseline.cases)) {
+      test(name, () => {
+        const measured = bestCyclesPerSecond(name, CYCLES[name]!);
+        expect(measured).toBeGreaterThan(floor);
+      });
+    }
   });
 });

@@ -1,0 +1,10 @@
+{
+  "comment": "Throughput regression floors (cycles/s) enforced by test/phase17-performance.test.ts. 'reference' is an informational measurement (local, Bun, after the notifyCycles allocation fix; see commit history). 'floor' is the enforced minimum and is set well below reference (~2.5-3x margin) so ordinary machine/CI variance does not flake the suite — the goal is to catch large regressions (e.g. reintroduced per-instruction allocations), not micro-changes. Track fine-grained numbers with `bun run bench`. Bump these only with a measured rationale.",
+  "clockHz": 16000000,
+  "cases": {
+    "tight-loop": { "reference": 9900000, "floor": 3500000 },
+    "delay-blink": { "reference": 4900000, "floor": 1700000 },
+    "serial-print": { "reference": 2900000, "floor": 1000000 },
+    "analog-write": { "reference": 4300000, "floor": 1500000 }
+  }
+}

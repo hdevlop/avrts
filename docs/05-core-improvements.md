@@ -527,11 +527,20 @@ bun run bench -- --case tight-loop --cycles 1000000 --repeats 5
 bun run bench -- --json
 ```
 
+Regression floors:
+
+- `scripts/benchmark-baseline.json` records a reference measurement and an
+  enforced `floor` (cycles/s) per case. `test/phase17-performance.test.ts`
+  asserts current throughput stays above each floor (best-of-3 runs to damp
+  noise). Floors sit ~2.5-3x below measured numbers, so they catch large
+  regressions (e.g. a reintroduced per-instruction allocation) without flaking
+  on machine/CI variance.
+
 Still remaining in Phase 17:
 
-- Add a baseline JSON artifact or threshold policy once performance stabilizes.
 - Profile and reduce allocations in instruction dispatch, USART, SPI, and GPIO
-  listener paths if benchmarks show pressure.
+  listener paths if benchmarks show pressure. (Done so far: removed the
+  per-instruction `cycleListeners` clone; see `CPU.notifyCycles`.)
 - Consider a generated/function-table decoder only if the current prebuilt table
   becomes the bottleneck.
 - Add PWM signal coalescing if the browser demo starts rendering every PWM edge.
