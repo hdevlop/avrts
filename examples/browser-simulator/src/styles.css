@@ -627,6 +627,69 @@ select {
   white-space: pre-wrap;
 }
 
+/* Logic analyzer instrument */
+.analyzer-title {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.analyzer-controls {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.analyzer-controls button {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.analyzer-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.analyzer-row {
+  display: grid;
+  grid-template-columns: 36px 44px 70px 1fr;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.analyzer-label {
+  color: var(--muted);
+}
+
+.analyzer-level[data-state="high"] {
+  color: var(--led-on);
+  font-weight: 600;
+}
+
+.analyzer-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.analyzer-wave {
+  width: 100%;
+  height: 24px;
+  background: #08090c;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.analyzer-trace {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
 footer {
   padding: 0.9rem 1.25rem 1.25rem;
   color: var(--muted);

@@ -11,6 +11,7 @@ import { createSerialMonitor } from "./components/serial-monitor";
 import { createControls } from "./components/controls";
 import { createBoard } from "./components/board";
 import { createInspector } from "./components/inspector";
+import { createLogicAnalyzer } from "./components/logic-analyzer";
 import { wrapWorkerSimulatorRuntime } from "./runtime";
 import { createWorkspace } from "./workspace";
 
@@ -59,6 +60,7 @@ const serial = createSerialMonitor(runtime, { label: "Serial (9600 baud)" });
 const controls = createControls(runtime);
 const inspector = createInspector(worker);
 const board = createBoard(runtime);
+const analyzer = createLogicAnalyzer(runtime, { pins: [9, 13] });
 
 // Map each draggable component id back to its setPin, so the wiring model can
 // rebind it through the facade.
@@ -95,6 +97,7 @@ document.getElementById("workspace-slot")!.append(workspace.element);
 document.getElementById("controls-slot")!.replaceWith(controls.element);
 document.getElementById("serial-slot")!.replaceWith(serial.element);
 document.getElementById("inspector-slot")!.replaceWith(inspector.element);
+document.querySelector(".side-panels")?.append(analyzer.element);
 
 // Draw the default wires (which also binds each component through onBind).
 for (const node of ioNodes) workspace.connect(node.id, node.pin);

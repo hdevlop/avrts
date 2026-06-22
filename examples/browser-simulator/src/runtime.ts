@@ -1,15 +1,19 @@
 import {
   createAVRWorkerRuntime,
+  decodeLogicChunk,
   type AVR,
   type AVRSnapshot,
   type AVRSpeed,
   type AVRStatus,
   type AVRWorkerRuntime,
   type AVRWorkerRuntimeOptions,
+  type LogicSampleRecord,
   type PinFrame,
   type PwmFrame,
   type PwmSignal,
 } from "../../../src";
+
+export type EdgeHandler = (samples: LogicSampleRecord[]) => void;
 
 export type SimulatorLifecycleEvent =
   | "start"
@@ -41,6 +45,11 @@ export interface SimulatorRuntime {
   serialWrite(text: string): void;
   serialText(): string;
   onSerialText(handler: (text: string) => void): () => void;
+  /** Start exact (non-coalesced) edge capture on the given pins. */
+  captureEdges(pins: number[], id?: string): void;
+  stopCapture(): void;
+  /** Subscribe to batches of exact edges from the active capture. */
+  onEdges(handler: EdgeHandler): () => void;
   snapshot(): Promise<SimulatorSnapshot>;
   restore(snapshot: SimulatorSnapshot): Promise<void>;
   status(): AVRStatus;
@@ -77,6 +86,14 @@ export function createLocalSimulatorRuntime(avr: AVR): SimulatorRuntime {
     "error",
   ];
   const offs = lifecycle.map((event) => avr.on(event, notifyRefresh));
+
+  // Exact-edge capture: local mode runs via runCycles, so pin events are not
+  // coalesced — each edge is delivered as it happens.
+  const edgeListeners = new Set<EdgeHandler>();
+  let captureOffs: Array<() => void> = [];
+  const emitEdges = (samples: LogicSampleRecord[]): void => {
+    for (const listener of [...edgeListeners]) listener(samples);
+  };
 
   return {
     start: () => {
@@ -131,6 +148,20 @@ export function createLocalSimulatorRuntime(avr: AVR): SimulatorRuntime {
     },
     serialText: () => avr.serial.getText(),
     onSerialText: (handler) => avr.serial.onText(handler),
+    captureEdges: (pins) => {
+      for (const off of captureOffs) off();
+      captureOffs = pins.map((pin) =>
+        avr.pin(pin).onChange((high, event) => emitEdges([{ pin, high, cycles: event.cycles }])),
+      );
+    },
+    stopCapture: () => {
+      for (const off of captureOffs) off();
+      captureOffs = [];
+    },
+    onEdges(handler) {
+      edgeListeners.add(handler);
+      return () => edgeListeners.delete(handler);
+    },
     snapshot: async () => avr.snapshot(),
     restore: async (snapshot) => {
       if ("snapshotId" in snapshot) return;
@@ -152,8 +183,10 @@ export function createLocalSimulatorRuntime(avr: AVR): SimulatorRuntime {
     },
     destroy() {
       for (const off of offs) off();
+      for (const off of captureOffs) off();
       statusListeners.clear();
       refreshListeners.clear();
+      edgeListeners.clear();
     },
   };
 }
@@ -176,6 +209,7 @@ class WorkerSimulatorRuntime implements SimulatorRuntime {
   private readonly serialListeners = new Set<(text: string) => void>();
   private readonly statusListeners = new Set<(status: AVRStatus) => void>();
   private readonly refreshListeners = new Set<() => void>();
+  private readonly edgeListeners = new Set<EdgeHandler>();
   private readonly offs: Array<() => void> = [];
   private text = "";
   private latestStatus: AVRStatus = {
@@ -204,6 +238,10 @@ class WorkerSimulatorRuntime implements SimulatorRuntime {
         for (const listener of [...this.serialListeners]) listener(event.text);
       }),
       worker.on("breakpoint", (event) => this.setStatus(event.status)),
+      worker.on("logicChunk", (event) => {
+        const samples = decodeLogicChunk(event.chunk);
+        for (const listener of [...this.edgeListeners]) listener(samples);
+      }),
       worker.on("error", (event) => {
         if (event.status) this.setStatus(event.status);
       }),
@@ -298,6 +336,19 @@ class WorkerSimulatorRuntime implements SimulatorRuntime {
     };
   }
 
+  captureEdges(pins: number[], id?: string): void {
+    this.worker.captureEdges(pins, id);
+  }
+
+  stopCapture(): void {
+    this.worker.stopCapture();
+  }
+
+  onEdges(handler: EdgeHandler): () => void {
+    this.edgeListeners.add(handler);
+    return () => this.edgeListeners.delete(handler);
+  }
+
   async snapshot(): Promise<SimulatorSnapshot> {
     return new Promise((resolve) => {
       const off = this.worker.on("snapshot", (event) => {
@@ -338,6 +389,7 @@ class WorkerSimulatorRuntime implements SimulatorRuntime {
     this.serialListeners.clear();
     this.statusListeners.clear();
     this.refreshListeners.clear();
+    this.edgeListeners.clear();
   }
 
   private consumePins(pins: PinFrame[]): void {
