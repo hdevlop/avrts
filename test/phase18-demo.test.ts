@@ -67,10 +67,15 @@ describe("Phase 18 — browser simulator demo", () => {
     expect(text).toContain("controls-widget");
   });
 
-  test("demo opts into browser-friendly pin event coalescing", async () => {
-    const text = await Bun.file(join(ROOT, "examples/browser-simulator/src/main.ts")).text();
-    expect(text).toContain("eventCoalescing");
-    expect(text).toContain("pins: true");
+  test("demo runs the core in a worker; coalescing lives in the worker host", async () => {
+    // Phase 21E moved execution into a Web Worker; the demo entry wires it up...
+    const main = await Bun.file(join(ROOT, "examples/browser-simulator/src/main.ts")).text();
+    expect(main).toContain("createAVRWorkerRuntime");
+    expect(main).toContain("browser-worker.js");
+    // ...and the pin-event coalescing now lives in the worker host.
+    const host = await Bun.file(join(ROOT, "src/browser-runtime.ts")).text();
+    expect(host).toContain("eventCoalescing");
+    expect(host).toContain("pins: true");
   });
 
   test("bundle is reasonably sized (proves it actually bundled the simulator)", async () => {

@@ -1,4 +1,4 @@
-import { AVR } from "../../../src";
+import { createAVRWorkerRuntime } from "../../../src";
 import digitalReadHex from "../../arduino-digital-read/arduino-digital-read.ino.hex" with { type: "text" };
 import serialPrintHex from "../../arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../../arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
@@ -11,7 +11,7 @@ import { createSerialMonitor } from "./components/serial-monitor";
 import { createControls } from "./components/controls";
 import { createBoard } from "./components/board";
 import { createInspector } from "./components/inspector";
-import { createLocalSimulatorRuntime } from "./runtime";
+import { wrapWorkerSimulatorRuntime } from "./runtime";
 import { createWorkspace } from "./workspace";
 
 /**
@@ -39,21 +39,25 @@ const PROGRAMS: Record<string, { label: string; hex: string }> = {
 };
 
 const initial = "arduino-digital-read";
-const avr = AVR({
-  hex: PROGRAMS[initial]!.hex,
-  eventCoalescing: { pins: true },
-});
-avr.setSpeed(0.25);
-const runtime = createLocalSimulatorRuntime(avr);
 
-// Build the draggable widgets. They subscribe to the public facade and stay
-// attached across program switches, so we build them once.
+// Phase 21E: run the AVR core in a Web Worker so the main thread stays
+// responsive at normal speed. The worker bundle is emitted by `bun run
+// build:worker` to ./dist/browser-worker.js (served alongside this bundle).
+const worker = createAVRWorkerRuntime({
+  worker: new Worker("./dist/browser-worker.js", { type: "module" }),
+  hex: PROGRAMS[initial]!.hex,
+  speed: 1,
+});
+const runtime = wrapWorkerSimulatorRuntime(worker);
+
+// Build the draggable widgets. They subscribe to the worker-backed runtime and
+// stay attached across program switches, so we build them once.
 const led = createLed(runtime, { pin: 13, label: "LED" });
 const button = createButton(runtime, { pin: 2, label: "Button" });
 const pwm = createPwmDisplay(runtime, { pin: 9, label: "PWM" });
 const serial = createSerialMonitor(runtime, { label: "Serial (9600 baud)" });
 const controls = createControls(runtime);
-const inspector = createInspector(avr);
+const inspector = createInspector(worker);
 const board = createBoard(runtime);
 
 // Map each draggable component id back to its setPin, so the wiring model can

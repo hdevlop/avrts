@@ -1,22 +1,20 @@
-import type { AVR } from "../../../../src";
-import { SPL_ADDR, SPH_ADDR } from "../../../../src";
+import type { AVRWorkerRuntime } from "../../../../src";
 
 /**
- * Debugger / register inspector panel.
+ * Debugger / register inspector panel (worker-backed).
  *
- * Reads live CPU state through `avr.cpu` (the documented read-only inspection
- * escape hatch — it never writes) and drives the debugger primitives through the
- * public facade: `step()`, `breakpoint()`, `clearBreakpoint()`, `watchData()`.
- *
- * It refreshes once per animation frame while values change, plus immediately on
- * lifecycle events (pause/step/reset/restore/breakpoint).
+ * The CPU lives in the worker, so the inspector renders from `registers` events
+ * (requested via `worker.readRegisters()`) and drives debugging through the
+ * worker protocol: `step()`, `setBreakpoint()`, `clearBreakpoints()`,
+ * `watchData()`. Register state refreshes on a throttled poll plus immediately
+ * after step / breakpoint events.
  */
 export interface InspectorHandle {
   element: HTMLElement;
   destroy(): void;
 }
 
-const FLAG_NAMES = ["I", "T", "H", "S", "V", "N", "Z", "C"] as const;
+const FLAG_NAMES = ["I", "T", "H", "S", "V", "N", "Z", "C"] as const; // SREG bit 7..0
 
 function hex(value: number, width: number): string {
   return value.toString(16).toUpperCase().padStart(width, "0");
@@ -29,7 +27,7 @@ function parseHex(text: string): number {
   return parseInt(trimmed, 16);
 }
 
-export function createInspector(avr: AVR): InspectorHandle {
+export function createInspector(worker: AVRWorkerRuntime): InspectorHandle {
   const root = document.createElement("div");
   root.className = "inspector-widget";
 
@@ -37,11 +35,10 @@ export function createInspector(avr: AVR): InspectorHandle {
   title.className = "inspector-title";
   title.textContent = "CPU inspector";
 
-  // --- status line ---
   const statusLine = document.createElement("div");
   statusLine.className = "inspector-status";
+  statusLine.textContent = "PC ---- · SP ---- · 0 cycles";
 
-  // --- SREG flags ---
   const flagsRow = document.createElement("div");
   flagsRow.className = "inspector-flags";
   const flagEls = new Map<(typeof FLAG_NAMES)[number], HTMLElement>();
@@ -54,7 +51,6 @@ export function createInspector(avr: AVR): InspectorHandle {
     flagEls.set(name, chip);
   }
 
-  // --- registers ---
   const regGrid = document.createElement("div");
   regGrid.className = "inspector-registers";
   const regEls: HTMLElement[] = [];
@@ -66,12 +62,12 @@ export function createInspector(avr: AVR): InspectorHandle {
     name.textContent = `R${r}`;
     const value = document.createElement("span");
     value.className = "reg-value";
+    value.textContent = "--";
     cell.append(name, value);
     regGrid.append(cell);
     regEls.push(value);
   }
 
-  // --- debugger controls ---
   const debugRow = document.createElement("div");
   debugRow.className = "inspector-debug";
 
@@ -80,8 +76,8 @@ export function createInspector(avr: AVR): InspectorHandle {
   stepBtn.className = "step-btn";
   stepBtn.textContent = "Step";
   stepBtn.addEventListener("click", () => {
-    avr.step();
-    render(true);
+    worker.step();
+    worker.readRegisters();
   });
 
   const bpInput = document.createElement("input");
@@ -96,7 +92,7 @@ export function createInspector(avr: AVR): InspectorHandle {
   bpAdd.addEventListener("click", () => {
     const pc = parseHex(bpInput.value);
     if (Number.isNaN(pc)) return;
-    avr.breakpoint({ pc });
+    worker.setBreakpoint(pc);
     log(`breakpoint @ 0x${hex(pc, 4)}`);
   });
 
@@ -104,7 +100,7 @@ export function createInspector(avr: AVR): InspectorHandle {
   bpClear.type = "button";
   bpClear.textContent = "Clear BPs";
   bpClear.addEventListener("click", () => {
-    avr.clearBreakpoints();
+    worker.clearBreakpoints();
     log("cleared all breakpoints");
   });
 
@@ -120,9 +116,7 @@ export function createInspector(avr: AVR): InspectorHandle {
   watchBtn.addEventListener("click", () => {
     const addr = parseHex(watchInput.value);
     if (Number.isNaN(addr)) return;
-    avr.watchData(addr, (event) => {
-      log(`watch 0x${hex(event.address, 4)}: 0x${hex(event.oldValue, 2)} → 0x${hex(event.value, 2)}`);
-    });
+    worker.watchData(addr);
     log(`watching 0x${hex(addr, 4)}`);
   });
 
@@ -138,60 +132,49 @@ export function createInspector(avr: AVR): InspectorHandle {
     logEl.textContent = `${message}\n${logEl.textContent ?? ""}`.slice(0, 4000);
   }
 
-  // --- rendering ---
-  const cpu = avr.cpu;
-  let lastSignature = "";
-
-  function readSp(): number {
-    return cpu.data[SPL_ADDR]! | (cpu.data[SPH_ADDR]! << 8);
-  }
-
-  function render(force = false): void {
-    // Cheap change-detection so we don't thrash the DOM every frame.
-    const signature = `${cpu.pc}:${cpu.cycles}:${cpu.sreg.value}`;
-    if (!force && signature === lastSignature) return;
-    lastSignature = signature;
-
+  const renderRegisters = (event: {
+    pc: number;
+    sp: number;
+    sreg: number;
+    cycles: number;
+    registers: number[];
+  }): void => {
     statusLine.textContent =
-      `PC 0x${hex(cpu.pc, 4)} · SP 0x${hex(readSp(), 4)} · ${cpu.cycles} cycles`;
-
-    for (const name of FLAG_NAMES) {
-      flagEls.get(name)!.classList.toggle("set", cpu.sreg[name]);
-    }
+      `PC 0x${hex(event.pc, 4)} · SP 0x${hex(event.sp, 4)} · ${event.cycles} cycles`;
+    FLAG_NAMES.forEach((name, index) => {
+      flagEls.get(name)!.classList.toggle("set", ((event.sreg >> (7 - index)) & 1) === 1);
+    });
     for (let r = 0; r < 32; r += 1) {
-      regEls[r]!.textContent = hex(cpu.data[r]!, 2);
+      regEls[r]!.textContent = hex(event.registers[r] ?? 0, 2);
     }
-  }
-
-  render(true);
+  };
 
   const offs = [
-    avr.on("reset", () => render(true)),
-    avr.on("load", () => render(true)),
-    avr.on("clear", () => render(true)),
-    avr.on("restore", () => render(true)),
-    avr.on("pause", () => render(true)),
-    avr.on("breakpoint", (event) => {
-      render(true);
-      if (event.pc !== undefined) log(`hit breakpoint @ 0x${hex(event.pc, 4)}`);
+    worker.on("registers", renderRegisters),
+    worker.on("breakpoint", (event) => {
+      log(`hit breakpoint @ 0x${hex(event.pc, 4)}`);
+      worker.readRegisters();
     }),
-    avr.on("error", (event) => {
-      render(true);
-      log(`error: ${String(event.error)}`);
+    worker.on("watchFrame", (event) => {
+      for (const frame of event.events) {
+        for (const write of frame.writes) {
+          log(`watch 0x${hex(frame.address, 4)}: 0x${hex(write.oldValue, 2)} → 0x${hex(write.value, 2)}`);
+        }
+      }
     }),
+    worker.on("error", (event) => log(`error: ${event.message}`)),
   ];
 
-  // Poll while the page is alive so registers update during a run.
-  const raf = (globalThis as {
-    requestAnimationFrame?: (cb: () => void) => number;
-  }).requestAnimationFrame;
+  // Throttled poll so registers track a running sketch without flooding the worker.
+  worker.readRegisters();
+  const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number }).requestAnimationFrame;
   let rafHandle: number | null = null;
-  let lastRafRender = 0;
+  let lastPoll = 0;
   const loop = (): void => {
     const now = performance.now();
-    if (now - lastRafRender >= 250) {
-      render();
-      lastRafRender = now;
+    if (now - lastPoll >= 250) {
+      worker.readRegisters();
+      lastPoll = now;
     }
     if (raf) rafHandle = raf(loop);
   };

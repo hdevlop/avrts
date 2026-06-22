@@ -1,5 +1,6 @@
 import { AVR } from "./avr";
 import type { AVRSpeed, AVRStatus, DataWatchEvent } from "./avr";
+import { SPH_ADDR, SPL_ADDR, SREG_ADDR } from "./cpu";
 import type { AVRSnapshot } from "./snapshot";
 import type { PinChangeEvent, PwmSignal } from "./peripherals";
 import { pinInfo } from "./peripherals";
@@ -97,7 +98,8 @@ export type AVRWorkerCommand =
   | { type: "unwatchData"; address: number }
   | { type: "pauseOnUnknownOpcode"; enabled: boolean }
   | { type: "captureEdges"; pins: number[]; id?: string }
-  | { type: "stopCapture" };
+  | { type: "stopCapture" }
+  | { type: "readRegisters" };
 
 export type AVRWorkerEvent =
   | { type: "ready"; status: AVRStatus }
@@ -108,6 +110,7 @@ export type AVRWorkerEvent =
   | { type: "breakpoint"; pc: number; status: AVRStatus }
   | { type: "watchFrame"; events: DataWatchFrame[] }
   | { type: "logicChunk"; chunk: LogicAnalyzerChunk }
+  | { type: "registers"; pc: number; sp: number; sreg: number; cycles: number; registers: number[] }
   | { type: "error"; message: string; status?: AVRStatus };
 
 export type AVRWorkerEventType = AVRWorkerEvent["type"];
@@ -146,6 +149,8 @@ export interface AVRWorkerRuntime {
   /** Start exact (non-coalesced) edge capture on the given pins for analyzer/scope. */
   captureEdges(pins: number[], id?: string): void;
   stopCapture(): void;
+  /** Request a one-shot `registers` event (PC/SP/SREG/cycles/R0-R31) for the debugger. */
+  readRegisters(): void;
   status(): AVRStatus | null;
   on<T extends AVRWorkerEventType>(type: T, handler: AVRWorkerEventHandler<T>): () => void;
   destroy(): void;
@@ -231,6 +236,7 @@ export function createAVRWorkerRuntime(options: AVRWorkerRuntimeOptions = {}): A
     pauseOnUnknownOpcode: (enabled) => post({ type: "pauseOnUnknownOpcode", enabled }),
     captureEdges: (pins, id) => post({ type: "captureEdges", pins, id }),
     stopCapture: () => post({ type: "stopCapture" }),
+    readRegisters: () => post({ type: "readRegisters" }),
     status: () => latestStatus,
     on(type, handler) {
       let set = listeners.get(type);
@@ -593,6 +599,18 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
           capturePins.clear();
           edgeBuffer.length = 0;
           return;
+        case "readRegisters": {
+          const data = avr.cpu.data;
+          post({
+            type: "registers",
+            pc: avr.cpu.pc,
+            sp: data[SPL_ADDR]! | (data[SPH_ADDR]! << 8),
+            sreg: data[SREG_ADDR]!,
+            cycles: avr.cpu.cycles,
+            registers: Array.from(data.subarray(0, 32)),
+          });
+          return;
+        }
       }
     } catch (error) {
       post({ type: "error", message: String(error), status: status() });

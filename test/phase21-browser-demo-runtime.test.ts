@@ -88,6 +88,9 @@ class FakeWorkerRuntime implements AVRWorkerRuntime {
   stopCapture(): void {
     this.commands.push({ type: "stopCapture" });
   }
+  readRegisters(): void {
+    this.commands.push({ type: "readRegisters" });
+  }
   status(): null {
     return null;
   }

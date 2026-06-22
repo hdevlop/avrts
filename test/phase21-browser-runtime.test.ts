@@ -195,6 +195,22 @@ describe("Phase 21 - browser worker host", () => {
     expect(alternating).toBe(true);
   });
 
+  test("readRegisters returns PC/SP/SREG/cycles and 32 registers for the debugger", async () => {
+    const scope = new FakeWorkerScope();
+    installAVRWorker(scope);
+
+    scope.send({ type: "loadHex", hex: BLINK_HEX });
+    scope.send({ type: "step" });
+    scope.send({ type: "readRegisters" });
+
+    const regs = await waitForEvent(scope, "registers");
+    expect(regs.registers).toHaveLength(32);
+    expect(typeof regs.pc).toBe("number");
+    expect(regs.sreg).toBeGreaterThanOrEqual(0);
+    expect(regs.sreg).toBeLessThanOrEqual(255);
+    expect(regs.cycles).toBeGreaterThan(0);
+  });
+
   test("restore uses payload first, snapshot id second, and errors for missing input", async () => {
     const scope = new FakeWorkerScope();
     installAVRWorker(scope);

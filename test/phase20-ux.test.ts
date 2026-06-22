@@ -154,10 +154,11 @@ describe("Phase 20 — new sources stay on the public facade", () => {
     expect(button).toContain("aria-pressed");
   });
 
-  test("inspector drives debugging through public debugger APIs", async () => {
+  test("inspector drives debugging through the worker debugger protocol", async () => {
     const inspector = await Bun.file(join(DEMO, "src/components/inspector.ts")).text();
-    expect(inspector).toContain("avr.step()");
-    expect(inspector).toContain("avr.breakpoint(");
-    expect(inspector).toContain("avr.watchData(");
+    expect(inspector).toContain("worker.step()");
+    expect(inspector).toContain("worker.setBreakpoint(");
+    expect(inspector).toContain("worker.watchData(");
+    expect(inspector).toContain("worker.readRegisters(");
   });
 });

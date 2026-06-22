@@ -10,9 +10,11 @@ The demo uses only the public facade. No direct CPU writes, no manual peripheral
 wiring (`avr.cpu` is used read-only by the inspector) - that is the point of the
 regression target.
 
-The demo starts automatically at `0.25x` speed so the browser UI stays
-responsive while firmware runs on the main thread. Switch to `1`, `10`, or
-`max` from the speed controls when you want more throughput.
+The AVR core runs in a **Web Worker** (`dist/browser-worker.js`), so the main
+thread stays responsive at normal `1x` speed while firmware runs. The UI talks
+to the worker through a structured-clone message protocol and renders from
+coalesced frame events; the CPU inspector renders from `registers` events. Switch
+to `10` or `max` from the speed controls for more throughput.
 
 ## Phase 20 UX foundation
 
