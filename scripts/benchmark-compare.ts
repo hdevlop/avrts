@@ -2,8 +2,10 @@
  * avrts vs avr8js throughput comparison.
  *
  * Runs the same workloads through both simulators for the same CPU-cycle budget
- * and reports cycles/s for each plus the ratio. Both are wired with the same
- * peripheral set (timers 0/1/2, USART0, ADC, GPIO B/C/D, watchdog) so neither
+ * and reports cycles/s for each plus the ratio. The default cycle budgets are
+ * intentionally long enough that Arduino setup does not dominate the steady
+ * loop comparison. Both simulators are wired with the same peripheral set
+ * (timers 0/1/2, USART0, ADC, GPIO B/C/D, watchdog) so neither
  * gets a free pass by skipping peripheral work — though note the two use
  * different peripheral-timing architectures (avrts ticks every instruction;
  * avr8js schedules clock events), which is itself part of what is being compared.
@@ -53,10 +55,10 @@ interface CompareOptions {
 }
 
 const WORKLOADS: Workload[] = [
-  { name: "tight-loop", cycles: 2_000_000 },
-  { name: "delay-blink", cycles: 2_000_000, hex: delayBlinkHex },
-  { name: "serial-print", cycles: 250_000, hex: serialPrintHex },
-  { name: "analog-write", cycles: 500_000, hex: analogWriteHex },
+  { name: "tight-loop", cycles: 10_000_000 },
+  { name: "delay-blink", cycles: 50_000_000, hex: delayBlinkHex },
+  { name: "serial-print", cycles: 5_000_000, hex: serialPrintHex },
+  { name: "analog-write", cycles: 5_000_000, hex: analogWriteHex },
 ];
 
 function programFor(hex?: string): Uint16Array {
@@ -128,7 +130,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 }
 
 function parseArgs(args: string[]): CompareOptions {
-  const options: CompareOptions = { repeats: 5 };
+  const options: CompareOptions = { repeats: 3 };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--repeats") {
@@ -155,7 +157,7 @@ function main(): void {
   if (workloads.length === 0) throw new Error(`Unknown benchmark case "${options.only}".`);
 
   console.log(`avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz)\n`);
-  const head = `${"workload".padEnd(14)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
+  const head = `${"workload".padEnd(14)}${"cycles".padStart(12)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
   console.log(head);
   console.log("-".repeat(head.length));
 
@@ -164,7 +166,7 @@ function main(): void {
     const avr8 = best(runAvr8js, workload, options.repeats);
     const ratio = avr8 === 0 ? 0 : avrts / avr8;
     console.log(
-      `${workload.name.padEnd(14)}${(fmt(avrts) + "/s").padStart(16)}${(fmt(avr8) + "/s").padStart(16)}${`${ratio.toFixed(2)}x`.padStart(16)}`,
+      `${workload.name.padEnd(14)}${fmt(workload.cycles).padStart(12)}${(fmt(avrts) + "/s").padStart(16)}${(fmt(avr8) + "/s").padStart(16)}${`${ratio.toFixed(2)}x`.padStart(16)}`,
     );
   }
 }

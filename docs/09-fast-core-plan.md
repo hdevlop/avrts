@@ -364,6 +364,37 @@ The main rule for future FastBlock cleanup: metadata can be table-driven, but
 execution dispatch stays numeric until a generated core can prove equal or
 better throughput.
 
+### Step 5b implemented -- make avr8js compare steady-state by default
+
+The old `bench:compare` default cycle budgets were too short for the Arduino
+fixtures after FastBlocks landed. Startup and fixture construction dominated the
+reported ratios, so the default full compare could still claim serial/analog were
+far behind even when targeted steady-state runs were already at parity.
+
+The compare harness now keeps setup inside the timed window, but uses longer
+per-workload cycle budgets and defaults to three repeats:
+
+```text
+tight-loop      10M cycles
+delay-blink     50M cycles
+serial-print     5M cycles
+analog-write     5M cycles
+```
+
+It also prints the cycle budget per row so short custom runs are obvious in the
+report.
+
+Fresh default compare after the harness update:
+
+```text
+tight-loop, 10M cycles    164.4M/s vs avr8js 92.2M/s = 1.78x
+delay-blink, 50M cycles    77.1M/s vs avr8js 51.8M/s = 1.49x
+serial-print, 5M cycles    78.6M/s vs avr8js 78.7M/s = 1.00x
+analog-write, 5M cycles    78.4M/s vs avr8js 78.1M/s = 1.01x
+```
+
+This is measurement cleanup only: no runtime hot path changed.
+
 The next broad step is to stop adding hand-picked blocks and build a generator or
 mini block compiler on top of this cache. That is the point where the project
 crosses from "fast-path layer" into "second execution engine" territory.
