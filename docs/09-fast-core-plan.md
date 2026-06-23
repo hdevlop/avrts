@@ -334,6 +334,36 @@ This is the first point where the main Arduino delay workload beats avr8js
 steady-state. The cost is deliberate specificity: this block is for the compiled
 Arduino `micros()` helper, not a general call optimizer.
 
+### Step 5a implemented -- keep hot switches, centralize profile metadata
+
+The first cleanup attempt pushed FastBlock classification and execution through a
+definition table. Correctness stayed green, but the hot workloads slowed down:
+the extra indirection in `tryRunFastBlock()` was visible exactly where the
+specializations matter. That path was rejected.
+
+The kept cleanup is smaller and performance-neutral:
+
+- `runFast()` keeps its numeric hot switches and direct FastBlock dispatch;
+- `profileRun()` keeps the profiler-only loop, so normal execution has no
+  profiling branch in the hot path;
+- FastBlock profile labels are centralized in one `FAST_BLOCK_PROFILE_KINDS`
+  table;
+- repeated profile emission code is now one `profileFastBlock()` helper;
+- the debugger/trace fallback loop is factored into `runTicksUntil()`.
+
+Measured result after restoring the hot switch path:
+
+```text
+steady-state targeted compare:
+delay-blink, 50M cycles   63.1M/s vs avr8js 40.2M/s = 1.57x
+serial-print, 5M cycles   68.9M/s vs avr8js 64.0M/s = 1.08x
+analog-write, 5M cycles   70.7M/s vs avr8js 73.6M/s = 0.96x
+```
+
+The main rule for future FastBlock cleanup: metadata can be table-driven, but
+execution dispatch stays numeric until a generated core can prove equal or
+better throughput.
+
 The next broad step is to stop adding hand-picked blocks and build a generator or
 mini block compiler on top of this cache. That is the point where the project
 crosses from "fast-path layer" into "second execution engine" territory.

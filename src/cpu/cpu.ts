@@ -62,6 +62,15 @@ const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
 const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
 const FAST_BLOCK_ARDUINO_MICROS = 5;
 
+const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
+  undefined,
+  undefined,
+  "rjmp-self",
+  "zero-sbiw-breq",
+  "shift-left-dec",
+  "arduino-micros",
+];
+
 /**
  * The ATmega328P core: program memory (flash), the flat data space (registers +
  * I/O + SRAM), and the CPU's own state (PC, cycles, SP, SREG).
@@ -582,13 +591,17 @@ export class CPU {
         this.traceListeners.length !== 0 ||
         this.pauseOnUnknownOpcode
       ) {
-        while (this._cycles < target) {
-          this.tick();
-          if (this._breakpointHit) return;
-          if (this._error !== null) return;
-        }
+        this.runTicksUntil(target);
         return;
       }
+    }
+  }
+
+  private runTicksUntil(target: number): void {
+    while (this._cycles < target) {
+      this.tick();
+      if (this._breakpointHit) return;
+      if (this._error !== null) return;
     }
   }
 
@@ -612,15 +625,7 @@ export class CPU {
         const opcode = flash[pc]!;
         const before = this._cycles;
         if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
-          listener(
-            this.profileState(
-              pc,
-              opcode,
-              before,
-              "fast-block",
-              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
-            ),
-          );
+          this.profileFastBlock(listener, pc, opcode, before);
           continue;
         } else if (opcode === 0x0000) {
           this.pc += 1;
@@ -628,15 +633,7 @@ export class CPU {
         } else if ((opcode & 0xf000) === 0xc000) {
           const k = opcode & 0x0fff;
           if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) {
-            listener(
-              this.profileState(
-                pc,
-                opcode,
-                before,
-                "fast-block",
-                this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
-              ),
-            );
+            this.profileFastBlock(listener, pc, opcode, before);
             continue;
           }
           this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
@@ -686,26 +683,10 @@ export class CPU {
           this.pc += 1;
           this.cycles += 1;
         } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
-          listener(
-            this.profileState(
-              pc,
-              opcode,
-              before,
-              "fast-block",
-              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
-            ),
-          );
+          this.profileFastBlock(listener, pc, opcode, before);
           continue;
         } else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
-          listener(
-            this.profileState(
-              pc,
-              opcode,
-              before,
-              "fast-block",
-              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
-            ),
-          );
+          this.profileFastBlock(listener, pc, opcode, before);
           continue;
         } else {
           let handler = decodeCache[pc];
@@ -735,6 +716,23 @@ export class CPU {
     }
   }
 
+  private profileFastBlock(
+    listener: ProfileRunListener,
+    pc: number,
+    opcode: number,
+    before: number,
+  ): void {
+    listener(
+      this.profileState(
+        pc,
+        opcode,
+        before,
+        "fast-block",
+        this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
+      ),
+    );
+  }
+
   private profileState(
     pc: number,
     opcode: number,
@@ -755,18 +753,7 @@ export class CPU {
   }
 
   private fastBlockProfileKind(kind: number): ProfileRunState["blockKind"] {
-    switch (kind) {
-      case FAST_BLOCK_RJMP_SELF:
-        return "rjmp-self";
-      case FAST_BLOCK_ZERO_SBIW_BREQ:
-        return "zero-sbiw-breq";
-      case FAST_BLOCK_SHIFT_LEFT_DEC:
-        return "shift-left-dec";
-      case FAST_BLOCK_ARDUINO_MICROS:
-        return "arduino-micros";
-      default:
-        return undefined;
-    }
+    return FAST_BLOCK_PROFILE_KINDS[kind];
   }
 
   private tryRunFastBlock(pc: number, opcode: number, target: number): boolean {
