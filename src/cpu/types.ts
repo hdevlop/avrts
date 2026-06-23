@@ -20,6 +20,36 @@ export interface TraceState {
 
 export type TraceListener = (state: TraceState) => void;
 
+/** Coarse event kind emitted by CPU.profileRun(). */
+export type ProfileRunKind = "instruction" | "fast-block" | "sleep";
+
+/** Stable names for bulk fast blocks recognized by the CPU fast path. */
+export type FastBlockProfileKind =
+  | "rjmp-self"
+  | "zero-sbiw-breq"
+  | "shift-left-dec"
+  | "arduino-micros";
+
+/** Execution-profile record emitted by the fast-run profiler. */
+export interface ProfileRunState {
+  /** Program-counter word index where the instruction or block began. */
+  pc: number;
+  /** Raw 16-bit opcode at `pc`. */
+  opcode: number;
+  /** Decoded mnemonic for `opcode`, or "???" for unknown opcodes. */
+  mnemonic: string;
+  /** Cumulative cycle count after this event. */
+  cycles: number;
+  /** Simulated cycles consumed by this instruction or fast block. */
+  elapsedCycles: number;
+  /** Whether this event is a normal instruction, a bulk fast block, or sleep. */
+  kind: ProfileRunKind;
+  /** Present only for `kind === "fast-block"`. */
+  blockKind?: FastBlockProfileKind;
+}
+
+export type ProfileRunListener = (state: ProfileRunState) => void;
+
 /**
  * Peripheral write hook: runs right after a hooked data-space address is written.
  * Receives the new and previous values (oldValue matters for write-1-to-clear).

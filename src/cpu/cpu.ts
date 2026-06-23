@@ -19,6 +19,8 @@ import type {
   IoReadHook,
   IoWriteHook,
   PendingInterrupt,
+  ProfileRunListener,
+  ProfileRunState,
   TraceListener,
   TraceState,
 } from "./types";
@@ -58,6 +60,7 @@ const FAST_BLOCK_NONE = 1;
 const FAST_BLOCK_RJMP_SELF = 2;
 const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
 const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
+const FAST_BLOCK_ARDUINO_MICROS = 5;
 
 /**
  * The ATmega328P core: program memory (flash), the flat data space (registers +
@@ -445,6 +448,40 @@ export class CPU {
     }
   }
 
+  /**
+   * Run with the same fast path as `run()`, but emit coarse profiling events.
+   * Intended for benchmark scripts; debugger tracing still uses `onTrace()`.
+   */
+  profileRun(maxCycles: number, listener: ProfileRunListener): void {
+    this._breakpointHit = false;
+    const target = this._cycles + maxCycles;
+    if (this.canUseFastRun()) {
+      this.runFastProfiled(target, listener);
+      return;
+    }
+
+    this.runProfiledTicks(target, listener);
+  }
+
+  private runProfiledTicks(target: number, listener: ProfileRunListener): void {
+    const executor = this.executor;
+    if (!executor) {
+      throw new Error("CPU has no executor — call setExecutor(new Decoder()) first.");
+    }
+    while (this._cycles < target) {
+      const pc = this.pc;
+      const opcode = this.flash[pc]!;
+      const before = this._cycles;
+      const sleeping = this.sleeping;
+      this.tick();
+      if (this._cycles !== before) {
+        listener(this.profileState(pc, opcode, before, sleeping ? "sleep" : "instruction"));
+      }
+      if (this._breakpointHit) return;
+      if (this._error !== null) return;
+    }
+  }
+
   private canUseFastRun(): boolean {
     return (
       this.breakpoints.size === 0 &&
@@ -523,6 +560,8 @@ export class CPU {
           this.cycles += 1;
         } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
+        } else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
         } else {
           let handler = decodeCache[pc];
           if (handler === undefined) {
@@ -553,6 +592,183 @@ export class CPU {
     }
   }
 
+  private runFastProfiled(target: number, listener: ProfileRunListener): void {
+    const executor = this.executor;
+    if (!executor) {
+      throw new Error("CPU has no executor — call setExecutor(new Decoder()) first.");
+    }
+    const flash = this.flash;
+    const data = this.data;
+    const decodeCache = this.decodeCache;
+    while (this._cycles < target) {
+      if (this.sleeping) {
+        const pc = this.pc;
+        const opcode = flash[pc]!;
+        const before = this._cycles;
+        this.tick();
+        listener(this.profileState(pc, opcode, before, "sleep"));
+      } else {
+        const pc = this.pc;
+        const opcode = flash[pc]!;
+        const before = this._cycles;
+        if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
+          listener(
+            this.profileState(
+              pc,
+              opcode,
+              before,
+              "fast-block",
+              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
+            ),
+          );
+          continue;
+        } else if (opcode === 0x0000) {
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xf000) === 0xc000) {
+          const k = opcode & 0x0fff;
+          if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) {
+            listener(
+              this.profileState(
+                pc,
+                opcode,
+                before,
+                "fast-block",
+                this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
+              ),
+            );
+            continue;
+          }
+          this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
+          this.cycles += 2;
+        } else if ((opcode & 0xfc00) === 0xf000) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        } else if ((opcode & 0xfc00) === 0xf400) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) === 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        } else if ((opcode & 0xff00) === 0x9700) {
+          const d = 24 + (((opcode >> 4) & 0x03) * 2);
+          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+          const beforeValue = data[d]! | (data[d + 1]! << 8);
+          const result = (beforeValue - k) & 0xffff;
+          data[d] = result & 0xff;
+          data[d + 1] = (result >> 8) & 0xff;
+          const n = (result & 0x8000) !== 0;
+          const v = (beforeValue & ~result & 0x8000) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (beforeValue < k ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 2;
+        } else if ((opcode & 0xf000) === 0xe000) {
+          data[regD4(opcode)] = imm8(opcode);
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xfc00) === 0x2c00) {
+          data[regD5(opcode)] = data[regR5(opcode)]!;
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
+          listener(
+            this.profileState(
+              pc,
+              opcode,
+              before,
+              "fast-block",
+              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
+            ),
+          );
+          continue;
+        } else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
+          listener(
+            this.profileState(
+              pc,
+              opcode,
+              before,
+              "fast-block",
+              this.fastBlockProfileKind(this.fastBlockCache[pc] ?? FAST_BLOCK_NONE),
+            ),
+          );
+          continue;
+        } else {
+          let handler = decodeCache[pc];
+          if (handler === undefined) {
+            handler = executor.handlerFor(opcode);
+            if (handler === undefined) {
+              executor.execute(this, opcode); // throws UnknownOpcodeError
+              this.serviceInterrupts();
+              listener(this.profileState(pc, opcode, before, "instruction"));
+              continue;
+            }
+            decodeCache[pc] = handler;
+          }
+          handler(this, opcode);
+        }
+        this.serviceInterrupts();
+        listener(this.profileState(pc, opcode, before, "instruction"));
+      }
+      if (
+        this.breakpoints.size !== 0 ||
+        this.traceListeners.length !== 0 ||
+        this.pauseOnUnknownOpcode
+      ) {
+        this.runProfiledTicks(target, listener);
+        return;
+      }
+    }
+  }
+
+  private profileState(
+    pc: number,
+    opcode: number,
+    beforeCycles: number,
+    kind: ProfileRunState["kind"],
+    blockKind?: ProfileRunState["blockKind"],
+  ): ProfileRunState {
+    const state: ProfileRunState = {
+      pc,
+      opcode,
+      mnemonic: this.executor?.mnemonicOf(opcode) ?? "???",
+      cycles: this.cycles,
+      elapsedCycles: this._cycles - beforeCycles,
+      kind,
+    };
+    if (blockKind !== undefined) state.blockKind = blockKind;
+    return state;
+  }
+
+  private fastBlockProfileKind(kind: number): ProfileRunState["blockKind"] {
+    switch (kind) {
+      case FAST_BLOCK_RJMP_SELF:
+        return "rjmp-self";
+      case FAST_BLOCK_ZERO_SBIW_BREQ:
+        return "zero-sbiw-breq";
+      case FAST_BLOCK_SHIFT_LEFT_DEC:
+        return "shift-left-dec";
+      case FAST_BLOCK_ARDUINO_MICROS:
+        return "arduino-micros";
+      default:
+        return undefined;
+    }
+  }
+
   private tryRunFastBlock(pc: number, opcode: number, target: number): boolean {
     let kind = this.fastBlockCache[pc] ?? FAST_BLOCK_UNKNOWN;
     if (kind === FAST_BLOCK_UNKNOWN) {
@@ -567,6 +783,8 @@ export class CPU {
         return this.runZeroSbiwBreqLoopBlock(pc, opcode, target);
       case FAST_BLOCK_SHIFT_LEFT_DEC:
         return this.runShiftLeftDecLoopBlock(pc, opcode, target);
+      case FAST_BLOCK_ARDUINO_MICROS:
+        return this.runArduinoMicrosBlock(pc, target);
       default:
         return false;
     }
@@ -579,6 +797,9 @@ export class CPU {
     }
     if ((opcode & 0xfc00) === 0x0c00) {
       return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
+    }
+    if (opcode === 0xb73f) {
+      return this.isArduinoMicrosBlock(pc) ? FAST_BLOCK_ARDUINO_MICROS : FAST_BLOCK_NONE;
     }
     return FAST_BLOCK_NONE;
   }
@@ -693,6 +914,144 @@ export class CPU {
       (halfCarry !== 0 ? SREG_H : 0);
     this._cycles += blockCycles;
     this.pc = pc + 6;
+    return true;
+  }
+
+  private isArduinoMicrosBlock(pc: number): boolean {
+    const flash = this.flash;
+    const exact: Array<[number, number]> = [
+      [0, 0xb73f], // IN r19,SREG
+      [1, 0x94f8], // CLI
+      [2, 0x9180], // LDS r24, timer0_overflow_count + 0
+      [4, 0x9190], // LDS r25, timer0_overflow_count + 1
+      [6, 0x91a0], // LDS r26, timer0_overflow_count + 2
+      [8, 0x91b0], // LDS r27, timer0_overflow_count + 3
+      [10, 0xb526], // IN r18,TCNT0
+      [11, 0x9ba8], // SBIS TIFR0,TOV0
+      [12, 0xc005], // RJMP over overflow increment
+      [13, 0x3f2f], // CPI r18,255
+      [14, 0xf019], // BREQ over overflow increment
+      [15, 0x9601], // ADIW r24,1
+      [16, 0x1da1], // ADC r26,r1
+      [17, 0x1db1], // ADC r27,r1
+      [18, 0xbf3f], // OUT SREG,r19
+      [19, 0x2fba],
+      [20, 0x2fa9],
+      [21, 0x2f98],
+      [22, 0x2788],
+      [23, 0x01bc],
+      [24, 0x01cd],
+      [25, 0x0f62],
+      [26, 0x1d71],
+      [27, 0x1d81],
+      [28, 0x1d91],
+      [29, 0xe042],
+      [30, 0x0f66],
+      [31, 0x1f77],
+      [32, 0x1f88],
+      [33, 0x1f99],
+      [34, 0x954a],
+      [35, 0xf7d1],
+      [36, 0x9508], // RET
+    ];
+    for (const [offset, opcode] of exact) {
+      if (flash[pc + offset] !== opcode) return false;
+    }
+
+    const addr = flash[pc + 3]!;
+    return (
+      addr + 3 < this.data.length &&
+      flash[pc + 5] === addr + 1 &&
+      flash[pc + 7] === addr + 2 &&
+      flash[pc + 9] === addr + 3
+    );
+  }
+
+  private runArduinoMicrosBlock(pc: number, target: number): boolean {
+    if (this.data[1] !== 0 || !this.canRunFastBlock(target, 48)) return false;
+
+    const startCycles = this._cycles;
+    const data = this.data;
+    const flash = this.flash;
+    const overflowAddr = flash[pc + 3]!;
+
+    const savedSreg = this.readIo(0x3f);
+    data[19] = savedSreg;
+    data[SREG_ADDR] = savedSreg & ~SREG_I;
+
+    this._cycles = startCycles + 2;
+    let micros = this.readData(overflowAddr);
+    data[24] = micros & 0xff;
+    this._cycles = startCycles + 4;
+    micros |= this.readData(overflowAddr + 1) << 8;
+    data[25] = (micros >> 8) & 0xff;
+    this._cycles = startCycles + 6;
+    micros |= this.readData(overflowAddr + 2) << 16;
+    data[26] = (micros >> 16) & 0xff;
+    this._cycles = startCycles + 8;
+    micros = (micros | (this.readData(overflowAddr + 3) << 24)) >>> 0;
+    data[27] = (micros >>> 24) & 0xff;
+
+    this._cycles = startCycles + 10;
+    const tcnt0 = this.readIo(0x26);
+    data[18] = tcnt0;
+    this._cycles = startCycles + 11;
+    const overflowPending = (this.readIo(0x15) & 1) !== 0;
+
+    let blockCycles = 43;
+    if (overflowPending) {
+      if (tcnt0 === 0xff) {
+        blockCycles = 45;
+      } else {
+        micros = (micros + 1) >>> 0;
+        blockCycles = 48;
+      }
+    }
+
+    data[24] = micros & 0xff;
+    data[25] = (micros >>> 8) & 0xff;
+    data[26] = (micros >>> 16) & 0xff;
+    data[27] = (micros >>> 24) & 0xff;
+
+    this._cycles = startCycles + blockCycles - 29;
+    this.writeIo(0x3f, savedSreg);
+
+    data[27] = (micros >>> 16) & 0xff;
+    data[26] = (micros >>> 8) & 0xff;
+    data[25] = micros & 0xff;
+    data[24] = 0;
+
+    const combined = (((micros << 8) >>> 0) + tcnt0) >>> 0;
+    data[22] = combined & 0xff;
+    data[23] = (combined >>> 8) & 0xff;
+    data[24] = (combined >>> 16) & 0xff;
+    data[25] = (combined >>> 24) & 0xff;
+    data[20] = 2;
+
+    let carry = 0;
+    let halfCarry = 0;
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      for (let offset = 0; offset < 4; offset += 1) {
+        const addr = 22 + offset;
+        const before = data[addr]!;
+        const carryIn = offset === 0 ? 0 : carry;
+        const sum = before + before + carryIn;
+        data[addr] = sum & 0xff;
+        carry = sum > 0xff ? 1 : 0;
+        if (offset === 3) {
+          halfCarry = (before & 0x0f) + (before & 0x0f) + carryIn > 0x0f ? 1 : 0;
+        }
+      }
+      data[20] = (data[20]! - 1) & 0xff;
+    }
+
+    data[SREG_ADDR] =
+      (data[SREG_ADDR]! & (SREG_T | SREG_I)) |
+      SREG_Z |
+      (carry !== 0 ? SREG_C : 0) |
+      (halfCarry !== 0 ? SREG_H : 0);
+    this._cycles = startCycles + blockCycles;
+    this.pc = this.popWord();
     return true;
   }
 

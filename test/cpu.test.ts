@@ -365,6 +365,34 @@ describe("runFast opcode parity", () => {
     return cpu;
   }
 
+  function createArduinoMicrosBody(): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      0xb73f, 0x94f8, 0x9180, 0x0105, 0x9190, 0x0106, 0x91a0, 0x0107, 0x91b0,
+      0x0108, 0xb526, 0x9ba8, 0xc005, 0x3f2f, 0xf019, 0x9601, 0x1da1, 0x1db1,
+      0xbf3f, 0x2fba, 0x2fa9, 0x2f98, 0x2788, 0x01bc, 0x01cd, 0x0f62, 0x1d71,
+      0x1d81, 0x1d91, 0xe042, 0x0f66, 0x1f77, 0x1f88, 0x1f99, 0x954a, 0xf7d1,
+      0x9508,
+    ]);
+    cpu.pushWord(0x1234);
+    return cpu;
+  }
+
+  function seedArduinoMicrosBody(
+    cpu: CPU,
+    options: { overflowCount: number; tcnt0: number; tifr0: number },
+  ): void {
+    cpu.data[1] = 0;
+    cpu.data[SREG_ADDR] = 0xc0;
+    cpu.data[0x0105] = options.overflowCount & 0xff;
+    cpu.data[0x0106] = (options.overflowCount >>> 8) & 0xff;
+    cpu.data[0x0107] = (options.overflowCount >>> 16) & 0xff;
+    cpu.data[0x0108] = (options.overflowCount >>> 24) & 0xff;
+    cpu.data[0x46] = options.tcnt0 & 0xff;
+    cpu.data[0x35] = options.tifr0 & 0xff;
+  }
+
   test("RJMP self-loop bulk path matches the handler path", () => {
     const slow = createRjmpSelfLoop();
     const fast = createRjmpSelfLoop();
@@ -501,6 +529,39 @@ describe("runFast opcode parity", () => {
     expect(elapsed).toEqual([1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1]);
   });
 
+  test("Arduino micros() body fast block matches the handler path", () => {
+    const variants = [
+      { overflowCount: 0x04030201, tcnt0: 0x05, tifr0: 0x00 },
+      { overflowCount: 0x04030201, tcnt0: 0x05, tifr0: 0x01 },
+      { overflowCount: 0x04030201, tcnt0: 0xff, tifr0: 0x01 },
+    ];
+    for (const variant of variants) {
+      const slow = createArduinoMicrosBody();
+      const fast = createArduinoMicrosBody();
+      slow.onTrace(() => {});
+      seedArduinoMicrosBody(slow, variant);
+      seedArduinoMicrosBody(fast, variant);
+
+      slow.run(48);
+      fast.run(48);
+
+      expectSameCoreState(fast, slow, [
+        18,
+        19,
+        20,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        SPL_ADDR,
+        SPH_ADDR,
+        SREG_ADDR,
+      ]);
+    }
+  });
+
   test("fast-block cache is invalidated after direct flash rewrites", () => {
     const cpu = createZeroSbiwBreqLoop(28);
 
@@ -512,6 +573,25 @@ describe("runFast opcode parity", () => {
     cpu.run(4);
 
     expect(cpu.pc).toBe(3);
+  });
+
+  test("profileRun reports fast blocks without disabling the fast path", () => {
+    const cpu = createZeroSbiwBreqLoop(28);
+    const events: Array<{ kind: string; blockKind?: string; elapsedCycles: number; pc: number }> = [];
+
+    cpu.profileRun(20, (event) => {
+      events.push({
+        kind: event.kind,
+        blockKind: event.blockKind,
+        elapsedCycles: event.elapsedCycles,
+        pc: event.pc,
+      });
+    });
+
+    expect(events).toEqual([
+      { kind: "fast-block", blockKind: "zero-sbiw-breq", elapsedCycles: 20, pc: 0 },
+    ]);
+    expect(cpu.cycles).toBe(20);
   });
 
 });

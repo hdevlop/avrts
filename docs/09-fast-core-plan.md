@@ -293,6 +293,47 @@ serial-print, 5M cycles   77.5M/s vs avr8js 76.8M/s = 1.01x
 analog-write, 5M cycles   74.5M/s vs avr8js 74.7M/s = 1.00x
 ```
 
+### Step 4d implemented -- profiled fast path + Arduino `micros()` block
+
+The old opcode profiler used `tick()`, so it intentionally bypassed `runFast()`
+and could not show what remained after the FastBlock layer. The profiler now has
+a fast-path mode:
+
+```sh
+bun run profile:opcodes -- --case delay-blink --cycles 10000000 --mode fast --top 40 --window 8
+```
+
+That showed the remaining `delay-blink` cost was the repeated Arduino `micros()`
+body at `0x00b8`, called from the delay loop at `0x00ef`. The new FastBlock
+specializes exactly that compiled Arduino shape. It still:
+
+- calls `readIo` / `readData` for SREG, `timer0_overflow_count`, TCNT0, and TIFR0;
+- reads TCNT0 and TIFR0 at the cycle positions where the real instructions read them;
+- refuses to cross scheduled clock events, pending enabled interrupts, cycle
+  listeners, and short run targets;
+- requires ABI `r1 == 0`, otherwise it falls back to the normal handlers;
+- reproduces the three timing branches: 43 cycles, 45 cycles, and 48 cycles.
+
+Measured result:
+
+```text
+short default bench:
+tight-loop            31.5M cycles/s
+delay-blink           17.0M cycles/s
+serial-print           3.9M cycles/s
+serial-print-listener  4.0M cycles/s
+analog-write           7.8M cycles/s
+
+steady-state targeted compare:
+delay-blink, 50M cycles   75.4M/s vs avr8js 49.9M/s = 1.51x
+serial-print, 5M cycles   74.9M/s vs avr8js 76.2M/s = 0.98x
+analog-write, 5M cycles   71.7M/s vs avr8js 76.4M/s = 0.94x
+```
+
+This is the first point where the main Arduino delay workload beats avr8js
+steady-state. The cost is deliberate specificity: this block is for the compiled
+Arduino `micros()` helper, not a general call optimizer.
+
 The next broad step is to stop adding hand-picked blocks and build a generator or
 mini block compiler on top of this cache. That is the point where the project
 crosses from "fast-path layer" into "second execution engine" territory.
@@ -309,7 +350,7 @@ crosses from "fast-path layer" into "second execution engine" territory.
 Run before and after every patch:
 
 ```sh
-bun run scripts/profile-opcodes.ts --top 8   # re-rank if a fixture changes
+bun run scripts/profile-opcodes.ts -- --mode fast --top 8   # re-rank if a fixture changes
 bun run bench:compare -- --repeats 3          # track the avr8js ratio trend
 bun run bench -- --repeats 3                   # regression floors
 bun test
