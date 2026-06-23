@@ -76,6 +76,15 @@ import type {
 import type { AVRSnapshot } from "./snapshot";
 
 /**
+ * Cap on buffered serial chunks before they are folded into the joined cache.
+ * Keeps `serialChunks` bounded for long headless runs that never call
+ * `serial.getText()`, while still avoiding a per-byte string concatenation during
+ * bursts. (The browser worker bounds its own buffer per frame; this guards the
+ * core `AVRRuntime` path.)
+ */
+const SERIAL_CHUNK_COMPACT_THRESHOLD = 1024;
+
+/**
  * Public consumer facade. This is the API surface described in
  * docs/04-consumer-dx.md. Phase 0/1 implements construction, CPU access, reset,
  * and status; running, GPIO, and serial handles are wired up in later phases.
@@ -317,7 +326,9 @@ class AVRRuntime implements AVR {
   private readonly eventListeners = new Map<AVREventName, Set<AVREventHandler>>();
   private readonly watchpoints = new Map<number, Set<DataWatchHandler>>();
   private readonly watchHooksInstalled = new Set<number>();
-  private serialText = "";
+  private serialChunks: string[] = [];
+  private serialTextCache = "";
+  private serialTextDirty = false;
   private coalescePinEvents = false;
   private frameDepth = 0;
 
@@ -349,13 +360,7 @@ class AVRRuntime implements AVR {
     attachPeripheral(this.cpu, this.pcint);
     this.pcint.attach();
     attachPeripheral(this.cpu, this.exti);
-    this.exti.attach();
-    this.cpu.onCycles((cycles) => this.timer0.tick(cycles));
-    this.cpu.onCycles((cycles) => this.timer1.tick(cycles));
-    this.cpu.onCycles((cycles) => this.timer2.tick(cycles));
-    this.cpu.onCycles((cycles) => this.adc.tick(cycles));
-    this.cpu.onCycles(() => this.usart0.tick());
-    this.cpu.onCycles((cycles) => this.watchdog.tick(cycles));
+    this.exti.attach({ cycleListener: false });
     this.usart0.onByteTransmit((byte) => this.emitSerialByte(byte));
     this.gpio = {
       port: (name) => ({
@@ -383,9 +388,9 @@ class AVRRuntime implements AVR {
         this.usart0.receive(text);
       },
       clear: () => {
-        this.serialText = "";
+        this.setSerialText("");
       },
-      getText: () => this.serialText,
+      getText: () => this.getSerialText(),
     };
     this.eeprom = {
       read: (address) => this.eepromDevice.read(address),
@@ -756,7 +761,7 @@ class AVRRuntime implements AVR {
     this.watchdog.reset();
     this.pcint.reset();
     this.exti.reset();
-    this.serialText = "";
+    this.setSerialText("");
     this.emit("reset");
     return this;
   }
@@ -784,7 +789,7 @@ class AVRRuntime implements AVR {
         programSource: this.programSource,
         running: this.running,
         paused: this.paused,
-        serialText: this.serialText,
+        serialText: this.getSerialText(),
         timing: this.cpu.timing,
       },
       gpio: this.gpioPeripheral.snapshot(),
@@ -824,7 +829,7 @@ class AVRRuntime implements AVR {
     this.watchdog.restore(snap.watchdog);
     this.pcint.restore(snap.pcint);
     this.exti.restore(snap.exti);
-    this.serialText = snap.runtime.serialText;
+    this.setSerialText(snap.runtime.serialText);
 
     // Running/paused: cancel any active loop, then restart if the snapshot says so.
     this.running = false;
@@ -953,8 +958,34 @@ class AVRRuntime implements AVR {
 
   private emitSerialByte(byte: number): void {
     const text = String.fromCharCode(byte);
-    this.serialText += text;
+    this.serialChunks.push(text);
+    this.serialTextDirty = true;
+    if (this.serialChunks.length >= SERIAL_CHUNK_COMPACT_THRESHOLD) {
+      this.serialTextCache += this.serialChunks.join("");
+      this.serialChunks = [];
+      this.serialTextDirty = false;
+    }
+    if (this.textListeners.size === 0) return;
+    if (this.textListeners.size === 1) {
+      this.textListeners.values().next().value?.(text);
+      return;
+    }
     for (const listener of [...this.textListeners]) listener(text);
+  }
+
+  private getSerialText(): string {
+    if (this.serialTextDirty) {
+      this.serialTextCache += this.serialChunks.join("");
+      this.serialChunks = [];
+      this.serialTextDirty = false;
+    }
+    return this.serialTextCache;
+  }
+
+  private setSerialText(text: string): void {
+    this.serialTextCache = text;
+    this.serialChunks = [];
+    this.serialTextDirty = false;
   }
 
   private scheduleLoop(): void {

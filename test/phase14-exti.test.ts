@@ -271,4 +271,20 @@ describe("Phase 14 — snapshot / restore for external interrupts", () => {
     avr.pin(2).setInput(true);
     expect(avr.cpu.readData(EIFR) & (1 << INTF0)).toBe(1 << INTF0);
   });
+
+  test("snapshot restores active low-level interrupt evaluation", () => {
+    const source = AVR();
+    source.cpu.flash[0] = 0xcfff; // RJMP -1 self-loop at main
+    source.cpu.flash[INT0_VECTOR] = 0xcfff;
+    source.cpu.writeData(EIMSK, 1 << INT0);
+    source.cpu.writeData(EICRA, 0); // low level
+    source.cpu.sreg.I = true;
+    source.pin(2).setInput(false);
+
+    const restored = AVR();
+    restored.restore(source.snapshot());
+    restored.runCycles(2);
+
+    expect(restored.cpu.pc).toBe(INT0_VECTOR);
+  });
 });

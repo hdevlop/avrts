@@ -7,12 +7,17 @@ import type { WatchdogSnapshot } from "../snapshot";
 const PERIOD_MS = [16, 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000] as const;
 
 /**
- * Watchdog timer. Counts elapsed CPU cycles (a proxy for real time) and, on
- * timeout, either fires the WDT interrupt (WDIE mode, clearing WDIE so a second
- * timeout would reset) or resets the CPU (WDE mode). `WDR` resets the count.
+ * Watchdog timer (Phase 7 event-driven). Instead of being ticked every
+ * instruction, it schedules a single CPU clock event at its timeout cycle and
+ * re-arms on `WDR`, `WDTCSR` writes, and clock changes. On timeout it either
+ * fires the WDT interrupt (WDIE mode, clearing WDIE so a second timeout would
+ * reset) or resets the CPU (WDE mode).
  */
 export class Watchdog {
-  private accumulatedCycles = 0;
+  private scheduled = false;
+  private fireAtCycle = 0;
+  // Stable callback identity so addClockEvent/clearClockEvent pair up.
+  private readonly timeoutEvent = (): void => this.onTimeout();
 
   constructor(
     private readonly cpu: CPU,
@@ -23,35 +28,42 @@ export class Watchdog {
 
   setClock(clockHz: number): void {
     this.clockHz = clockHz;
+    this.reschedule();
   }
 
   reset(): void {
-    this.accumulatedCycles = 0;
+    this.reschedule();
   }
 
   /** Reset the timeout window (the WDR instruction). */
   kick(): void {
-    this.accumulatedCycles = 0;
-  }
-
-  tick(cycles: number): void {
-    if (!this.enabled()) {
-      this.accumulatedCycles = 0;
-      return;
-    }
-    this.accumulatedCycles += cycles;
-    if (this.accumulatedCycles < this.timeoutCycles()) return;
-    this.accumulatedCycles = 0;
-    this.fire();
+    this.reschedule();
   }
 
   @OnWrite(WDTCSR)
   onWriteWdtcsr(): void {
-    this.accumulatedCycles = 0; // reconfiguring restarts the timeout window
+    this.reschedule(); // reconfiguring restarts the timeout window
+  }
+
+  /** Drop any pending event and, if enabled, arm a fresh timeout window. */
+  private reschedule(): void {
+    this.cpu.clearClockEvent(this.timeoutEvent);
+    this.scheduled = false;
+    if (!this.enabled()) return;
+    const timeout = this.timeoutCycles();
+    this.cpu.addClockEvent(this.timeoutEvent, timeout);
+    this.fireAtCycle = this.cpu.cycles + timeout;
+    this.scheduled = true;
+  }
+
+  private onTimeout(): void {
+    this.scheduled = false;
+    this.fire();
+    this.reschedule(); // re-arm the next window if still enabled
   }
 
   private fire(): void {
-    const wdtcsr = this.cpu.readData(WDTCSR);
+    const wdtcsr = this.cpu.data[WDTCSR]!;
     if ((wdtcsr & (1 << WDIE)) !== 0) {
       this.cpu.requestInterrupt(WDT_VECTOR);
       // Interrupt-and-reset mode: hardware clears WDIE after the interrupt fires.
@@ -62,12 +74,12 @@ export class Watchdog {
   }
 
   private enabled(): boolean {
-    const wdtcsr = this.cpu.readData(WDTCSR);
+    const wdtcsr = this.cpu.data[WDTCSR]!;
     return (wdtcsr & (1 << WDE)) !== 0 || (wdtcsr & (1 << WDIE)) !== 0;
   }
 
   private timeoutCycles(): number {
-    const wdtcsr = this.cpu.readData(WDTCSR);
+    const wdtcsr = this.cpu.data[WDTCSR]!;
     const wdp = (((wdtcsr >> WDP3) & 1) << 3) | (wdtcsr & 0x07);
     const ms = PERIOD_MS[Math.min(wdp, PERIOD_MS.length - 1)]!;
     return Math.max(1, Math.round((ms / 1000) * this.clockHz));
@@ -76,10 +88,20 @@ export class Watchdog {
   // --- Snapshot / restore (Phase 10) ---
 
   snapshot(): WatchdogSnapshot {
-    return { accumulatedCycles: this.accumulatedCycles };
+    // Store elapsed-in-window so a restore can re-arm the remaining time.
+    const accumulatedCycles = this.scheduled
+      ? Math.max(0, this.timeoutCycles() - (this.fireAtCycle - this.cpu.cycles))
+      : 0;
+    return { accumulatedCycles };
   }
 
   restore(snap: WatchdogSnapshot): void {
-    this.accumulatedCycles = snap.accumulatedCycles;
+    this.cpu.clearClockEvent(this.timeoutEvent);
+    this.scheduled = false;
+    if (!this.enabled()) return;
+    const remaining = Math.max(1, this.timeoutCycles() - (snap.accumulatedCycles | 0));
+    this.cpu.addClockEvent(this.timeoutEvent, remaining);
+    this.fireAtCycle = this.cpu.cycles + remaining;
+    this.scheduled = true;
   }
 }

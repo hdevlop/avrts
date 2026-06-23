@@ -120,6 +120,38 @@ describe("USART0", () => {
     expect(cpu.pc).toBe(USART_UDRE_VECTOR);
   });
 
+  test("UDRE interrupt re-fires after RETI while UDRIE0 stays enabled", () => {
+    const avr = AVR();
+    const cpu = avr.cpu;
+
+    cpu.flash[0] = 0x9478; // sei
+    cpu.flash[1] = 0xcfff; // rjmp -1
+    cpu.flash[USART_UDRE_VECTOR] = 0x9518; // reti
+    cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << UDRIE0));
+
+    avr.step();
+    expect(cpu.pc).toBe(USART_UDRE_VECTOR);
+
+    avr.step(); // RETI returns, then UDRE is requested and serviced again.
+    expect(cpu.pc).toBe(USART_UDRE_VECTOR);
+  });
+
+  test("restored UDRIE0 state still re-evaluates the UDRE interrupt", () => {
+    const source = AVR();
+    const cpu = source.cpu;
+
+    cpu.flash[0] = 0x9478; // sei
+    cpu.flash[1] = 0xcfff; // rjmp -1
+    cpu.flash[USART_UDRE_VECTOR] = 0x9518; // reti
+    cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << UDRIE0));
+
+    const restored = AVR();
+    restored.restore(source.snapshot());
+    restored.step();
+
+    expect(restored.cpu.pc).toBe(USART_UDRE_VECTOR);
+  });
+
   test("TX complete interrupt jumps to USART_TX and acknowledges TXC0", () => {
     const avr = AVR();
     const cpu = avr.cpu;
@@ -156,5 +188,24 @@ describe("USART0", () => {
     expect(avr.serial.getText()).toBe("Hi");
     avr.serial.clear();
     expect(avr.serial.getText()).toBe("");
+  });
+
+  test("serial text stays correct past the chunk-compaction threshold with no getText consumer", () => {
+    const avr = AVR();
+    avr.cpu.writeData(UCSR0B, 1 << TXEN0);
+
+    // Emit well past SERIAL_CHUNK_COMPACT_THRESHOLD (1024) without reading
+    // getText(), so the internal chunk buffer must compact rather than grow
+    // unbounded. Correctness is proven by the final joined text.
+    const count = 3000;
+    let expected = "";
+    for (let i = 0; i < count; i += 1) {
+      const byte = 0x41 + (i % 26);
+      avr.cpu.writeData(UDR0, byte);
+      expected += String.fromCharCode(byte);
+    }
+
+    expect(avr.serial.getText()).toBe(expected);
+    expect(avr.serial.getText().length).toBe(count);
   });
 });

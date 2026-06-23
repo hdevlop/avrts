@@ -62,10 +62,15 @@ const TIMER1_FLAG_MASK = (1 << TOV1) | (1 << OCF1A) | (1 << OCF1B);
 export class Timer1 implements PwmSource {
   private count = 0;
   private prescalerRemainder = 0;
+  private lastCycle = 0;
   // Cached prescaler divisor, recomputed only when the CS bits (TCCR1B) change.
   // tick() runs every instruction, so it must not re-read/re-map the register.
   private cachedPrescaler: number | undefined = undefined;
   private readonly pwm = new PwmBroadcaster();
+  private readonly onClockEvent = (): void => {
+    this.syncToCpuCycle();
+    this.scheduleClockEvent();
+  };
 
   constructor(
     private readonly cpu: CPU,
@@ -88,7 +93,9 @@ export class Timer1 implements PwmSource {
   reset(): void {
     this.count = 0;
     this.prescalerRemainder = 0;
+    this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
+    this.scheduleClockEvent();
     this.driveOutput("A", undefined);
     this.driveOutput("B", undefined);
     this.notifyPwm("A");
@@ -98,18 +105,32 @@ export class Timer1 implements PwmSource {
   tick(cycles: number): void {
     const prescaler = this.cachedPrescaler;
     if (prescaler === undefined) return;
+
+    if (cycles > 1 && prescaler === 1) {
+      const total = this.prescalerRemainder + cycles;
+      this.prescalerRemainder = 0;
+      this.advanceCounter(total);
+      this.lastCycle = this.cpu.cycles;
+      this.scheduleClockEvent();
+      return;
+    }
+
     this.prescalerRemainder += cycles;
     while (this.prescalerRemainder >= prescaler) {
       this.prescalerRemainder -= prescaler;
       this.increment();
     }
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
   }
 
   // 16-bit counter readback: low byte then high byte (AVR access order).
   @OnRead(TCNT1L) readTcnt1l(): number {
+    this.syncToCpuCycle();
     return this.count & 0xff;
   }
   @OnRead(TCNT1H) readTcnt1h(): number {
+    this.syncToCpuCycle();
     return (this.count >> 8) & 0xff;
   }
 
@@ -117,10 +138,14 @@ export class Timer1 implements PwmSource {
   @OnWrite(TCNT1H) onWriteTcnt1h(_cpu: CPU, _addr: number, value: number): void {
     this.count = ((value & 0xff) << 8) | (this.count & 0xff);
     this.prescalerRemainder = 0;
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
   }
   @OnWrite(TCNT1L) onWriteTcnt1l(_cpu: CPU, _addr: number, value: number): void {
     this.count = (this.count & 0xff00) | (value & 0xff);
     this.prescalerRemainder = 0;
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
   }
 
   @OnWrite(TIFR1)
@@ -129,15 +154,20 @@ export class Timer1 implements PwmSource {
   }
 
   @OnWrite(TCCR1B)
-  onWriteTccr1b(): void {
+  onWriteTccr1b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
     this.prescalerRemainder = 0;
+    this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
+    this.scheduleClockEvent();
     this.notifyPwm("A");
     this.notifyPwm("B");
   }
 
   @OnWrite(TCCR1A)
-  onWriteTccr1a(): void {
+  onWriteTccr1a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.scheduleClockEvent();
     this.notifyPwm("A");
     this.notifyPwm("B");
   }
@@ -149,16 +179,24 @@ export class Timer1 implements PwmSource {
     this.requestOverflowIfEnabled();
   }
 
-  @OnWrite(OCR1AL) onWriteOcr1al(): void {
+  @OnWrite(OCR1AL) onWriteOcr1al(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.scheduleClockEvent();
     this.notifyPwm("A");
   }
-  @OnWrite(OCR1AH) onWriteOcr1ah(): void {
+  @OnWrite(OCR1AH) onWriteOcr1ah(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.scheduleClockEvent();
     this.notifyPwm("A");
   }
-  @OnWrite(OCR1BL) onWriteOcr1bl(): void {
+  @OnWrite(OCR1BL) onWriteOcr1bl(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.scheduleClockEvent();
     this.notifyPwm("B");
   }
-  @OnWrite(OCR1BH) onWriteOcr1bh(): void {
+  @OnWrite(OCR1BH) onWriteOcr1bh(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.scheduleClockEvent();
     this.notifyPwm("B");
   }
 
@@ -181,19 +219,76 @@ export class Timer1 implements PwmSource {
     }
     if (this.count !== 0) return;
 
-    this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) | (1 << TOV1);
+    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << TOV1);
     this.requestOverflowIfEnabled();
+  }
+
+  private advanceCounter(steps: number): void {
+    let remaining = steps;
+    while (remaining > 0) {
+      const untilEvent = this.stepsUntilNextEvent();
+      if (untilEvent > remaining) {
+        this.count = (this.count + remaining) & 0xffff;
+        return;
+      }
+      if (untilEvent > 1) {
+        this.count = (this.count + untilEvent - 1) & 0xffff;
+        remaining -= untilEvent - 1;
+      }
+      this.increment();
+      remaining -= 1;
+    }
+  }
+
+  private syncToCpuCycle(): void {
+    const now = this.cpu.cycles;
+    const elapsed = now - this.lastCycle;
+    if (elapsed <= 0) return;
+    this.lastCycle = now;
+    const prescaler = this.cachedPrescaler;
+    if (prescaler === undefined) return;
+    const total = this.prescalerRemainder + elapsed;
+    const steps = Math.floor(total / prescaler);
+    this.prescalerRemainder = total - steps * prescaler;
+    if (steps > 0) this.advanceCounter(steps);
+  }
+
+  private syncWithOldRegister(addr: number, oldValue: number): void {
+    const current = this.cpu.data[addr]!;
+    this.cpu.data[addr] = oldValue & 0xff;
+    this.syncToCpuCycle();
+    this.cpu.data[addr] = current;
+  }
+
+  private scheduleClockEvent(): void {
+    const prescaler = this.cachedPrescaler;
+    if (prescaler === undefined) {
+      this.cpu.clearClockEvent(this.onClockEvent);
+      return;
+    }
+    const steps = this.stepsUntilNextEvent();
+    const cycles =
+      prescaler - this.prescalerRemainder + (steps > 1 ? (steps - 1) * prescaler : 0);
+    this.cpu.addClockEvent(this.onClockEvent, cycles);
+  }
+
+  private stepsUntilNextEvent(): number {
+    return Math.min(
+      stepsUntil16BitValue(this.count, this.ocrValue("A")),
+      stepsUntil16BitValue(this.count, this.ocrValue("B")),
+      stepsUntil16BitValue(this.count, 0),
+    );
   }
 
   private handleCompare(counter: number): void {
     if (counter === this.ocrValue("A")) {
       this.handleCompareOutput("A");
-      this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) | (1 << OCF1A);
+      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << OCF1A);
       this.requestCompareIfEnabled("A");
     }
     if (counter === this.ocrValue("B")) {
       this.handleCompareOutput("B");
-      this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) | (1 << OCF1B);
+      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << OCF1B);
       this.requestCompareIfEnabled("B");
     }
   }
@@ -202,25 +297,25 @@ export class Timer1 implements PwmSource {
     const flagBit = channel === "A" ? OCF1A : OCF1B;
     const enableBit = channel === "A" ? OCIE1A : OCIE1B;
     const vector = channel === "A" ? TIMER1_COMPA_VECTOR : TIMER1_COMPB_VECTOR;
-    const flag = (this.cpu.readData(TIFR1) & (1 << flagBit)) !== 0;
-    const enabled = (this.cpu.readData(TIMSK1) & (1 << enableBit)) !== 0;
+    const flag = (this.cpu.data[TIFR1]! & (1 << flagBit)) !== 0;
+    const enabled = (this.cpu.data[TIMSK1]! & (1 << enableBit)) !== 0;
     if (!flag || !enabled) return;
     this.cpu.requestInterrupt(vector, () => {
-      this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) & ~(1 << flagBit);
+      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & ~(1 << flagBit);
     });
   }
 
   private requestOverflowIfEnabled(): void {
-    const overflowFlag = (this.cpu.readData(TIFR1) & (1 << TOV1)) !== 0;
-    const overflowEnabled = (this.cpu.readData(TIMSK1) & (1 << TOIE1)) !== 0;
+    const overflowFlag = (this.cpu.data[TIFR1]! & (1 << TOV1)) !== 0;
+    const overflowEnabled = (this.cpu.data[TIMSK1]! & (1 << TOIE1)) !== 0;
     if (!overflowFlag || !overflowEnabled) return;
     this.cpu.requestInterrupt(TIMER1_OVF_VECTOR, () => {
-      this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) & ~(1 << TOV1);
+      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & ~(1 << TOV1);
     });
   }
 
   private prescaler(): number | undefined {
-    const bits = this.cpu.readData(TCCR1B) & ((1 << CS12) | (1 << CS11) | (1 << CS10));
+    const bits = this.cpu.data[TCCR1B]! & ((1 << CS12) | (1 << CS11) | (1 << CS10));
     return TIMER1_PRESCALER[bits];
   }
 
@@ -236,15 +331,15 @@ export class Timer1 implements PwmSource {
 
   private ocrValue(channel: PwmChannel): number {
     return channel === "A"
-      ? (this.cpu.readData(OCR1AH) << 8) | this.cpu.readData(OCR1AL)
-      : (this.cpu.readData(OCR1BH) << 8) | this.cpu.readData(OCR1BL);
+      ? (this.cpu.data[OCR1AH]! << 8) | this.cpu.data[OCR1AL]!
+      : (this.cpu.data[OCR1BH]! << 8) | this.cpu.data[OCR1BL]!;
   }
 
   private isCtcMode(): boolean {
-    const low = this.cpu.readData(TCCR1A) & ((1 << WGM11) | (1 << WGM10));
+    const low = this.cpu.data[TCCR1A]! & ((1 << WGM11) | (1 << WGM10));
     const high =
-      (((this.cpu.readData(TCCR1B) >> WGM12) & 1) << 2) |
-      (((this.cpu.readData(TCCR1B) >> WGM13) & 1) << 3);
+      (((this.cpu.data[TCCR1B]! >> WGM12) & 1) << 2) |
+      (((this.cpu.data[TCCR1B]! >> WGM13) & 1) << 3);
     return (high | low) === 0b0100;
   }
 
@@ -290,17 +385,17 @@ export class Timer1 implements PwmSource {
   }
 
   private compareMode(channel: PwmChannel): number {
-    const value = this.cpu.readData(TCCR1A);
+    const value = this.cpu.data[TCCR1A]!;
     return channel === "A"
       ? (value >> COM1A0) & ((1 << (COM1A1 - COM1A0 + 1)) - 1)
       : (value >> COM1B0) & ((1 << (COM1B1 - COM1B0 + 1)) - 1);
   }
 
   private isPwmMode(): boolean {
-    const low = this.cpu.readData(TCCR1A) & ((1 << WGM11) | (1 << WGM10));
+    const low = this.cpu.data[TCCR1A]! & ((1 << WGM11) | (1 << WGM10));
     const high =
-      (((this.cpu.readData(TCCR1B) >> WGM12) & 1) << 2) |
-      (((this.cpu.readData(TCCR1B) >> WGM13) & 1) << 3);
+      (((this.cpu.data[TCCR1B]! >> WGM12) & 1) << 2) |
+      (((this.cpu.data[TCCR1B]! >> WGM13) & 1) << 3);
     const mode = high | low;
     return mode === 0b0001 || mode === 0b0011 || mode === 0b0101 || mode === 0b0111;
   }
@@ -317,12 +412,19 @@ export class Timer1 implements PwmSource {
   // --- Snapshot / restore (Phase 10) ---
 
   snapshot(): Timer1Snapshot {
+    this.syncToCpuCycle();
     return { count: this.count, prescalerRemainder: this.prescalerRemainder };
   }
 
   restore(snap: Timer1Snapshot): void {
     this.count = snap.count & 0xffff;
     this.prescalerRemainder = snap.prescalerRemainder | 0;
+    this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
+    this.scheduleClockEvent();
   }
+}
+
+function stepsUntil16BitValue(counter: number, target: number): number {
+  return ((target - counter + 0xffff) & 0xffff) + 1;
 }

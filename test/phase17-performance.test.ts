@@ -75,7 +75,13 @@ describe("Phase 17 — browser performance", () => {
   test("benchmark harness covers the Phase 17 workloads", () => {
     const names = createBenchmarkCases(10).map((testCase) => testCase.name);
 
-    expect(names).toEqual(["tight-loop", "delay-blink", "serial-print", "analog-write"]);
+    expect(names).toEqual([
+      "tight-loop",
+      "delay-blink",
+      "serial-print",
+      "serial-print-listener",
+      "analog-write",
+    ]);
   });
 
   test("benchmark harness returns throughput numbers", () => {
@@ -100,6 +106,7 @@ describe("Phase 17 — browser performance", () => {
       "tight-loop": 1_000_000,
       "delay-blink": 1_000_000,
       "serial-print": 250_000,
+      "serial-print-listener": 250_000,
       "analog-write": 500_000,
     };
     for (const [name, { floor }] of Object.entries(baseline.cases)) {

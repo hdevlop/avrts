@@ -3,18 +3,23 @@ import {
   ADC_VECTOR,
   ADCH,
   ADCL,
+  ADATE,
   ADCSRA,
+  ADCSRB,
   ADEN,
   ADIE,
   ADIF,
   ADLAR,
   ADMUX,
   ADSC,
+  ADTS2,
   AVR,
   CPU,
   Decoder,
   FLASH_WORDS,
   RAMEND,
+  TIFR0,
+  TOV0,
 } from "../src";
 import { Adc, attachPeripheral } from "../src/peripherals";
 
@@ -104,5 +109,22 @@ describe("ADC", () => {
     avr.step();
     expect(cpu.sreg.I).toBe(true);
     expect(cpu.SP).toBe(RAMEND);
+  });
+
+  test("restored auto-trigger state starts conversion from restored register data", () => {
+    const source = AVR();
+    const cpu = source.cpu;
+
+    source.analog(0).setValue(321);
+    cpu.writeData(ADCSRB, 1 << ADTS2); // Timer0 overflow trigger source.
+    cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE) | (1 << ADSC));
+
+    const restored = AVR();
+    restored.restore(source.snapshot());
+    restored.cpu.data[TIFR0] |= 1 << TOV0;
+    restored.runCycles(27);
+
+    expect(restored.cpu.readData(ADCL) | (restored.cpu.readData(ADCH) << 8)).toBe(321);
+    expect(restored.cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);
   });
 });

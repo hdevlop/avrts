@@ -52,4 +52,11 @@ export type InterruptAcknowledgeResolver = (vector: number) => (() => void) | un
 export interface Executor {
   execute(cpu: CPU, opcode: number): void;
   mnemonicOf(opcode: number): string | undefined;
+  /**
+   * The handler for `opcode`, or `undefined` for an unknown opcode. Lets the CPU
+   * cache handlers per program-counter (Phase 4 predecode) and dispatch without
+   * an `execute()` call frame on the hot path. Unknown opcodes still flow through
+   * `execute()` so the rich `UnknownOpcodeError` (with disassembly hint) is built.
+   */
+  handlerFor(opcode: number): InstructionHandler | undefined;
 }

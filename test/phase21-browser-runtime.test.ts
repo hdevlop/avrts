@@ -9,6 +9,7 @@ import {
   type WorkerLike,
   type WorkerScopeLike,
 } from "../src";
+import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 
 const BLINK_HEX = ":0E00000000E204B900E205B900E005B9FFCF47\n:00000001FF\n";
 
@@ -154,6 +155,20 @@ describe("Phase 21 - browser worker host", () => {
 
     expect(snapshot.snapshot!.adc.voltageEnabled[0]).toBe(1);
     expect(snapshot.snapshot!.adc.channelVoltages[0]).toBe(2.5);
+  });
+
+  test("serial output is batched before crossing the worker boundary", async () => {
+    const scope = new FakeWorkerScope();
+    installAVRWorker(scope);
+
+    await waitForEvent(scope, "ready");
+    scope.send({ type: "loadHex", hex: serialPrintHex });
+    scope.send({ type: "start" });
+
+    const serial = await waitForEvent(scope, "serial", (event) => event.text.includes("hello avrts"));
+
+    expect(serial.text.length).toBeGreaterThan(1);
+    expect(serial.text).toContain("hello avrts");
   });
 
   test("watchData batches writes as watchFrame events", async () => {

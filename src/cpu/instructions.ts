@@ -1,99 +1,46 @@
 import { Op, opRegistry } from "../core";
 import type { OpEntry } from "../core";
 import type { CPU } from "./cpu";
+import { SREG_ADDR } from "./constants";
 import { UnknownOpcodeError, nearestDisassemblyHint } from "./errors";
 import type { Executor, InstructionHandler } from "./types";
+import {
+  SREG_C,
+  SREG_H,
+  SREG_I,
+  SREG_N,
+  SREG_S,
+  SREG_T,
+  SREG_V,
+  SREG_WORD_MASK,
+  SREG_Z,
+  add8,
+  bitNum,
+  dispQ,
+  farAddr,
+  imm8,
+  ioAddr5,
+  ioAddr6,
+  isTwoWordOpcode,
+  logic,
+  multiply,
+  pair,
+  regD4,
+  regD5,
+  regR5,
+  setPair,
+  shiftFlags,
+  signed12,
+  signed7,
+  signed8,
+  subtractWordImmediate,
+  sub8,
+} from "./alu";
 
 // Register-pair base addresses for the pointer registers.
 const X = 26;
 const Y = 28;
 const Z = 30;
-
-// SREG bit masks for the flag helpers (positions per Sreg): C,Z,N,V,S,H.
-// The hot helpers below assemble these into the whole status byte and write it
-// once, instead of routing each flag through a named setter (read-modify-write
-// + map lookup per flag). T and I are never touched here, so they persist.
-const SREG_C = 1 << 0;
-const SREG_Z = 1 << 1;
-const SREG_N = 1 << 2;
-const SREG_V = 1 << 3;
-const SREG_S = 1 << 4;
-const SREG_H = 1 << 5;
-// Bits written by add8/sub8 (all arithmetic flags; T and I preserved).
-const SREG_ARITH_MASK = SREG_C | SREG_Z | SREG_N | SREG_V | SREG_S | SREG_H;
-
-// --- operand field extractors (decode a 16-bit opcode into its fields) ---
-
-/** 5-bit register at bits 8..4 (R0..R31) — destination for most ops, source for OUT/ST. */
-function regD5(opcode: number): number {
-  return (opcode >> 4) & 0x1f;
-}
-
-/** 5-bit source register: bit 9 (high) + bits 3..0 (low). */
-function regR5(opcode: number): number {
-  return (opcode & 0x0f) | ((opcode >> 5) & 0x10);
-}
-
-/** 4-bit register field for immediate ops, mapped onto R16..R31. */
-function regD4(opcode: number): number {
-  return 16 + ((opcode >> 4) & 0x0f);
-}
-
-/** 8-bit immediate (LDI/SUBI/...): bits 11..8 (high nibble) + bits 3..0 (low nibble). */
-function imm8(opcode: number): number {
-  return (opcode & 0x0f) | ((opcode >> 4) & 0xf0);
-}
-
-/** 6-bit I/O address (IN/OUT): bits 10..9 (high) + bits 3..0 (low). */
-function ioAddr6(opcode: number): number {
-  return (opcode & 0x0f) | ((opcode >> 5) & 0x30);
-}
-
-/** 5-bit I/O address (SBI/CBI/SBIC/SBIS), bits 7..3 — only the low 32 I/O registers. */
-function ioAddr5(opcode: number): number {
-  return (opcode >> 3) & 0x1f;
-}
-
-/** Bit number operand, bits 2..0. */
-function bitNum(opcode: number): number {
-  return opcode & 0x07;
-}
-
-/** 6-bit displacement q (LDD/STD): bits {13,11,10} (high) + bits 2..0 (low). */
-function dispQ(opcode: number): number {
-  return (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);
-}
-
-/** Sign-extended 12-bit relative offset (RJMP/RCALL). */
-function signed12(opcode: number): number {
-  const k = opcode & 0x0fff;
-  return k >= 0x800 ? k - 0x1000 : k;
-}
-
-/** Sign-extended 7-bit relative offset (conditional branches), bits 9..3. */
-function signed7(opcode: number): number {
-  const k = (opcode >> 3) & 0x7f;
-  return k >= 0x40 ? k - 0x80 : k;
-}
-
-/** Interpret a byte as a signed 8-bit value. */
-function signed8(value: number): number {
-  return value < 0x80 ? value : value - 0x100;
-}
-
-/** Absolute address for the 32-bit JMP/CALL (second word holds bits 15..0). */
-function farAddr(cpu: CPU, opcode: number): number {
-  const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
-  return (high << 16) | cpu.flash[cpu.pc + 1]!;
-}
-
-/** True for the four 32-bit instructions — needed for correct skip-by-2-words. */
-function isTwoWordOpcode(opcode: number): boolean {
-  const jc = opcode & 0xfe0e;
-  if (jc === 0x940c || jc === 0x940e) return true; // JMP / CALL
-  const ls = opcode & 0xfe0f;
-  return ls === 0x9000 || ls === 0x9200; // LDS / STS
-}
 
 /**
  * Every AVR instruction handler. Each method declares its encoding with @Op; the
@@ -141,7 +88,7 @@ export class InstructionSet {
   @Op("ADD", 0xfc00, 0x0c00)
   add(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.add8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, 0);
+    cpu.data[d] = add8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, 0);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -149,7 +96,12 @@ export class InstructionSet {
   @Op("ADC", 0xfc00, 0x1c00)
   adc(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.add8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, cpu.sreg.C ? 1 : 0);
+    cpu.data[d] = add8(
+      cpu,
+      cpu.data[d]!,
+      cpu.data[regR5(opcode)]!,
+      cpu.data[SREG_ADDR]! & SREG_C ? 1 : 0,
+    );
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -157,7 +109,7 @@ export class InstructionSet {
   @Op("SUB", 0xfc00, 0x1800)
   sub(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.sub8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, 0, false);
+    cpu.data[d] = sub8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, 0, false);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -165,7 +117,7 @@ export class InstructionSet {
   @Op("SUBI", 0xf000, 0x5000)
   subi(cpu: CPU, opcode: number): void {
     const d = regD4(opcode);
-    cpu.data[d] = this.sub8(cpu, cpu.data[d]!, imm8(opcode), 0, false);
+    cpu.data[d] = sub8(cpu, cpu.data[d]!, imm8(opcode), 0, false);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -173,7 +125,13 @@ export class InstructionSet {
   @Op("SBC", 0xfc00, 0x0800)
   sbc(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.sub8(cpu, cpu.data[d]!, cpu.data[regR5(opcode)]!, cpu.sreg.C ? 1 : 0, true);
+    cpu.data[d] = sub8(
+      cpu,
+      cpu.data[d]!,
+      cpu.data[regR5(opcode)]!,
+      cpu.data[SREG_ADDR]! & SREG_C ? 1 : 0,
+      true,
+    );
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -181,7 +139,7 @@ export class InstructionSet {
   @Op("SBCI", 0xf000, 0x4000)
   sbci(cpu: CPU, opcode: number): void {
     const d = regD4(opcode);
-    cpu.data[d] = this.sub8(cpu, cpu.data[d]!, imm8(opcode), cpu.sreg.C ? 1 : 0, true);
+    cpu.data[d] = sub8(cpu, cpu.data[d]!, imm8(opcode), cpu.sreg.C ? 1 : 0, true);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -250,35 +208,26 @@ export class InstructionSet {
   adiw(cpu: CPU, opcode: number): void {
     const d = 24 + ((opcode >> 4) & 0x03) * 2;
     const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
-    const before = this.pair(cpu, d);
+    const before = pair(cpu, d);
     const full = before + k;
     const result = full & 0xffff;
-    this.setPair(cpu, d, result);
-    const sreg = cpu.sreg;
-    sreg.V = (~before & result & 0x8000) !== 0;
-    sreg.N = (result & 0x8000) !== 0;
-    sreg.Z = result === 0;
-    sreg.C = full > 0xffff;
-    sreg.S = sreg.N !== sreg.V;
+    setPair(cpu, d, result);
+    const n = (result & 0x8000) !== 0;
+    const v = (~before & result & 0x8000) !== 0;
+    const flags =
+      (v ? SREG_V : 0) |
+      (n ? SREG_N : 0) |
+      (result === 0 ? SREG_Z : 0) |
+      (full > 0xffff ? SREG_C : 0) |
+      (n !== v ? SREG_S : 0);
+    cpu.data[SREG_ADDR] = (cpu.data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
     cpu.pc += 1;
     cpu.cycles += 2;
   }
 
   @Op("SBIW", 0xff00, 0x9700)
   sbiw(cpu: CPU, opcode: number): void {
-    const d = 24 + ((opcode >> 4) & 0x03) * 2;
-    const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
-    const before = this.pair(cpu, d);
-    const result = (before - k) & 0xffff;
-    this.setPair(cpu, d, result);
-    const sreg = cpu.sreg;
-    sreg.V = (before & ~result & 0x8000) !== 0;
-    sreg.N = (result & 0x8000) !== 0;
-    sreg.Z = result === 0;
-    sreg.C = before < k;
-    sreg.S = sreg.N !== sreg.V;
-    cpu.pc += 1;
-    cpu.cycles += 2;
+    subtractWordImmediate(cpu, opcode);
   }
 
   // === logic ===
@@ -286,7 +235,7 @@ export class InstructionSet {
   @Op("AND", 0xfc00, 0x2000)
   and(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.logic(cpu, cpu.data[d]! & cpu.data[regR5(opcode)]!);
+    cpu.data[d] = logic(cpu, cpu.data[d]! & cpu.data[regR5(opcode)]!);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -294,7 +243,7 @@ export class InstructionSet {
   @Op("ANDI", 0xf000, 0x7000)
   andi(cpu: CPU, opcode: number): void {
     const d = regD4(opcode);
-    cpu.data[d] = this.logic(cpu, cpu.data[d]! & imm8(opcode));
+    cpu.data[d] = logic(cpu, cpu.data[d]! & imm8(opcode));
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -302,7 +251,7 @@ export class InstructionSet {
   @Op("OR", 0xfc00, 0x2800)
   or(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.logic(cpu, cpu.data[d]! | cpu.data[regR5(opcode)]!);
+    cpu.data[d] = logic(cpu, cpu.data[d]! | cpu.data[regR5(opcode)]!);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -310,7 +259,7 @@ export class InstructionSet {
   @Op("ORI", 0xf000, 0x6000)
   ori(cpu: CPU, opcode: number): void {
     const d = regD4(opcode);
-    cpu.data[d] = this.logic(cpu, cpu.data[d]! | imm8(opcode));
+    cpu.data[d] = logic(cpu, cpu.data[d]! | imm8(opcode));
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -318,7 +267,7 @@ export class InstructionSet {
   @Op("EOR", 0xfc00, 0x2400)
   eor(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
-    cpu.data[d] = this.logic(cpu, cpu.data[d]! ^ cpu.data[regR5(opcode)]!);
+    cpu.data[d] = logic(cpu, cpu.data[d]! ^ cpu.data[regR5(opcode)]!);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -338,7 +287,7 @@ export class InstructionSet {
   lsr(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
     const v = cpu.data[d]!;
-    cpu.data[d] = this.shiftFlags(cpu, v >> 1, (v & 1) !== 0);
+    cpu.data[d] = shiftFlags(cpu, v >> 1, (v & 1) !== 0);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -348,7 +297,7 @@ export class InstructionSet {
     const d = regD5(opcode);
     const v = cpu.data[d]!;
     const result = (v >> 1) | (cpu.sreg.C ? 0x80 : 0);
-    cpu.data[d] = this.shiftFlags(cpu, result, (v & 1) !== 0);
+    cpu.data[d] = shiftFlags(cpu, result, (v & 1) !== 0);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -357,7 +306,7 @@ export class InstructionSet {
   asr(cpu: CPU, opcode: number): void {
     const d = regD5(opcode);
     const v = cpu.data[d]!;
-    cpu.data[d] = this.shiftFlags(cpu, (v >> 1) | (v & 0x80), (v & 1) !== 0);
+    cpu.data[d] = shiftFlags(cpu, (v >> 1) | (v & 0x80), (v & 1) !== 0);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -366,21 +315,27 @@ export class InstructionSet {
 
   @Op("CP", 0xfc00, 0x1400)
   cp(cpu: CPU, opcode: number): void {
-    this.sub8(cpu, cpu.data[regD5(opcode)]!, cpu.data[regR5(opcode)]!, 0, false);
+    sub8(cpu, cpu.data[regD5(opcode)]!, cpu.data[regR5(opcode)]!, 0, false);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
 
   @Op("CPC", 0xfc00, 0x0400)
   cpc(cpu: CPU, opcode: number): void {
-    this.sub8(cpu, cpu.data[regD5(opcode)]!, cpu.data[regR5(opcode)]!, cpu.sreg.C ? 1 : 0, true);
+    sub8(
+      cpu,
+      cpu.data[regD5(opcode)]!,
+      cpu.data[regR5(opcode)]!,
+      cpu.data[SREG_ADDR]! & SREG_C ? 1 : 0,
+      true,
+    );
     cpu.pc += 1;
     cpu.cycles += 1;
   }
 
   @Op("CPI", 0xf000, 0x3000)
   cpi(cpu: CPU, opcode: number): void {
-    this.sub8(cpu, cpu.data[regD4(opcode)]!, imm8(opcode), 0, false);
+    sub8(cpu, cpu.data[regD4(opcode)]!, imm8(opcode), 0, false);
     cpu.pc += 1;
     cpu.cycles += 1;
   }
@@ -389,42 +344,56 @@ export class InstructionSet {
 
   @Op("BREQ", 0xfc07, 0xf001)
   breq(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.Z);
+    if ((cpu.data[SREG_ADDR]! & SREG_Z) !== 0) {
+      const k = (opcode >> 3) & 0x7f;
+      cpu.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+      cpu.cycles += 2;
+    } else {
+      cpu.pc += 1;
+      cpu.cycles += 1;
+    }
   }
 
   @Op("BRNE", 0xfc07, 0xf401)
   brne(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.Z);
+    if ((cpu.data[SREG_ADDR]! & SREG_Z) === 0) {
+      const k = (opcode >> 3) & 0x7f;
+      cpu.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+      cpu.cycles += 2;
+    } else {
+      cpu.pc += 1;
+      cpu.cycles += 1;
+    }
   }
 
   @Op("BRCS", 0xfc07, 0xf000)
   brcs(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.C);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_C) !== 0);
   }
 
   @Op("BRCC", 0xfc07, 0xf400)
   brcc(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.C);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_C) === 0);
   }
 
   @Op("BRMI", 0xfc07, 0xf002)
   brmi(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.N);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_N) !== 0);
   }
 
   @Op("BRPL", 0xfc07, 0xf402)
   brpl(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.N);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_N) === 0);
   }
 
   @Op("BRLT", 0xfc07, 0xf004)
   brlt(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.S);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_S) !== 0);
   }
 
   @Op("BRGE", 0xfc07, 0xf404)
   brge(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.S);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_S) === 0);
   }
 
   // === skip-if instructions (1 cycle; +1 per skipped word) ===
@@ -648,28 +617,28 @@ export class InstructionSet {
   // LDD/STD with displacement (q=0 covers plain LD/ST via Y/Z).
   @Op("LDD_Y", 0xd208, 0x8008)
   lddY(cpu: CPU, opcode: number): void {
-    cpu.data[regD5(opcode)] = cpu.readData((this.pair(cpu, Y) + dispQ(opcode)) & 0xffff);
+    cpu.data[regD5(opcode)] = cpu.readData((pair(cpu, Y) + dispQ(opcode)) & 0xffff);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
 
   @Op("LDD_Z", 0xd208, 0x8000)
   lddZ(cpu: CPU, opcode: number): void {
-    cpu.data[regD5(opcode)] = cpu.readData((this.pair(cpu, Z) + dispQ(opcode)) & 0xffff);
+    cpu.data[regD5(opcode)] = cpu.readData((pair(cpu, Z) + dispQ(opcode)) & 0xffff);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
 
   @Op("STD_Y", 0xd208, 0x8208)
   stdY(cpu: CPU, opcode: number): void {
-    cpu.writeData((this.pair(cpu, Y) + dispQ(opcode)) & 0xffff, cpu.data[regD5(opcode)]!);
+    cpu.writeData((pair(cpu, Y) + dispQ(opcode)) & 0xffff, cpu.data[regD5(opcode)]!);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
 
   @Op("STD_Z", 0xd208, 0x8200)
   stdZ(cpu: CPU, opcode: number): void {
-    cpu.writeData((this.pair(cpu, Z) + dispQ(opcode)) & 0xffff, cpu.data[regD5(opcode)]!);
+    cpu.writeData((pair(cpu, Z) + dispQ(opcode)) & 0xffff, cpu.data[regD5(opcode)]!);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
@@ -678,23 +647,23 @@ export class InstructionSet {
 
   @Op("LPM", 0xffff, 0x95c8)
   lpmR0(cpu: CPU): void {
-    cpu.data[0] = this.lpmByte(cpu, this.pair(cpu, Z));
+    cpu.data[0] = this.lpmByte(cpu, pair(cpu, Z));
     cpu.pc += 1;
     cpu.cycles += 3;
   }
 
   @Op("LPM", 0xfe0f, 0x9004)
   lpmZ(cpu: CPU, opcode: number): void {
-    cpu.data[regD5(opcode)] = this.lpmByte(cpu, this.pair(cpu, Z));
+    cpu.data[regD5(opcode)] = this.lpmByte(cpu, pair(cpu, Z));
     cpu.pc += 1;
     cpu.cycles += 3;
   }
 
   @Op("LPM", 0xfe0f, 0x9005)
   lpmZinc(cpu: CPU, opcode: number): void {
-    const z = this.pair(cpu, Z);
+    const z = pair(cpu, Z);
     cpu.data[regD5(opcode)] = this.lpmByte(cpu, z);
-    this.setPair(cpu, Z, (z + 1) & 0xffff);
+    setPair(cpu, Z, (z + 1) & 0xffff);
     cpu.pc += 1;
     cpu.cycles += 3;
   }
@@ -703,56 +672,56 @@ export class InstructionSet {
 
   @Op("MUL", 0xfc00, 0x9c00)
   mul(cpu: CPU, opcode: number): void {
-    this.multiply(cpu, cpu.data[regD5(opcode)]!, cpu.data[regR5(opcode)]!, false);
+    multiply(cpu, cpu.data[regD5(opcode)]!, cpu.data[regR5(opcode)]!, false);
   }
 
   @Op("MULS", 0xff00, 0x0200)
   muls(cpu: CPU, opcode: number): void {
     const d = 16 + ((opcode >> 4) & 0x0f);
     const r = 16 + (opcode & 0x0f);
-    this.multiply(cpu, signed8(cpu.data[d]!), signed8(cpu.data[r]!), false);
+    multiply(cpu, signed8(cpu.data[d]!), signed8(cpu.data[r]!), false);
   }
 
   @Op("MULSU", 0xff88, 0x0300)
   mulsu(cpu: CPU, opcode: number): void {
     const d = 16 + ((opcode >> 4) & 0x07);
     const r = 16 + (opcode & 0x07);
-    this.multiply(cpu, signed8(cpu.data[d]!), cpu.data[r]!, false);
+    multiply(cpu, signed8(cpu.data[d]!), cpu.data[r]!, false);
   }
 
   @Op("FMUL", 0xff88, 0x0308)
   fmul(cpu: CPU, opcode: number): void {
     const d = 16 + ((opcode >> 4) & 0x07);
     const r = 16 + (opcode & 0x07);
-    this.multiply(cpu, cpu.data[d]!, cpu.data[r]!, true);
+    multiply(cpu, cpu.data[d]!, cpu.data[r]!, true);
   }
 
   @Op("FMULS", 0xff88, 0x0380)
   fmuls(cpu: CPU, opcode: number): void {
     const d = 16 + ((opcode >> 4) & 0x07);
     const r = 16 + (opcode & 0x07);
-    this.multiply(cpu, signed8(cpu.data[d]!), signed8(cpu.data[r]!), true);
+    multiply(cpu, signed8(cpu.data[d]!), signed8(cpu.data[r]!), true);
   }
 
   @Op("FMULSU", 0xff88, 0x0388)
   fmulsu(cpu: CPU, opcode: number): void {
     const d = 16 + ((opcode >> 4) & 0x07);
     const r = 16 + (opcode & 0x07);
-    this.multiply(cpu, signed8(cpu.data[d]!), cpu.data[r]!, true);
+    multiply(cpu, signed8(cpu.data[d]!), cpu.data[r]!, true);
   }
 
   // === indirect jumps (via Z) ===
 
   @Op("IJMP", 0xffff, 0x9409)
   ijmp(cpu: CPU): void {
-    cpu.pc = this.pair(cpu, Z);
+    cpu.pc = pair(cpu, Z);
     cpu.cycles += 2;
   }
 
   @Op("ICALL", 0xffff, 0x9509)
   icall(cpu: CPU): void {
     cpu.pushWord(cpu.pc + 1);
-    cpu.pc = this.pair(cpu, Z);
+    cpu.pc = pair(cpu, Z);
     cpu.cycles += 3;
   }
 
@@ -794,42 +763,42 @@ export class InstructionSet {
 
   @Op("BRVS", 0xfc07, 0xf003)
   brvs(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.V);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_V) !== 0);
   }
 
   @Op("BRVC", 0xfc07, 0xf403)
   brvc(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.V);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_V) === 0);
   }
 
   @Op("BRHS", 0xfc07, 0xf005)
   brhs(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.H);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_H) !== 0);
   }
 
   @Op("BRHC", 0xfc07, 0xf405)
   brhc(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.H);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_H) === 0);
   }
 
   @Op("BRTS", 0xfc07, 0xf006)
   brts(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.T);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_T) !== 0);
   }
 
   @Op("BRTC", 0xfc07, 0xf406)
   brtc(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.T);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_T) === 0);
   }
 
   @Op("BRIE", 0xfc07, 0xf007)
   brie(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, cpu.sreg.I);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_I) !== 0);
   }
 
   @Op("BRID", 0xfc07, 0xf407)
   brid(cpu: CPU, opcode: number): void {
-    this.branchIf(cpu, opcode, !cpu.sreg.I);
+    this.branchIf(cpu, opcode, (cpu.data[SREG_ADDR]! & SREG_I) === 0);
   }
 
   // === system (modeled as benign NOPs for now) ===
@@ -856,85 +825,6 @@ export class InstructionSet {
 
   // === shared helpers ===
 
-  /** Unsigned/signed 8x8 multiply into R1:R0; sets C (product bit 15) and Z. */
-  private multiply(cpu: CPU, a: number, b: number, fractional: boolean): void {
-    const product = a * b;
-    const result = (fractional ? product << 1 : product) & 0xffff;
-    cpu.data[0] = result & 0xff;
-    cpu.data[1] = (result >> 8) & 0xff;
-    cpu.sreg.C = ((product >> 15) & 1) === 1;
-    cpu.sreg.Z = result === 0;
-    cpu.pc += 1;
-    cpu.cycles += 2;
-  }
-
-  /** 8-bit add with optional carry-in; sets H,S,V,N,Z,C. Returns the masked result. */
-  private add8(cpu: CPU, d: number, r: number, carryIn: number): number {
-    const sum = d + r + carryIn;
-    const result = sum & 0xff;
-    const n = (result & 0x80) !== 0;
-    const v = (~(d ^ r) & (d ^ result) & 0x80) !== 0;
-    const flags =
-      ((d & 0x0f) + (r & 0x0f) + carryIn > 0x0f ? SREG_H : 0) |
-      (v ? SREG_V : 0) |
-      (n ? SREG_N : 0) |
-      (result === 0 ? SREG_Z : 0) |
-      (sum > 0xff ? SREG_C : 0) |
-      (n !== v ? SREG_S : 0);
-    const sreg = cpu.sreg;
-    sreg.value = (sreg.value & ~SREG_ARITH_MASK) | flags;
-    return result;
-  }
-
-  /**
-   * 8-bit subtract with optional carry-in; sets H,S,V,N,Z,C. Returns the result.
-   * When `carryUsed` (SBC/SBCI/CPC), Z is ANDed with its previous value for
-   * correct multi-byte compares.
-   */
-  private sub8(cpu: CPU, d: number, r: number, carryIn: number, carryUsed: boolean): number {
-    const result = (d - r - carryIn) & 0xff;
-    const n = (result & 0x80) !== 0;
-    const v = ((d ^ r) & (d ^ result) & 0x80) !== 0;
-    const sreg = cpu.sreg;
-    const prev = sreg.value;
-    const zero = carryUsed ? result === 0 && (prev & SREG_Z) !== 0 : result === 0;
-    const flags =
-      ((d & 0x0f) - (r & 0x0f) - carryIn < 0 ? SREG_H : 0) |
-      (v ? SREG_V : 0) |
-      (n ? SREG_N : 0) |
-      (zero ? SREG_Z : 0) |
-      (d - r - carryIn < 0 ? SREG_C : 0) |
-      (n !== v ? SREG_S : 0);
-    sreg.value = (prev & ~SREG_ARITH_MASK) | flags;
-    return result;
-  }
-
-  /** Flags for AND/OR/EOR/ANDI/ORI (V cleared, S = N; C and H preserved). */
-  private logic(cpu: CPU, result: number): number {
-    const masked = result & 0xff;
-    // N set => S set (S = N here); V always cleared.
-    const flags = ((masked & 0x80) !== 0 ? SREG_N | SREG_S : 0) | (masked === 0 ? SREG_Z : 0);
-    const sreg = cpu.sreg;
-    sreg.value = (sreg.value & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
-    return masked;
-  }
-
-  /** Flags for LSR/ROR/ASR (C from shifted-out bit, V = N xor C; H preserved). */
-  private shiftFlags(cpu: CPU, result: number, carryOut: boolean): number {
-    const masked = result & 0xff;
-    const n = (masked & 0x80) !== 0;
-    const v = n !== carryOut;
-    const flags =
-      (carryOut ? SREG_C : 0) |
-      (n ? SREG_N : 0) |
-      (masked === 0 ? SREG_Z : 0) |
-      (v ? SREG_V : 0) |
-      (n !== v ? SREG_S : 0);
-    const sreg = cpu.sreg;
-    sreg.value = (sreg.value & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;
-    return masked;
-  }
-
   private branchIf(cpu: CPU, opcode: number, taken: boolean): void {
     if (taken) {
       cpu.pc += signed7(opcode) + 1;
@@ -957,26 +847,26 @@ export class InstructionSet {
 
   private loadIndirect(cpu: CPU, opcode: number, ptrLow: number, delta: number): void {
     const d = regD5(opcode);
-    let addr = this.pair(cpu, ptrLow);
+    let addr = pair(cpu, ptrLow);
     if (delta < 0) {
       addr = (addr - 1) & 0xffff;
-      this.setPair(cpu, ptrLow, addr);
+      setPair(cpu, ptrLow, addr);
     }
     cpu.data[d] = cpu.readData(addr);
-    if (delta > 0) this.setPair(cpu, ptrLow, (addr + 1) & 0xffff);
+    if (delta > 0) setPair(cpu, ptrLow, (addr + 1) & 0xffff);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
 
   private storeIndirect(cpu: CPU, opcode: number, ptrLow: number, delta: number): void {
     const r = regD5(opcode);
-    let addr = this.pair(cpu, ptrLow);
+    let addr = pair(cpu, ptrLow);
     if (delta < 0) {
       addr = (addr - 1) & 0xffff;
-      this.setPair(cpu, ptrLow, addr);
+      setPair(cpu, ptrLow, addr);
     }
     cpu.writeData(addr, cpu.data[r]!);
-    if (delta > 0) this.setPair(cpu, ptrLow, (addr + 1) & 0xffff);
+    if (delta > 0) setPair(cpu, ptrLow, (addr + 1) & 0xffff);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
@@ -987,16 +877,6 @@ export class InstructionSet {
     return byteAddr & 1 ? (word >> 8) & 0xff : word & 0xff;
   }
 
-  /** Read a 16-bit register pair (low at `low`, high at `low+1`). */
-  private pair(cpu: CPU, low: number): number {
-    return cpu.data[low]! | (cpu.data[low + 1]! << 8);
-  }
-
-  /** Write a 16-bit register pair. */
-  private setPair(cpu: CPU, low: number, value: number): void {
-    cpu.data[low] = value & 0xff;
-    cpu.data[low + 1] = (value >> 8) & 0xff;
-  }
 }
 
 // --- decode table (built once, frozen; see "Registry rules" in 03-coding-style.md) ---
@@ -1086,6 +966,10 @@ export class Decoder implements Executor {
 
   mnemonicOf(opcode: number): string | undefined {
     return this.mnemonics[opcode];
+  }
+
+  handlerFor(opcode: number): InstructionHandler | undefined {
+    return this.handlers[opcode];
   }
 }
 

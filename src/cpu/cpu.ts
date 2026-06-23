@@ -7,12 +7,14 @@ import {
   SMCR,
   SPH_ADDR,
   SPL_ADDR,
+  SREG_ADDR,
 } from "./constants";
 import { Sreg } from "./sreg";
 import { UnknownOpcodeError } from "./errors";
 import type {
   CycleListener,
   Executor,
+  InstructionHandler,
   InterruptAcknowledgeResolver,
   IoReadHook,
   IoWriteHook,
@@ -21,6 +23,41 @@ import type {
   TraceState,
 } from "./types";
 import type { CpuSnapshot } from "../snapshot";
+import {
+  SREG_C,
+  SREG_H,
+  SREG_I,
+  SREG_N,
+  SREG_S,
+  SREG_T,
+  SREG_V,
+  SREG_WORD_MASK,
+  SREG_Z,
+  imm8,
+  regD4,
+  regD5,
+  regR5,
+} from "./alu";
+
+const NOOP = (): void => {};
+
+/**
+ * A scheduled clock event (Phase 7 event-driven peripherals). Peripherals call
+ * `addClockEvent` to fire `callback` at an absolute `cycles` boundary instead of
+ * being ticked every instruction. Nodes form a sorted singly-linked list and are
+ * pooled to avoid per-schedule allocation.
+ */
+interface ClockEvent {
+  cycles: number;
+  callback: () => void;
+  next: ClockEvent | undefined;
+}
+
+const FAST_BLOCK_UNKNOWN = 0;
+const FAST_BLOCK_NONE = 1;
+const FAST_BLOCK_RJMP_SELF = 2;
+const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
+const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
 
 /**
  * The ATmega328P core: program memory (flash), the flat data space (registers +
@@ -55,24 +92,64 @@ export class CPU {
   }
   set cycles(value: number) {
     const delta = value - this._cycles;
-    this._cycles = value;
-    if (delta <= 0) return;
-    if (this.timing === "cycle-exact") {
-      for (let i = 0; i < delta; i += 1) this.notifyCycles(1);
-    } else {
+    if (this.timing !== "cycle-exact") {
+      this._cycles = value;
+      if (delta <= 0) return;
       this.notifyCycles(delta);
+      // Event-scheduled peripherals: fire anything now due. The inline guard keeps
+      // this to one comparison when nothing is scheduled (the common case).
+      const next = this.nextClockEvent;
+      if (next !== undefined && next.cycles <= this._cycles) this.runDueClockEvents();
+      return;
+    }
+
+    if (delta <= 0) {
+      this._cycles = value;
+      return;
+    }
+    this.advanceCycleExact(delta);
+  }
+
+  private advanceCycleExact(delta: number): void {
+    for (let i = 0; i < delta; i += 1) {
+      this._cycles += 1;
+      const next = this.nextClockEvent;
+      if (next !== undefined && next.cycles <= this._cycles) this.runDueClockEvents();
+      this.notifyCycles(1);
     }
   }
 
   private readonly traceListeners: TraceListener[] = [];
   private readonly cycleListeners: CycleListener[] = [];
+  private readonly pendingCycleListenerRemovals: CycleListener[] = [];
+  private readonly pendingCycleListenerRemovalDepths = new Map<CycleListener, number>();
+  private cycleListenerDispatchDepth = 0;
   private readonly pendingInterrupts: PendingInterrupt[] = [];
   // Sparse, indexed by data-space address; peripherals install hooks here.
   private readonly writeHooks: Array<IoWriteHook[] | undefined> = [];
   private readonly readHooks: Array<IoReadHook[] | undefined> = [];
   private readonly wdrListeners: Array<() => void> = [];
+  // Event-scheduled peripheral clock events (sorted by absolute cycle), plus a
+  // small reuse pool. `nextClockEvent === undefined` is the common case (no
+  // peripheral has scheduled anything), so the hot path is a single null check.
+  private nextClockEvent: ClockEvent | undefined = undefined;
+  private readonly clockEventPool: ClockEvent[] = [];
   private sleeping = false;
   private executor?: Executor;
+  /**
+   * Phase 4 predecode: lazily filled handler-per-PC cache. `tick()` resolves the
+   * handler from `flash[pc]` once and reuses it on later executions of the same
+   * PC, dispatching without an `executor.execute()` call frame. Invalidated when
+   * flash content changes (`reset`, `restore`, or an explicit
+   * `invalidateDecodeCache()` after a direct `flash` write).
+   */
+  private decodeCache: Array<InstructionHandler | undefined> = [];
+  /**
+   * PC-local classifier for guarded fast blocks. Unlike `decodeCache`, this
+   * stores only tiny numeric kinds for block shapes that were already proven by
+   * parity tests; `FAST_BLOCK_NONE` avoids re-checking non-matching candidate PCs.
+   */
+  private fastBlockCache: number[] = [];
 
   // --- Debug state (Phase 11) ---
   /** PC addresses that should pause execution before the instruction runs. */
@@ -105,6 +182,11 @@ export class CPU {
     this.sleeping = false;
     this.data.fill(0);
     this.SP = RAMEND;
+    // Flash may have been (re)loaded just before reset(); drop stale handlers.
+    this.invalidateDecodeCache();
+    // Power-on clears any scheduled peripheral events; peripherals re-arm in
+    // their own reset()/write hooks from the freshly zeroed register state.
+    this.nextClockEvent = undefined;
   }
 
   /** Enter sleep (SLEEP instruction). Only sleeps if SMCR.SE is set, per hardware. */
@@ -178,6 +260,64 @@ export class CPU {
     return () => this.removeCycleListener(listener);
   }
 
+  /**
+   * Schedule `callback` to fire once, `cyclesFromNow` cycles from the current
+   * cycle (minimum 1). The event fires when `cycles` next advances past it. The
+   * `callback` identity is the handle for `clearClockEvent`; re-scheduling the
+   * same callback is "clear then add". Replaces per-instruction `tick()` for
+   * peripherals that know when their next event is due (Phase 7).
+   */
+  addClockEvent(callback: () => void, cyclesFromNow: number): void {
+    this.clearClockEvent(callback);
+    const at = this._cycles + (cyclesFromNow > 1 ? cyclesFromNow : 1);
+    const entry = this.clockEventPool.pop() ?? { cycles: 0, callback, next: undefined };
+    entry.cycles = at;
+    entry.callback = callback;
+    let prev: ClockEvent | undefined;
+    let cur = this.nextClockEvent;
+    while (cur !== undefined && cur.cycles <= at) {
+      prev = cur;
+      cur = cur.next;
+    }
+    entry.next = cur;
+    if (prev === undefined) this.nextClockEvent = entry;
+    else prev.next = entry;
+  }
+
+  /** Cancel the pending event scheduled with `callback` (no-op if none). */
+  clearClockEvent(callback: () => void): void {
+    let prev: ClockEvent | undefined;
+    let cur = this.nextClockEvent;
+    while (cur !== undefined) {
+      if (cur.callback === callback) {
+        if (prev === undefined) this.nextClockEvent = cur.next;
+        else prev.next = cur.next;
+        this.recycleClockEvent(cur);
+        return;
+      }
+      prev = cur;
+      cur = cur.next;
+    }
+  }
+
+  /** Fire every event whose cycle boundary has been reached. */
+  private runDueClockEvents(): void {
+    let event = this.nextClockEvent;
+    while (event !== undefined && event.cycles <= this._cycles) {
+      this.nextClockEvent = event.next;
+      const callback = event.callback;
+      this.recycleClockEvent(event);
+      callback(); // may schedule new events (e.g. a peripheral re-arming)
+      event = this.nextClockEvent;
+    }
+  }
+
+  private recycleClockEvent(event: ClockEvent): void {
+    event.callback = NOOP;
+    event.next = undefined;
+    if (this.clockEventPool.length < 16) this.clockEventPool.push(event);
+  }
+
   /** Queue an interrupt by vector address; lowest vector has highest priority. */
   requestInterrupt(vector: number, acknowledge?: () => void): void {
     if (this.pendingInterrupts.some((pending) => pending.vector === vector)) return;
@@ -220,6 +360,17 @@ export class CPU {
   /** Attach the decoder/executor that runs opcodes (keeps modules acyclic). */
   setExecutor(executor: Executor): void {
     this.executor = executor;
+    this.invalidateDecodeCache();
+  }
+
+  /**
+   * Drop the predecode cache. Call this after mutating `flash` directly (the
+   * low-level escape hatch) so stale handlers/blocks cannot execute old code.
+   * `reset()`, `restore()`, and `setExecutor()` invalidate automatically.
+   */
+  invalidateDecodeCache(): void {
+    this.decodeCache.length = 0;
+    this.fastBlockCache.length = 0;
   }
 
   /** Fetch, decode, and execute one instruction (or idle one cycle while asleep). */
@@ -247,7 +398,20 @@ export class CPU {
       // Each `cpu.cycles += N` inside the handler goes through the setter and
       // fires cycle listeners with the configured granularity. No explicit
       // notifyCycles call is needed here.
-      executor.execute(this, opcode);
+      //
+      // Phase 4 predecode: reuse the handler resolved for this PC. On a miss,
+      // resolve once and cache it; an unknown opcode falls through to
+      // `executor.execute()` so the rich UnknownOpcodeError is still thrown.
+      let handler = this.decodeCache[pc];
+      if (handler === undefined) {
+        handler = executor.handlerFor(opcode);
+        if (handler === undefined) {
+          executor.execute(this, opcode); // throws UnknownOpcodeError
+          return;
+        }
+        this.decodeCache[pc] = handler;
+      }
+      handler(this, opcode);
     } catch (e) {
       if (e instanceof UnknownOpcodeError && this.pauseOnUnknownOpcode) {
         this._error = e;
@@ -269,12 +433,289 @@ export class CPU {
   /** Run until at least `maxCycles` additional cycles have elapsed or a debug stop fires. */
   run(maxCycles: number): void {
     this._breakpointHit = false;
-    const target = this.cycles + maxCycles;
-    while (this.cycles < target) {
+    const target = this._cycles + maxCycles;
+    if (this.canUseFastRun()) {
+      this.runFast(target);
+      return;
+    }
+    while (this._cycles < target) {
       this.tick();
       if (this._breakpointHit) return;
       if (this._error !== null) return;
     }
+  }
+
+  private canUseFastRun(): boolean {
+    return (
+      this.breakpoints.size === 0 &&
+      this.traceListeners.length === 0 &&
+      !this.pauseOnUnknownOpcode
+    );
+  }
+
+  private runFast(target: number): void {
+    const executor = this.executor;
+    if (!executor) {
+      throw new Error("CPU has no executor — call setExecutor(new Decoder()) first.");
+    }
+    const flash = this.flash;
+    const data = this.data;
+    const decodeCache = this.decodeCache;
+    while (this._cycles < target) {
+      if (this.sleeping) {
+        this.tick();
+      } else {
+        const pc = this.pc;
+        const opcode = flash[pc]!;
+        if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        } else if (opcode === 0x0000) {
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xf000) === 0xc000) {
+          const k = opcode & 0x0fff;
+          if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) continue;
+          this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
+          this.cycles += 2;
+        } else if ((opcode & 0xfc00) === 0xf000) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        } else if ((opcode & 0xfc00) === 0xf400) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) === 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        } else if ((opcode & 0xff00) === 0x9700) {
+          const d = 24 + (((opcode >> 4) & 0x03) * 2);
+          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+          const before = data[d]! | (data[d + 1]! << 8);
+          const result = (before - k) & 0xffff;
+          data[d] = result & 0xff;
+          data[d + 1] = (result >> 8) & 0xff;
+          const n = (result & 0x8000) !== 0;
+          const v = (before & ~result & 0x8000) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (before < k ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 2;
+        } else if ((opcode & 0xf000) === 0xe000) {
+          data[regD4(opcode)] = imm8(opcode);
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xfc00) === 0x2c00) {
+          data[regD5(opcode)] = data[regR5(opcode)]!;
+          this.pc += 1;
+          this.cycles += 1;
+        } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        } else {
+          let handler = decodeCache[pc];
+          if (handler === undefined) {
+            handler = executor.handlerFor(opcode);
+            if (handler === undefined) {
+              executor.execute(this, opcode); // throws UnknownOpcodeError
+              this.serviceInterrupts();
+              continue;
+            }
+            decodeCache[pc] = handler;
+          }
+          handler(this, opcode);
+        }
+        this.serviceInterrupts();
+      }
+      if (
+        this.breakpoints.size !== 0 ||
+        this.traceListeners.length !== 0 ||
+        this.pauseOnUnknownOpcode
+      ) {
+        while (this._cycles < target) {
+          this.tick();
+          if (this._breakpointHit) return;
+          if (this._error !== null) return;
+        }
+        return;
+      }
+    }
+  }
+
+  private tryRunFastBlock(pc: number, opcode: number, target: number): boolean {
+    let kind = this.fastBlockCache[pc] ?? FAST_BLOCK_UNKNOWN;
+    if (kind === FAST_BLOCK_UNKNOWN) {
+      kind = this.classifyFastBlock(pc, opcode);
+      this.fastBlockCache[pc] = kind;
+    }
+
+    switch (kind) {
+      case FAST_BLOCK_RJMP_SELF:
+        return this.runRjmpSelfLoopBlock(pc, target);
+      case FAST_BLOCK_ZERO_SBIW_BREQ:
+        return this.runZeroSbiwBreqLoopBlock(pc, opcode, target);
+      case FAST_BLOCK_SHIFT_LEFT_DEC:
+        return this.runShiftLeftDecLoopBlock(pc, opcode, target);
+      default:
+        return false;
+    }
+  }
+
+  private classifyFastBlock(pc: number, opcode: number): number {
+    if (opcode === 0xcfff) return FAST_BLOCK_RJMP_SELF;
+    if ((opcode & 0xffcf) === 0x9700) {
+      return this.flash[pc + 1] === 0xf3f1 ? FAST_BLOCK_ZERO_SBIW_BREQ : FAST_BLOCK_NONE;
+    }
+    if ((opcode & 0xfc00) === 0x0c00) {
+      return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
+    }
+    return FAST_BLOCK_NONE;
+  }
+
+  /**
+   * Bulk-skip the Arduino busy-wait shape that dominates serial-print and
+   * analog-write: `SBIW pair,0; BREQ -2` while the pair is zero. This is a tiny
+   * guarded block specialization, not a general instruction shortcut. It only
+   * advances whole 4-cycle loop iterations and refuses to cross cycle listeners,
+   * enabled pending interrupts, or the next scheduled clock event.
+   */
+  private runZeroSbiwBreqLoopBlock(pc: number, opcode: number, target: number): boolean {
+    const d = 24 + (((opcode >> 4) & 0x03) * 2);
+    if (this.data[d] !== 0 || this.data[d + 1] !== 0) return false;
+
+    const iterations = this.bulkIdleLoopIterations(target, 4);
+    if (iterations <= 1) return false;
+
+    this.data[SREG_ADDR] = (this.data[SREG_ADDR]! & ~SREG_WORD_MASK) | SREG_Z;
+    this._cycles += iterations * 4;
+    this.pc = pc;
+    return true;
+  }
+
+  /** Bulk-skip `RJMP -1` when nothing observable can happen before the target/event. */
+  private runRjmpSelfLoopBlock(pc: number, target: number): boolean {
+    const iterations = this.bulkIdleLoopIterations(target, 2);
+    if (iterations <= 1) return false;
+
+    this._cycles += iterations * 2;
+    this.pc = pc;
+    return true;
+  }
+
+  private bulkIdleLoopIterations(target: number, cyclesPerIteration: number): number {
+    if (
+      this.timing !== "fast" ||
+      this.cycleListeners.length !== 0 ||
+      (this.pendingInterrupts.length !== 0 && (this.data[SREG_ADDR]! & SREG_I) !== 0)
+    ) {
+      return 0;
+    }
+
+    let limit = target;
+    const nextEvent = this.nextClockEvent;
+    if (nextEvent !== undefined && nextEvent.cycles <= limit) limit = nextEvent.cycles - 1;
+    return Math.floor((limit - this._cycles) / cyclesPerIteration);
+  }
+
+  /**
+   * Fast block for the Arduino `delay()` helper's 32-bit left-shift loop:
+   *   ADD rN,rN; ADC rN+1,rN+1; ADC rN+2,rN+2; ADC rN+3,rN+3; DEC rC; BRNE loop
+   *
+   * It is intentionally shape-checked at runtime and only runs the whole counted
+   * loop when no event/interrupt/listener can observe the skipped instructions.
+   */
+  private isShiftLeftDecLoop(pc: number, opcode: number): boolean {
+    const firstReg = regD5(opcode);
+    if (regR5(opcode) !== firstReg || firstReg > 28) return false;
+
+    const flash = this.flash;
+    const op1 = flash[pc + 1]!;
+    const op2 = flash[pc + 2]!;
+    const op3 = flash[pc + 3]!;
+    const dec = flash[pc + 4]!;
+    const branch = flash[pc + 5]!;
+    if (
+      !this.isAdcSelf(op1, firstReg + 1) ||
+      !this.isAdcSelf(op2, firstReg + 2) ||
+      !this.isAdcSelf(op3, firstReg + 3) ||
+      (dec & 0xfe0f) !== 0x940a ||
+      (branch & 0xfc07) !== 0xf401 ||
+      ((branch >> 3) & 0x7f) !== 0x7a
+    ) {
+      return false;
+    }
+
+    const counterReg = regD5(dec);
+    if (counterReg >= firstReg && counterReg <= firstReg + 3) return false;
+    return true;
+  }
+
+  private runShiftLeftDecLoopBlock(pc: number, opcode: number, target: number): boolean {
+    const firstReg = regD5(opcode);
+    const counterReg = regD5(this.flash[pc + 4]!);
+    const loops = this.data[counterReg] === 0 ? 256 : this.data[counterReg]!;
+    const blockCycles = loops * 7 - 1;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    const data = this.data;
+    let carry = 0;
+    let halfCarry = 0;
+    for (let iteration = 0; iteration < loops; iteration += 1) {
+      for (let offset = 0; offset < 4; offset += 1) {
+        const addr = firstReg + offset;
+        const before = data[addr]!;
+        const carryIn = offset === 0 ? 0 : carry;
+        const sum = before + before + carryIn;
+        data[addr] = sum & 0xff;
+        carry = sum > 0xff ? 1 : 0;
+        if (offset === 3) {
+          halfCarry = (before & 0x0f) + (before & 0x0f) + carryIn > 0x0f ? 1 : 0;
+        }
+      }
+    }
+
+    data[counterReg] = 0;
+    data[SREG_ADDR] =
+      (data[SREG_ADDR]! & (SREG_T | SREG_I)) |
+      SREG_Z |
+      (carry !== 0 ? SREG_C : 0) |
+      (halfCarry !== 0 ? SREG_H : 0);
+    this._cycles += blockCycles;
+    this.pc = pc + 6;
+    return true;
+  }
+
+  private isAdcSelf(opcode: number, register: number): boolean {
+    return (
+      (opcode & 0xfc00) === 0x1c00 &&
+      regD5(opcode) === register &&
+      regR5(opcode) === register
+    );
+  }
+
+  private canRunFastBlock(target: number, blockCycles: number): boolean {
+    if (
+      this.timing !== "fast" ||
+      this.cycleListeners.length !== 0 ||
+      (this.pendingInterrupts.length !== 0 && (this.data[SREG_ADDR]! & SREG_I) !== 0)
+    ) {
+      return false;
+    }
+    const finalCycles = this._cycles + blockCycles;
+    if (finalCycles > target) return false;
+    const nextEvent = this.nextClockEvent;
+    return nextEvent === undefined || nextEvent.cycles > finalCycles;
   }
 
   // --- Debug/trace hook (used heavily from Phase 2 on) ---
@@ -294,6 +735,21 @@ export class CPU {
   }
 
   private removeCycleListener(listener: CycleListener): void {
+    if (this.cycleListenerDispatchDepth > 0) {
+      const depth = this.cycleListenerDispatchDepth;
+      const existingDepth = this.pendingCycleListenerRemovalDepths.get(listener);
+      if (existingDepth === undefined) {
+        this.pendingCycleListenerRemovals.push(listener);
+        this.pendingCycleListenerRemovalDepths.set(listener, depth);
+      } else if (depth < existingDepth) {
+        this.pendingCycleListenerRemovalDepths.set(listener, depth);
+      }
+      return;
+    }
+    this.spliceCycleListener(listener);
+  }
+
+  private spliceCycleListener(listener: CycleListener): void {
     const index = this.cycleListeners.indexOf(listener);
     if (index >= 0) this.cycleListeners.splice(index, 1);
   }
@@ -301,12 +757,64 @@ export class CPU {
   /** Fire cycle listeners for `elapsed` consumed cycles (peripherals advance time). */
   private notifyCycles(elapsed: number): void {
     if (elapsed <= 0) return;
-    // Iterate the live array directly — no defensive copy. Cycle listeners are
-    // registered once during peripheral wiring and never added/removed mid-tick,
-    // so this hot path (once per instruction in "fast" mode, once per cycle in
-    // "cycle-exact") must not allocate. Matches the write-hook loop above.
     const listeners = this.cycleListeners;
-    for (let i = 0; i < listeners.length; i += 1) listeners[i]!(elapsed, this);
+    const count = listeners.length;
+    if (count === 0) return;
+
+    // Hot path: a top-level notification with no removals pending — the case on
+    // essentially every instruction, since cycle listeners are wired once and
+    // almost never unsubscribe mid-run. This skips the deferred-removal
+    // bookkeeping (a per-call Map.clear() + array drain + the removalDepths
+    // lookups) that otherwise dominated the per-instruction cost. A listener that
+    // unsubscribes *during* this loop is still called this round; its removal is
+    // drained afterward — matching the slow path's "removed at this depth still
+    // fires this round" semantics.
+    if (
+      this.cycleListenerDispatchDepth === 0 &&
+      this.pendingCycleListenerRemovalDepths.size === 0
+    ) {
+      this.cycleListenerDispatchDepth = 1;
+      try {
+        for (let i = 0; i < count; i += 1) listeners[i]!(elapsed, this);
+      } finally {
+        this.cycleListenerDispatchDepth = 0;
+        if (this.pendingCycleListenerRemovals.length > 0) this.drainCycleListenerRemovals();
+      }
+      return;
+    }
+
+    // Slow path: reentrant (nested notification) or removals already pending. Use
+    // the full depth-aware bookkeeping so an unsubscribe during a nested
+    // notification applies to deeper dispatches without perturbing the active one.
+    this.cycleListenerDispatchDepth += 1;
+    const dispatchDepth = this.cycleListenerDispatchDepth;
+    const removalDepths =
+      this.pendingCycleListenerRemovalDepths.size > 0
+        ? this.pendingCycleListenerRemovalDepths
+        : undefined;
+    try {
+      if (removalDepths === undefined) {
+        for (let i = 0; i < count; i += 1) listeners[i]!(elapsed, this);
+      } else {
+        for (let i = 0; i < count; i += 1) {
+          const listener = listeners[i]!;
+          const removalDepth = removalDepths.get(listener);
+          if (removalDepth !== undefined && removalDepth < dispatchDepth) continue;
+          listener(elapsed, this);
+        }
+      }
+    } finally {
+      this.cycleListenerDispatchDepth -= 1;
+      if (this.cycleListenerDispatchDepth === 0 && this.pendingCycleListenerRemovals.length > 0) {
+        this.drainCycleListenerRemovals();
+      }
+    }
+  }
+
+  private drainCycleListenerRemovals(): void {
+    for (const listener of this.pendingCycleListenerRemovals) this.spliceCycleListener(listener);
+    this.pendingCycleListenerRemovals.length = 0;
+    this.pendingCycleListenerRemovalDepths.clear();
   }
 
   /**
@@ -390,6 +898,8 @@ export class CPU {
     this.sleeping = snap.sleeping;
     this.data.set(snap.data);
     this.flash.set(snap.flash);
+    this.invalidateDecodeCache(); // restored flash may differ from the cached program
+    this.nextClockEvent = undefined; // peripherals re-arm their events in restore()
     this.pendingInterrupts.length = 0;
     for (const vector of snap.pendingInterrupts) {
       this.pendingInterrupts.push({ vector, acknowledge: acknowledgeForVector?.(vector) });

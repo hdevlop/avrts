@@ -28,6 +28,7 @@ import {
   TWSTA,
   TWSTO,
   WDIE,
+  WDT_VECTOR,
   WDTCSR,
 } from "../src/cpu";
 
@@ -218,5 +219,21 @@ describe("watchdog", () => {
       cpu.kickWatchdog(); // ...kept alive by WDR each window
     }
     expect((cpu.readData(WDTCSR) >> WDIE) & 1).toBe(1); // never fired
+  });
+
+  test("restored watchdog configuration still counts toward timeout", () => {
+    const source = AVR().useClock(16_000_000);
+    const cpu = source.cpu;
+    cpu.flash[0] = 0xcfff; // rjmp -1 (main loop)
+    cpu.flash[WDT_VECTOR] = 0xcfff; // rjmp -1 at the WDT vector
+    cpu.sreg.I = true;
+    cpu.writeData(WDTCSR, 1 << WDIE);
+
+    const restored = AVR();
+    restored.restore(source.snapshot());
+    restored.runCycles(300_000);
+
+    expect((restored.cpu.readData(WDTCSR) >> WDIE) & 1).toBe(0);
+    expect(restored.cpu.pc).toBe(WDT_VECTOR);
   });
 });

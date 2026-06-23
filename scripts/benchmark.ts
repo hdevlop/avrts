@@ -54,6 +54,23 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       create: () => AVR(serialPrintHex),
     },
     {
+      // Same fixture as serial-print but with a text subscriber attached, so the
+      // Phase 5 serial-output path (listener dispatch + chunk handling) is
+      // actually exercised. serial-print alone has no onText listener, so its
+      // throughput is firmware-bound and cannot show Phase 5 wins/regressions.
+      name: "serial-print-listener",
+      description: "Arduino Serial.println fixture with an onText subscriber",
+      cycles: cycles(250_000),
+      create: () => {
+        const avr = AVR(serialPrintHex);
+        let received = 0;
+        avr.serial.onText((text) => {
+          received += text.length;
+        });
+        return avr;
+      },
+    },
+    {
       name: "analog-write",
       description: "Arduino analogWrite PWM fixture",
       cycles: cycles(500_000),

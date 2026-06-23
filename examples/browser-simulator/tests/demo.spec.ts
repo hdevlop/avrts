@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * Phase 20 browser-demo smoke tests. These drive the real UI through the public
@@ -7,14 +7,22 @@ import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  // The inspector renders R0..R31 once the bundle has booted.
-  await expect(page.locator(".inspector-registers .reg-cell").first()).toBeVisible();
+  // The app starts in Run mode; wait for the visible stage rather than hidden
+  // Debug-panel content.
+  await expect(page.locator(".workspace")).toBeVisible();
+  await expect(page.locator(".board-pin")).toHaveCount(14);
 });
+
+async function openDebug(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Debug" }).click();
+  await expect(page.locator(".inspector-registers .reg-cell").first()).toBeVisible();
+}
 
 test("loads with workspace, board pins and CPU inspector", async ({ page }) => {
   await expect(page).toHaveTitle("avrts browser simulator");
   await expect(page.locator(".workspace")).toBeVisible();
   await expect(page.locator(".board-pin")).toHaveCount(14);
+  await openDebug(page);
   await expect(page.locator(".inspector-registers .reg-cell")).toHaveCount(32);
   await expect(page.locator(".inspector-status")).toContainText("PC 0x");
 });
@@ -42,6 +50,7 @@ test("program changes keep the simulator running", async ({ page }) => {
 });
 
 test("single-step advances the program counter", async ({ page }) => {
+  await openDebug(page);
   await page.getByRole("button", { name: "Pause" }).click();
   const status = page.locator(".inspector-status");
   const before = await status.textContent();
@@ -50,6 +59,7 @@ test("single-step advances the program counter", async ({ page }) => {
 });
 
 test("snapshot then restore rewinds CPU state", async ({ page }) => {
+  await openDebug(page);
   await page.getByRole("button", { name: "Pause" }).click();
   const status = page.locator(".inspector-status");
   await page.getByRole("button", { name: "Snapshot" }).click();

@@ -269,6 +269,7 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   const snapshots = new Map<string, AVRSnapshot>();
   const watchFrames = new Map<number, DataWatchFrame>();
   const watchUnsubscribers = new Map<number, () => void>();
+  let pendingSerialText = "";
   // Exact-edge capture (logic analyzer / scope): every edge on captured pins,
   // independent of the coalesced `frame` stream.
   const capturePins = new Set<number>();
@@ -305,6 +306,7 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   });
 
   const emitFrame = (): void => {
+    flushSerialText();
     const pins = [...pendingPins.values()];
     pendingPins.clear();
     const pwm = readPwmFrames();
@@ -330,6 +332,13 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     const events = [...watchFrames.values()];
     watchFrames.clear();
     post({ type: "watchFrame", events });
+  };
+
+  const flushSerialText = (): void => {
+    if (pendingSerialText.length === 0) return;
+    const text = pendingSerialText;
+    pendingSerialText = "";
+    post({ type: "serial", text });
   };
 
   const flushLogicChunk = (): void => {
@@ -444,7 +453,9 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
         if (edgeBuffer.length >= MAX_EDGE_BUFFER) flushLogicChunk();
       }
     });
-    avr.serial.onText((text) => post({ type: "serial", text }));
+    avr.serial.onText((text) => {
+      pendingSerialText += text;
+    });
     avr.on("breakpoint", (event) => {
       paused = true;
       cancelPump();

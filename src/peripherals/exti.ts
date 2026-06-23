@@ -61,29 +61,59 @@ const CONFIGS: readonly ExtIntConfig[] = [INT0_CONFIG, INT1_CONFIG];
  */
 export class ExternalInterrupts {
   private prevPinLevels = { int0: false, int1: false };
+  private levelModeActive = false;
+  private readonly onLevelEvent = (): void => {
+    this.evaluateLevelMode();
+    this.scheduleLevelEvent();
+  };
 
   constructor(
     private readonly cpu: CPU,
     private readonly gpio: Gpio,
   ) {}
 
-  /** Subscribe to GPIO port D changes; install cycle listener for level mode. */
-  attach(): void {
+  /** Subscribe to GPIO port D changes; standalone use also wires level-mode ticking. */
+  attach(options: { cycleListener?: boolean } = {}): void {
     this.prevPinLevels.int0 = this.gpio.readPin("D", INT0_CONFIG.pinBit);
     this.prevPinLevels.int1 = this.gpio.readPin("D", INT1_CONFIG.pinBit);
-    this.gpio.onPortTouched("D", () => this.evaluateEdges());
-    this.cpu.onCycles(() => this.evaluateLevelMode());
+    this.refreshLevelModeActive();
+    this.gpio.onPortTouched("D", () => {
+      this.evaluateEdges();
+      this.evaluateLevelMode();
+      this.scheduleLevelEvent();
+    });
+    if (options.cycleListener !== false) this.cpu.onCycles(() => this.tick());
   }
 
   reset(): void {
     this.prevPinLevels.int0 = this.gpio.readPin("D", INT0_CONFIG.pinBit);
     this.prevPinLevels.int1 = this.gpio.readPin("D", INT1_CONFIG.pinBit);
+    this.refreshLevelModeActive();
+    this.scheduleLevelEvent();
+  }
+
+  tick(): void {
+    if (!this.levelModeActive) return;
+    this.evaluateLevelMode();
+    this.scheduleLevelEvent();
   }
 
   @OnWrite(EIFR)
   onWriteEifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     // Flags are write-1-to-clear.
     this.cpu.data[EIFR] = oldValue & ~value;
+  }
+
+  @OnWrite(EICRA)
+  onWriteEicra(): void {
+    this.refreshLevelModeActive();
+    this.scheduleLevelEvent();
+  }
+
+  @OnWrite(EIMSK)
+  onWriteEimsk(): void {
+    this.refreshLevelModeActive();
+    this.scheduleLevelEvent();
   }
 
   /** Edge detection runs on every GPIO port-D touch. */
@@ -101,9 +131,9 @@ export class ExternalInterrupts {
       const matches =
         mode === 1 || (mode === 2 && falling) || (mode === 3 && rising);
       if (!matches) continue;
-      if ((this.cpu.readData(EIMSK) & (1 << cfg.enableBit)) === 0) continue;
+      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) === 0) continue;
 
-      this.cpu.data[EIFR] = this.cpu.readData(EIFR) | (1 << cfg.flagBit);
+      this.cpu.data[EIFR] = this.cpu.data[EIFR]! | (1 << cfg.flagBit);
       this.cpu.requestInterrupt(cfg.vector, () => {
         this.cpu.data[EIFR] = this.cpu.readData(EIFR) & ~(1 << cfg.flagBit);
       });
@@ -119,7 +149,7 @@ export class ExternalInterrupts {
     for (const cfg of CONFIGS) {
       const mode = this.triggerMode(cfg);
       if (mode !== 0) continue;
-      if ((this.cpu.readData(EIMSK) & (1 << cfg.enableBit)) === 0) continue;
+      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) === 0) continue;
       const high = this.gpio.readPin("D", cfg.pinBit);
       if (high) continue;
       this.cpu.requestInterrupt(cfg.vector);
@@ -128,7 +158,35 @@ export class ExternalInterrupts {
 
   /** Read the ISCn1:ISCn0 two-bit mode value from EICRA. */
   private triggerMode(cfg: ExtIntConfig): number {
-    return (this.cpu.readData(EICRA) >> cfg.iscLow) & 0x03;
+    return (this.cpu.data[EICRA]! >> cfg.iscLow) & 0x03;
+  }
+
+  private refreshLevelModeActive(): void {
+    const eicra = this.cpu.data[EICRA]!;
+    const eimsk = this.cpu.data[EIMSK]!;
+    this.levelModeActive =
+      ((eimsk & (1 << INT0_CONFIG.enableBit)) !== 0 &&
+        (((eicra >> INT0_CONFIG.iscLow) & 0x03) === 0)) ||
+      ((eimsk & (1 << INT1_CONFIG.enableBit)) !== 0 &&
+        (((eicra >> INT1_CONFIG.iscLow) & 0x03) === 0));
+  }
+
+  private hasAssertedLevelSource(): boolean {
+    if (!this.levelModeActive) return false;
+    for (const cfg of CONFIGS) {
+      if (this.triggerMode(cfg) !== 0) continue;
+      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) === 0) continue;
+      if (!this.gpio.readPin("D", cfg.pinBit)) return true;
+    }
+    return false;
+  }
+
+  private scheduleLevelEvent(): void {
+    if (this.hasAssertedLevelSource()) {
+      this.cpu.addClockEvent(this.onLevelEvent, 1);
+    } else {
+      this.cpu.clearClockEvent(this.onLevelEvent);
+    }
   }
 
   // --- Snapshot / restore (Phase 10) ---
@@ -145,5 +203,7 @@ export class ExternalInterrupts {
   restore(snap: ExternalInterruptsSnapshot): void {
     this.prevPinLevels.int0 = !!snap.prevPinLevels.int0;
     this.prevPinLevels.int1 = !!snap.prevPinLevels.int1;
+    this.refreshLevelModeActive();
+    this.scheduleLevelEvent();
   }
 }
