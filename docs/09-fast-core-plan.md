@@ -395,9 +395,38 @@ analog-write, 5M cycles    78.4M/s vs avr8js 78.1M/s = 1.01x
 
 This is measurement cleanup only: no runtime hot path changed.
 
-The next broad step is to stop adding hand-picked blocks and build a generator or
-mini block compiler on top of this cache. That is the point where the project
-crosses from "fast-path layer" into "second execution engine" territory.
+### Step 5c implemented -- generated-core scaffold, not enabled
+
+The generated-core work now has a safe first layer:
+
+- `scripts/generate-fast-core.ts` is the source for the generated fast-run body.
+- `src/cpu/generated/fast-core.ts` is committed generated output.
+- `bun run check:fast-core` fails if the committed output is stale.
+- `test/generated-fast-core.test.ts` checks freshness and runs the generated path
+  against the benchmark fixtures by temporarily patching `CPU.runFast`.
+- `bun run bench:generated-fast-core` A/Bs the handwritten hot path against the
+  generated one without changing production runtime behavior.
+
+The generated path is deliberately **not** wired into `CPU.run()` yet. The first
+full A/B run was correct but mixed:
+
+```text
+tight-loop, 2M cycles            generated/base = 1.09x
+delay-blink, 2M cycles           generated/base = 0.90x
+serial-print, 250k cycles        generated/base = 1.14x
+serial-print-listener, 250k      generated/base = 0.98x
+analog-write, 500k cycles        generated/base = 0.99x
+```
+
+That is not strong enough to replace the handwritten hot path. The generated
+function currently runs outside the class and reaches private CPU internals
+through a patched method, so the next generator step is to emit a class-local
+body or otherwise remove that access shape before considering a runtime swap.
+
+The next broad step is to move the scaffold from "externally generated function"
+to "class-local generated hot path" or a mini block compiler on top of the
+FastBlock cache. That is the point where the project crosses from "fast-path
+layer" into "second execution engine" territory.
 
 ---
 
@@ -412,6 +441,8 @@ Run before and after every patch:
 
 ```sh
 bun run scripts/profile-opcodes.ts -- --mode fast --top 8   # re-rank if a fixture changes
+bun run check:fast-core                       # generated fast core is fresh
+bun run bench:generated-fast-core -- --repeats 3  # generated-vs-handwritten A/B
 bun run bench:compare -- --repeats 3          # track the avr8js ratio trend
 bun run bench -- --repeats 3                   # regression floors
 bun test
