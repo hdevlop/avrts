@@ -13,4 +13,5 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "mov",
   "shift-left-dec-block",
   "arduino-micros-block",
+  "call",
 ] as const;

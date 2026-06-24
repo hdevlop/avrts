@@ -680,6 +680,12 @@ export class CPU {
         else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
+        else if ((opcode & 0xfe0e) === 0x940e) {
+          this.pushWord(pc + 2);
+          const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
+          this.pc = (high << 16) | flash[pc + 1]!;
+          this.cycles += 4;
+        }
         else {
           let handler = decodeCache[pc];
           if (handler === undefined) {

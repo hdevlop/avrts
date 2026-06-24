@@ -440,6 +440,42 @@ a mini block compiler on top of the FastBlock cache. Every expansion needs the
 same freshness check, parity coverage, and A/B gate before it replaces handwritten
 logic.
 
+### Step 5d implemented -- generated CALL arm
+
+Fast-mode profiling after the generated-core swap showed `delay-blink` still had
+a hot leftover `CALL micros()` instruction outside the Arduino `micros()` body
+FastBlock. `CALL` is a narrow two-word control-transfer opcode and the generated
+method is class-local, so it can push the return address directly without exposing
+new public CPU surface.
+
+Added to the generated arm list:
+
+- `CALL`: push `pc + 2`, decode the absolute target from the second word, jump,
+  and bill 4 cycles.
+
+The focused parity test covers PC, cycles, SP, stack bytes, and SREG. Freshness
+and fixture-level generated-vs-handwritten parity still gate the generated output.
+
+Measured A/B:
+
+```text
+short default A/B, best of 5:
+tight-loop, 2M cycles            generated/base = 1.14x
+delay-blink, 2M cycles           generated/base = 1.21x
+serial-print, 250k cycles        generated/base = 1.05x
+serial-print-listener, 250k      generated/base = 0.98x
+analog-write, 500k cycles        generated/base = 1.03x
+
+steady listener check:
+serial-print-listener, 5M        generated/base = 1.03x
+
+avr8js compare, best of 5:
+tight-loop, 10M cycles    168.9M/s vs avr8js 90.7M/s = 1.86x
+delay-blink, 50M cycles    93.3M/s vs avr8js 51.3M/s = 1.82x
+serial-print, 5M cycles    84.3M/s vs avr8js 67.4M/s = 1.25x
+analog-write, 5M cycles    79.1M/s vs avr8js 71.4M/s = 1.11x
+```
+
 ---
 
 ## Recommended order (summary)

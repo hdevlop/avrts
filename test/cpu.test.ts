@@ -278,6 +278,9 @@ describe("runFast opcode parity", () => {
   // SBIW Rd+1:Rd,K where Rd is one of r24,r26,r28,r30.
   const sbiw = (d: 24 | 26 | 28 | 30, k: number) =>
     0x9700 | ((((d - 24) / 2) & 0x03) << 4) | ((k & 0x30) << 2) | (k & 0x0f);
+  // CALL k is a two-word instruction; low 16 address bits live in the next word.
+  const call = (addr: number) =>
+    [0x940e | ((addr >>> 16) & 0x01) | (((addr >>> 17) & 0x1f) << 4), addr & 0xffff] as const;
 
   function setWord(cpu: CPU, low: number, value: number): void {
     cpu.data[low] = value & 0xff;
@@ -324,6 +327,19 @@ describe("runFast opcode parity", () => {
       const fast = runOneViaFastRun(opcode, setup);
       expectSameCoreState(fast, ticked, [testCase.d, testCase.d + 1, SREG_ADDR]);
     }
+  });
+
+  test("CALL generated fast path matches the handler path", () => {
+    const [opcode, nextWord] = call(0x0123);
+    const setup = (cpu: CPU) => {
+      cpu.flash[1] = nextWord;
+      cpu.data[SREG_ADDR] = 0xa5;
+    };
+
+    const ticked = runOneViaTick(opcode, setup);
+    const fast = runOneViaFastRun(opcode, setup);
+
+    expectSameCoreState(fast, ticked, [SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
   });
 
   function createZeroSbiwBreqLoop(pairLow: 24 | 26 | 28 | 30): CPU {

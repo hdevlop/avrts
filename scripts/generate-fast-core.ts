@@ -105,6 +105,16 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
+  {
+    name: "call",
+    guard: "(opcode & 0xfe0e) === 0x940e",
+    body: [
+      "this.pushWord(pc + 2);",
+      "const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);",
+      "this.pc = (high << 16) | flash[pc + 1]!;",
+      "this.cycles += 4;",
+    ],
+  },
 ];
 
 export function generatedFastCoreArmNames(): readonly string[] {
