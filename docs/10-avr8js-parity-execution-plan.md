@@ -45,6 +45,8 @@ Implementation/status:
   plan treats it as verify-don't-redo.
 - [x] Real-sketch validation: `sensor-format` fixture added and wired into
   `bench`, `bench:compare`, `profile:opcodes`, and Phase 17 perf coverage.
+- [x] Step 6 first slice: specialized avr-libc `__udivmodsi4` helper-loop
+  FastBlock added for the `sensor-format` real-sketch gap.
 - [x] Step 7 browser/demo release gate rerun: `bun run build:demo` and
   `bun run test:e2e` both passed.
 - [x] Step 8 checkpoint: the arc was split into logical commits for fast-core
@@ -58,11 +60,14 @@ Known result:
 - [x] The next real hot shape is branchy library/helper loops
   (`__udivmodsi4` / `Print::printNumber`), not another simple straight-line ALU
   run.
+- [x] First helper-loop slice improved `sensor-format`, but did not close the
+  avr8js gap: compare moved to roughly `0.53x`-`0.57x`.
 
 Not done / optional:
 
-- [ ] Decide whether real-program throughput is a product goal. If yes, start a
-  Step 6-style branchy helper-loop translator/JIT slice.
+- [ ] Decide whether to continue Step 6 after the first helper-loop slice. The
+  next visible `sensor-format` hot rows are `Print`/helper code around shifts,
+  `LPM` reads, and multiply.
 - [ ] Add more real fixtures only if broader product claims need evidence
   (for example I2C/SPI or string-heavy sketches).
 - [ ] Branch-shaped loop fusion remains deliberately unshipped unless a real
@@ -413,6 +418,48 @@ Start with a tiny block compiler, not a whole-program JIT:
 
 This is the step that can beat avr8js structurally, because it reduces host
 dispatch count below avr8js's one-dispatch-per-AVR-instruction model.
+
+### Step 6a - avr-libc `__udivmodsi4` helper-loop FastBlock - DONE
+
+The first real-sketch Step 6 slice is implemented: a guarded FastBlock recognizes
+avr-libc's fixed 32-bit unsigned divide/modulo helper loop at `__udivmodsi4_ep`
+and executes the register-only branchy loop in one host dispatch window.
+
+Safety shape:
+
+- exact opcode sequence only (`ADC`/`CP`/`CPC`/`BRCS`/`SUB`/`SBC` loop body plus
+  the `ADC`/`DEC`/`BRNE` epilogue);
+- fast timing mode only;
+- no cycle listeners;
+- no enabled pending interrupt;
+- no scheduled clock event inside the conservative max-cycle window;
+- parity tests compare against the handler path across counter, dividend,
+  divisor, remainder, and SREG seeds;
+- guard test proves the block declines before crossing a clock event.
+
+Measured result:
+
+```sh
+bun run bench -- --case sensor-format --repeats 5
+# sensor-format   23,454,637 cycles/s    1.47x realtime
+
+bun run bench:compare -- --case sensor-format --repeats 5
+# sensor-format: avrts 29,382,227/s vs avr8js 51,659,030/s = 0.57x
+
+bun run bench:compare -- --repeats 3
+# sensor-format: avrts 27,433,653/s vs avr8js 52,208,361/s = 0.53x
+
+bun run profile:opcodes -- --case sensor-format --mode fast --top 250
+# udivmodsi4-loop fast block: 4,858 events, 2,629,653 cycles, 52.6% cycle share
+```
+
+The first version used shared ALU helpers and was correct but slower. The kept
+version uses direct byte/flag math, matching the generated-arm style.
+
+Remaining signal: the old `__udivmodsi4` body is no longer the top table. The
+next visible rows are `Print`/helper code around a shift loop (`LSR`/`ROR`/`DEC`
+/`BRNE`), `LPM` reads from flash strings/tables, and multiply helper rows. Treat
+any follow-up as another measured Step 6 slice, not a broad JIT rewrite.
 
 ## Step 7 - Full Validation Gate
 

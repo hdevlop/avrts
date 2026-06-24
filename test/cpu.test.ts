@@ -960,6 +960,136 @@ describe("fast-path opcode parity", () => {
     expect(cpu.cycles).toBe(20);
   });
 
+  const UDIVMOD_EP_PC = 32;
+  const UDIVMOD_MAX_CYCLES = (counter: number) => {
+    const loops = counter === 0 ? 256 : counter;
+    return 6 + (loops - 1) * 20;
+  };
+
+  function loadUdivmodsi4Loop(cpu: CPU): void {
+    cpu.setExecutor(new Decoder());
+    const body = UDIVMOD_EP_PC - 13;
+    cpu.flash.set(
+      [
+        0x1faa, // ADC r26,r26
+        0x1fbb, // ADC r27,r27
+        0x1fee, // ADC r30,r30
+        0x1fff, // ADC r31,r31
+        0x17a2, // CP r26,r18
+        0x07b3, // CPC r27,r19
+        0x07e4, // CPC r30,r20
+        0x07f5, // CPC r31,r21
+        0xf020, // BRCS +4, to ep
+        0x1ba2, // SUB r26,r18
+        0x0bb3, // SBC r27,r19
+        0x0be4, // SBC r30,r20
+        0x0bf5, // SBC r31,r21
+        0x1f66, // ep: ADC r22,r22
+        0x1f77, // ADC r23,r23
+        0x1f88, // ADC r24,r24
+        0x1f99, // ADC r25,r25
+        0x941a, // DEC r1
+        0xf769, // BRNE -19, to body
+      ],
+      body,
+    );
+    cpu.pc = UDIVMOD_EP_PC;
+  }
+
+  function seedUdivmodsi4State(
+    cpu: CPU,
+    options: {
+      counter: number;
+      dividend: number;
+      divisor: number;
+      remainder: number;
+      sreg: number;
+    },
+  ): void {
+    for (let r = 0; r < 32; r += 1) cpu.data[r] = (r * 13 + 7) & 0xff;
+    cpu.data[1] = options.counter & 0xff;
+    for (let i = 0; i < 4; i += 1) {
+      cpu.data[18 + i] = (options.divisor >>> (i * 8)) & 0xff;
+      cpu.data[22 + i] = (options.dividend >>> (i * 8)) & 0xff;
+    }
+    cpu.data[26] = options.remainder & 0xff;
+    cpu.data[27] = (options.remainder >>> 8) & 0xff;
+    cpu.data[30] = (options.remainder >>> 16) & 0xff;
+    cpu.data[31] = (options.remainder >>> 24) & 0xff;
+    cpu.data[SREG_ADDR] = options.sreg;
+  }
+
+  test("avr-libc __udivmodsi4 loop block matches the handler path", () => {
+    const cases = [
+      { counter: 1, dividend: 0x00000000, divisor: 1, remainder: 0, sreg: 0x00 },
+      { counter: 2, dividend: 0x80000000, divisor: 3, remainder: 0, sreg: 0x01 },
+      { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0x00 },
+      { counter: 33, dividend: 0xffffffff, divisor: 0x0000ffff, remainder: 0x00ff00ff, sreg: 0xa0 },
+      { counter: 0, dividend: 0x89abcdef, divisor: 0x00012345, remainder: 0, sreg: 0x20 },
+    ];
+
+    for (const variant of cases) {
+      const slow = new CPU();
+      const fast = new CPU();
+      loadUdivmodsi4Loop(slow);
+      loadUdivmodsi4Loop(fast);
+      slow.onTrace(() => {});
+      seedUdivmodsi4State(slow, variant);
+      seedUdivmodsi4State(fast, variant);
+      const target = UDIVMOD_MAX_CYCLES(variant.counter);
+
+      slow.run(target);
+      fast.run(target);
+
+      expect(fast.pc).toBe(slow.pc);
+      expect(fast.cycles).toBe(slow.cycles);
+      expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    }
+  });
+
+  test("profileRun reports the avr-libc __udivmodsi4 loop block", () => {
+    const cpu = new CPU();
+    loadUdivmodsi4Loop(cpu);
+    seedUdivmodsi4State(cpu, {
+      counter: 33,
+      dividend: 0x12345678,
+      divisor: 10,
+      remainder: 0,
+      sreg: 0,
+    });
+    let sawBlock = false;
+    cpu.profileRun(UDIVMOD_MAX_CYCLES(33), (event) => {
+      if (event.blockKind === "udivmodsi4-loop") sawBlock = true;
+    });
+    expect(sawBlock).toBe(true);
+  });
+
+  test("avr-libc __udivmodsi4 loop block refuses to cross a clock event", () => {
+    const slow = new CPU();
+    const fast = new CPU();
+    loadUdivmodsi4Loop(slow);
+    loadUdivmodsi4Loop(fast);
+    slow.onTrace(() => {});
+    const variant = { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0 };
+    seedUdivmodsi4State(slow, variant);
+    seedUdivmodsi4State(fast, variant);
+    slow.addClockEvent(() => {
+      slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
+    }, 3);
+    fast.addClockEvent(() => {
+      fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
+    }, 3);
+
+    const target = UDIVMOD_MAX_CYCLES(33);
+    slow.run(target);
+    fast.run(target);
+
+    expect(fast.pc).toBe(slow.pc);
+    expect(fast.cycles).toBe(slow.cycles);
+    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    expect(fast.data[0x100]).toBe(1);
+  });
+
 });
 
 describe("subcmp-run fast block (Step 4)", () => {

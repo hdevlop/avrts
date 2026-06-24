@@ -64,6 +64,7 @@ const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
 const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
 const FAST_BLOCK_ARDUINO_MICROS = 5;
 const FAST_BLOCK_SUBCMP_RUN = 6;
+const FAST_BLOCK_UDIVMODSI4_LOOP = 7;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -86,6 +87,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "shift-left-dec",
   "arduino-micros",
   "subcmp-run",
+  "udivmodsi4-loop",
 ];
 
 /**
@@ -745,6 +747,9 @@ export class CPU {
         else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
+        else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
         else if ((opcode & 0xfc00) === 0x0c00) {
           const d = regD5(opcode);
           const dv = data[d]!;
@@ -1253,6 +1258,10 @@ export class CPU {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
         }
+        else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
+          this.profileFastBlock(listener, pc, opcode, before);
+          continue;
+        }
         else if ((opcode & 0xfc00) === 0x0c00) {
           const d = regD5(opcode);
           const dv = data[d]!;
@@ -1576,6 +1585,8 @@ export class CPU {
         return this.runArduinoMicrosBlock(pc, target);
       case FAST_BLOCK_SUBCMP_RUN:
         return this.runSubCmpRunBlock(pc, target);
+      case FAST_BLOCK_UDIVMODSI4_LOOP:
+        return this.runUdivmodsi4LoopBlock(pc, target);
       default:
         return false;
     }
@@ -1595,7 +1606,142 @@ export class CPU {
     if ((opcode & 0xfc00) === 0x1800) {
       return this.subCmpRunLength(pc) >= SUBCMP_RUN_MIN ? FAST_BLOCK_SUBCMP_RUN : FAST_BLOCK_NONE;
     }
+    if (opcode === 0x1f66) {
+      return this.isUdivmodsi4LoopBlock(pc) ? FAST_BLOCK_UDIVMODSI4_LOOP : FAST_BLOCK_NONE;
+    }
     return FAST_BLOCK_NONE;
+  }
+
+  /**
+   * avr-libc's 32-bit unsigned divide/modulo helper loop, entered at
+   * `__udivmodsi4_ep` after setup jumps over the body. This exact register-only
+   * shape dominates the realistic sensor-format fixture through Arduino's
+   * decimal `Print::printNumber` path.
+   */
+  private isUdivmodsi4LoopBlock(pc: number): boolean {
+    if (pc < 13) return false;
+    const flash = this.flash;
+    const body = pc - 13;
+    const exact: Array<[number, number]> = [
+      [body + 0, 0x1faa], // ADC r26,r26
+      [body + 1, 0x1fbb], // ADC r27,r27
+      [body + 2, 0x1fee], // ADC r30,r30
+      [body + 3, 0x1fff], // ADC r31,r31
+      [body + 4, 0x17a2], // CP r26,r18
+      [body + 5, 0x07b3], // CPC r27,r19
+      [body + 6, 0x07e4], // CPC r30,r20
+      [body + 7, 0x07f5], // CPC r31,r21
+      [body + 8, 0xf020], // BRCS +4, to ep
+      [body + 9, 0x1ba2], // SUB r26,r18
+      [body + 10, 0x0bb3], // SBC r27,r19
+      [body + 11, 0x0be4], // SBC r30,r20
+      [body + 12, 0x0bf5], // SBC r31,r21
+      [pc + 0, 0x1f66], // ADC r22,r22
+      [pc + 1, 0x1f77], // ADC r23,r23
+      [pc + 2, 0x1f88], // ADC r24,r24
+      [pc + 3, 0x1f99], // ADC r25,r25
+      [pc + 4, 0x941a], // DEC r1
+      [pc + 5, 0xf769], // BRNE -19, to body
+    ];
+    for (const [addr, opcode] of exact) {
+      if (flash[addr] !== opcode) return false;
+    }
+    return true;
+  }
+
+  private runUdivmodsi4LoopBlock(pc: number, target: number): boolean {
+    const loops = this.data[1] === 0 ? 256 : this.data[1]!;
+    // Conservative upper bound: final ep is 6 cycles; each prior iteration can
+    // take ep(7) + body(13). If an event lands in that window, decline.
+    const maxCycles = 6 + (loops - 1) * 20;
+    if (!this.canRunFastBlock(target, maxCycles)) return false;
+
+    const data = this.data;
+    let elapsed = 0;
+    const adcSelf = (register: number): void => {
+      const dv = data[register]!;
+      const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+      const sum = dv + dv + carry;
+      const result = sum & 0xff;
+      const n = (result & 0x80) !== 0;
+      const v = ((dv ^ result) & 0x80) !== 0;
+      const flags =
+        ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+        (v ? SREG_V : 0) |
+        (n ? SREG_N : 0) |
+        (result === 0 ? SREG_Z : 0) |
+        (sum > 0xff ? SREG_C : 0) |
+        (n !== v ? SREG_S : 0);
+      data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+      data[register] = result;
+      elapsed += 1;
+    };
+    const subOp = (d: number, r: number, carryUsed: boolean, writeback: boolean): void => {
+      const dv = data[d]!;
+      const rv = data[r]!;
+      const carry = carryUsed && (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+      const prev = data[SREG_ADDR]!;
+      const result = (dv - rv - carry) & 0xff;
+      const n = (result & 0x80) !== 0;
+      const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+      const flags =
+        ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+        (v ? SREG_V : 0) |
+        (n ? SREG_N : 0) |
+        ((carryUsed ? result === 0 && (prev & SREG_Z) !== 0 : result === 0) ? SREG_Z : 0) |
+        (dv - rv - carry < 0 ? SREG_C : 0) |
+        (n !== v ? SREG_S : 0);
+      data[SREG_ADDR] = (prev & ~SREG_ARITH_MASK) | flags;
+      if (writeback) data[d] = result;
+      elapsed += 1;
+    };
+
+    while (true) {
+      adcSelf(22);
+      adcSelf(23);
+      adcSelf(24);
+      adcSelf(25);
+
+      const dec = (data[1]! - 1) & 0xff;
+      data[1] = dec;
+      const n = (dec & 0x80) !== 0;
+      const v = dec === 0x7f;
+      data[SREG_ADDR] =
+        (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) |
+        (v ? SREG_V : 0) |
+        (n ? SREG_N : 0) |
+        (dec === 0 ? SREG_Z : 0) |
+        (n !== v ? SREG_S : 0);
+      elapsed += 1;
+      if (dec === 0) {
+        elapsed += 1; // BRNE not taken
+        break;
+      }
+      elapsed += 2; // BRNE taken
+
+      adcSelf(26);
+      adcSelf(27);
+      adcSelf(30);
+      adcSelf(31);
+      subOp(26, 18, false, false);
+      subOp(27, 19, true, false);
+      subOp(30, 20, true, false);
+      subOp(31, 21, true, false);
+
+      if ((data[SREG_ADDR]! & SREG_C) !== 0) {
+        elapsed += 2; // BRCS taken to ep
+        continue;
+      }
+      elapsed += 1; // BRCS not taken
+      subOp(26, 18, false, true);
+      subOp(27, 19, true, true);
+      subOp(30, 20, true, true);
+      subOp(31, 21, true, true);
+    }
+
+    this._cycles += elapsed;
+    this.pc = pc + 6;
+    return true;
   }
 
   /** Decode the subtract/compare class for the straight-line block. */

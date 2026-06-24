@@ -29,7 +29,8 @@ export type FastBlockProfileKind =
   | "zero-sbiw-breq"
   | "shift-left-dec"
   | "arduino-micros"
-  | "subcmp-run";
+  | "subcmp-run"
+  | "udivmodsi4-loop";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {

@@ -323,6 +323,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "(opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
+  {
+    name: "udivmodsi4-loop-block",
+    guard: "opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)",
+    body: ["continue;"],
+  },
   // Add/word-arithmetic group (docs/10 Step 2). ADD shares the 0x0c00 mask with the
   // shift-left-dec FastBlock above, so it MUST stay after it: the block gets first
   // crack and only general ADDs fall through here.
