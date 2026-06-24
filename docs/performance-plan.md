@@ -76,6 +76,11 @@ step-by-step history of how we got here.
   ladder did not improve the real target. Best `sensor-format` was **34.4M/s**
   (`repeats 10`) and the full fixture mix measured **30.7M/s** (`repeats 5`) for
   `sensor-format`, so the code was removed.
+- [x] **Rejected cold switch-tail prototype** — preserving the existing hot ladder
+  and routing the same colder generated bodies through `switch (opcode >>> 12)`
+  also passed parity, but still failed the real benchmark gate:
+  `sensor-format` measured **34.3M/s** (`repeats 10`) and **30.4M/s** in the full
+  fixture mix (`repeats 5`). It was removed.
 - [x] **Commit/checkpoint the current arc** — landed the dirty work as logical
   commits so the measured baseline is stable before opening another performance
   project.
@@ -141,11 +146,11 @@ dispatching one instruction:
    not copy avr8js code (you'd re-derive logic you already have and adapt it to a
    different object model). Expectation: this **matches** avr8js (~1.0x on real
    code); it does not beat it, because it still dispatches once per instruction.
-   - Already rejected: a cheaper direct-handler-table fallback swap did not help
-     the real target, and adding more inline bodies to the existing linear ladder
-     also did not help. The next prototype must change the **dispatch shape**:
-     generate a real decode tree / switch that reaches opcode bodies in a few
-     branches, not a longer `else if` ladder.
+   - Already rejected: direct-handler-table fallback, more inline bodies in the
+     existing linear ladder, and a cold high-nibble switch tail. The only
+     remaining monolithic-core variant worth trying is a **separate whole-core
+     generated interpreter replacement** behind a gate, not another incremental
+     tail bolted onto the current ladder.
 - [ ] **Translate-once block JIT → BEAT avr8js on real code.** Compile hot basic
    blocks (branches included) into one JS function via `new Function`, cached by
    block-start PC, so a hot region pays dispatch *zero* times after the first
@@ -194,9 +199,10 @@ bun run build:demo && bun run test:e2e # browser/demo release gate
 ## Recommended next step
 
 **Checkpoint complete.** The code and docs now describe a measured, green
-baseline: `DEC`/`RET` were kept, the dispatch-tree, direct-handler-table, and
-broad inline-linear-ladder prototypes were rejected, and `sensor-format` is still
-below avr8js. The current arc is landed as logical commits:
+baseline: `DEC`/`RET` were kept, the dispatch-tree, direct-handler-table, broad
+inline-linear-ladder, and cold switch-tail prototypes were rejected, and
+`sensor-format` is still below avr8js. The current arc is landed as logical
+commits:
 
 - [x] generated fast-core implementation/tests (`__udivmodsi4`,
   `shift-right-dec`, `umulhisi3`, `DEC`, `RET`)
@@ -204,10 +210,11 @@ below avr8js. The current arc is landed as logical commits:
   `benchmark-plan.md`, old `07`-`10` doc replacement)
 - [x] benchmark result note and validation evidence
 
-The next implementation step is **a real decode-tree/switch prototype**:
-preserve the current hot arms, route colder generated bodies through a bounded
-branch tree, benchmark `sensor-format` first, and keep it only if the real-code
-row improves.
+The next implementation step is either **a separate whole-core generated
+interpreter replacement** or, if the goal is to beat avr8js rather than merely
+match it, skip ahead to the **translate-once block JIT**. Do not add more
+incremental arms to the current ladder unless a fresh profile shows a large,
+isolated win.
 
 ## Open decision
 
