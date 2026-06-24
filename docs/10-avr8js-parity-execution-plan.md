@@ -47,6 +47,8 @@ Implementation/status:
   `bench`, `bench:compare`, `profile:opcodes`, and Phase 17 perf coverage.
 - [x] Step 6 first slice: specialized avr-libc `__udivmodsi4` helper-loop
   FastBlock added for the `sensor-format` real-sketch gap.
+- [x] Step 6 second slice: compiler-emitted 32-bit `LSR`/`ROR`/`DEC` right-shift
+  loop FastBlock added for the next `sensor-format` hot row.
 - [x] Step 7 browser/demo release gate rerun: `bun run build:demo` and
   `bun run test:e2e` both passed.
 - [x] Step 8 checkpoint: the arc was split into logical commits for fast-core
@@ -62,12 +64,16 @@ Known result:
   run.
 - [x] First helper-loop slice improved `sensor-format`, but did not close the
   avr8js gap: compare moved to roughly `0.53x`-`0.57x`.
+- [x] Second helper-loop slice removed the hottest shift-loop rows and moved the
+  latest isolated `sensor-format` compare to roughly `0.62x`-`0.67x` avr8js.
 
 Not done / optional:
 
-- [ ] Decide whether to continue Step 6 after the first helper-loop slice. The
-  next visible `sensor-format` hot rows are `Print`/helper code around shifts,
-  `LPM` reads, and multiply.
+- [x] Continue Step 6 after the first helper-loop slice with the measured
+  right-shift loop slice.
+- [ ] Decide whether to continue Step 6 after the second helper-loop slice. The
+  next visible `sensor-format` hot rows are `LPM` reads, multiply, and
+  call/return-heavy `Print`/Serial helper code.
 - [ ] Add more real fixtures only if broader product claims need evidence
   (for example I2C/SPI or string-heavy sketches).
 - [ ] Branch-shaped loop fusion remains deliberately unshipped unless a real
@@ -461,6 +467,47 @@ next visible rows are `Print`/helper code around a shift loop (`LSR`/`ROR`/`DEC`
 /`BRNE`), `LPM` reads from flash strings/tables, and multiply helper rows. Treat
 any follow-up as another measured Step 6 slice, not a broad JIT rewrite.
 
+### Step 6b - 32-bit right-shift counted-loop FastBlock - DONE
+
+The second real-sketch Step 6 slice is implemented: a guarded FastBlock recognizes
+compiler-emitted 32-bit right-shift loops shaped as:
+
+```asm
+LSR rN+3
+ROR rN+2
+ROR rN+1
+ROR rN
+DEC rC
+BRNE loop
+```
+
+The `sensor-format` sketch hits this exact shape in `main` while preparing the
+PWM value after accumulator math. The block is intentionally narrow: contiguous
+four-byte registers only, non-overlapping counter register, exact `BRNE -6`, fast
+timing mode only, no cycle listeners, no enabled pending interrupt, and no clock
+event inside the block window.
+
+Measured result:
+
+```sh
+bun run profile:opcodes -- --case sensor-format --mode fast --top 250
+# shift-right-dec fast block: 4,523 events, 153,530 cycles, 3.1% cycle share
+# udivmodsi4-loop fast block: 4,858 events, 2,629,653 cycles, 52.6% cycle share
+
+bun run bench:compare -- --case sensor-format --repeats 10
+# sensor-format: avrts 32,585,008/s vs avr8js 48,917,026/s = 0.67x
+```
+
+The first implementation simulated every shift step in a JS loop and was correct
+but slower in the benchmark. The kept version collapses the register quartet into
+one 32-bit value, shifts once, derives final carry from the original value, and
+then restores the same final `DEC`/shift flags.
+
+Remaining signal: `LPM` reads from flash strings/tables and multiply helper rows
+are now the most visible simple shapes. The remaining `Print`/Serial path is also
+call/return heavy, so a next slice should be re-profiled before adding another
+guard to the shared dispatch ladder.
+
 ## Step 7 - Full Validation Gate
 
 Latest pass:
@@ -587,22 +634,23 @@ run like `subcmp-run`.
 
 ## Recommendation — what's actually next
 
-The validation pivot is done; "next" is now the unchecked part of the checklist:
+The validation pivot is done, and two measured Step 6 helper-loop slices have now
+landed. "Next" is the remaining unchecked part of the checklist:
 
-1. **Checkpoint the work (recommended).** The arc is large: subtract/compare +
+1. **Checkpoint the new Step 6b slice (recommended).** The arc is large: subtract/compare +
    add + memory + stack arms, single-source generator consolidation, the
-   `subcmp-run` block, `runFast` cleanup, doc updates, and now one realistic
-   validation fixture that prevents overclaiming. Land it as logical commits.
-2. **Choose whether the new real-sketch gap matters.** If throughput on arbitrary
-   Arduino programs is the headline goal, the next target is branch-shaped
-   compiler/library helper loops, starting with `__udivmodsi4` / decimal
-   formatting. Treat that as Step 6 / translate-once work or a deliberately
-   scoped helper-loop block, not more per-opcode arm polishing.
+   `subcmp-run` block, `runFast` cleanup, the real-sketch fixture, the
+   `__udivmodsi4` block, and now the `shift-right-dec` block. Keep each measured
+   slice reviewable.
+2. **Choose whether the remaining real-sketch gap matters.** If throughput on
+   arbitrary Arduino programs is still the headline goal, re-profile and target
+   the next proven shape: likely `LPM`, multiply helpers, or call/return-heavy
+   `Print`/Serial helper code. Treat that as another measured Step 6 slice, not
+   broad per-opcode polishing.
 3. **Add more real fixtures only to scope product claims.** An I2C/SPI driver or
    a string-heavy sketch would broaden confidence, but the first realistic
    fixture already answered the key question: the wins do not fully generalize.
 
-Verdict: checkpoint this arc first. Continue performance work only if the goal is
-"faster on real compiled Arduino programs"; in that case the next meaningful lever
-is branchy helper-loop translation/JIT work, with the usual correctness and
-invalidation risk.
+Verdict: checkpoint Step 6b first. Continue performance work only if the goal is
+"faster on real compiled Arduino programs"; in that case the next meaningful
+lever should come from a fresh `sensor-format` profile, not from guessing.

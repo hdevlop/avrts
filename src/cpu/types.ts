@@ -28,6 +28,7 @@ export type FastBlockProfileKind =
   | "rjmp-self"
   | "zero-sbiw-breq"
   | "shift-left-dec"
+  | "shift-right-dec"
   | "arduino-micros"
   | "subcmp-run"
   | "udivmodsi4-loop";

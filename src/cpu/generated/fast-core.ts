@@ -21,6 +21,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "cpc",
   "cpi",
   "shift-left-dec-block",
+  "shift-right-dec-block",
   "udivmodsi4-loop-block",
   "add",
   "adc",

@@ -62,9 +62,10 @@ const FAST_BLOCK_NONE = 1;
 const FAST_BLOCK_RJMP_SELF = 2;
 const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
 const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
-const FAST_BLOCK_ARDUINO_MICROS = 5;
-const FAST_BLOCK_SUBCMP_RUN = 6;
-const FAST_BLOCK_UDIVMODSI4_LOOP = 7;
+const FAST_BLOCK_SHIFT_RIGHT_DEC = 5;
+const FAST_BLOCK_ARDUINO_MICROS = 6;
+const FAST_BLOCK_SUBCMP_RUN = 7;
+const FAST_BLOCK_UDIVMODSI4_LOOP = 8;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -85,6 +86,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "rjmp-self",
   "zero-sbiw-breq",
   "shift-left-dec",
+  "shift-right-dec",
   "arduino-micros",
   "subcmp-run",
   "udivmodsi4-loop",
@@ -747,6 +749,9 @@ export class CPU {
         else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
+        else if ((opcode & 0xfe0f) === 0x9406 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
         else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
@@ -1258,6 +1263,10 @@ export class CPU {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
         }
+        else if ((opcode & 0xfe0f) === 0x9406 && this.tryRunFastBlock(pc, opcode, target)) {
+          this.profileFastBlock(listener, pc, opcode, before);
+          continue;
+        }
         else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
@@ -1581,6 +1590,8 @@ export class CPU {
         return this.runZeroSbiwBreqLoopBlock(pc, opcode, target);
       case FAST_BLOCK_SHIFT_LEFT_DEC:
         return this.runShiftLeftDecLoopBlock(pc, opcode, target);
+      case FAST_BLOCK_SHIFT_RIGHT_DEC:
+        return this.runShiftRightDecLoopBlock(pc, opcode, target);
       case FAST_BLOCK_ARDUINO_MICROS:
         return this.runArduinoMicrosBlock(pc, target);
       case FAST_BLOCK_SUBCMP_RUN:
@@ -1599,6 +1610,9 @@ export class CPU {
     }
     if ((opcode & 0xfc00) === 0x0c00) {
       return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
+    }
+    if ((opcode & 0xfe0f) === 0x9406) {
+      return this.isShiftRightDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_RIGHT_DEC : FAST_BLOCK_NONE;
     }
     if (opcode === 0xb73f) {
       return this.isArduinoMicrosBlock(pc) ? FAST_BLOCK_ARDUINO_MICROS : FAST_BLOCK_NONE;
@@ -1908,6 +1922,66 @@ export class CPU {
       SREG_Z |
       (carry !== 0 ? SREG_C : 0) |
       (halfCarry !== 0 ? SREG_H : 0);
+    this._cycles += blockCycles;
+    this.pc = pc + 6;
+    return true;
+  }
+
+  /**
+   * Fast block for compiler-emitted 32-bit right-shift counted loops:
+   *   LSR rN+3; ROR rN+2; ROR rN+1; ROR rN; DEC rC; BRNE loop
+   */
+  private isShiftRightDecLoop(pc: number, opcode: number): boolean {
+    const highReg = regD5(opcode);
+    if (highReg < 3) return false;
+
+    const flash = this.flash;
+    const op1 = flash[pc + 1]!;
+    const op2 = flash[pc + 2]!;
+    const op3 = flash[pc + 3]!;
+    const dec = flash[pc + 4]!;
+    const branch = flash[pc + 5]!;
+    if (
+      !this.isRor(op1, highReg - 1) ||
+      !this.isRor(op2, highReg - 2) ||
+      !this.isRor(op3, highReg - 3) ||
+      (dec & 0xfe0f) !== 0x940a ||
+      (branch & 0xfc07) !== 0xf401 ||
+      ((branch >> 3) & 0x7f) !== 0x7a
+    ) {
+      return false;
+    }
+
+    const counterReg = regD5(dec);
+    return counterReg < highReg - 3 || counterReg > highReg;
+  }
+
+  private isRor(opcode: number, register: number): boolean {
+    return (opcode & 0xfe0f) === 0x9407 && regD5(opcode) === register;
+  }
+
+  private runShiftRightDecLoopBlock(pc: number, opcode: number, target: number): boolean {
+    const highReg = regD5(opcode);
+    const lowReg = highReg - 3;
+    const counterReg = regD5(this.flash[pc + 4]!);
+    const loops = this.data[counterReg] === 0 ? 256 : this.data[counterReg]!;
+    const blockCycles = loops * 7 - 1;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    const data = this.data;
+    const value =
+      (data[lowReg]! |
+        (data[lowReg + 1]! << 8) |
+        (data[lowReg + 2]! << 16) |
+        (data[highReg]! << 24)) >>> 0;
+    const shifted = loops < 32 ? value >>> loops : 0;
+    const carry = loops <= 32 ? (value >>> (loops - 1)) & 1 : 0;
+    data[lowReg] = shifted & 0xff;
+    data[lowReg + 1] = (shifted >>> 8) & 0xff;
+    data[lowReg + 2] = (shifted >>> 16) & 0xff;
+    data[highReg] = (shifted >>> 24) & 0xff;
+    data[counterReg] = 0;
+    data[SREG_ADDR] = (data[SREG_ADDR]! & (SREG_H | SREG_T | SREG_I)) | SREG_Z | (carry !== 0 ? SREG_C : 0);
     this._cycles += blockCycles;
     this.pc = pc + 6;
     return true;

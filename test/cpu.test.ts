@@ -273,6 +273,8 @@ describe("fast-path opcode parity", () => {
     0x0c00 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
   const adc = (d: number, r: number) =>
     0x1c00 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  const lsr = (d: number) => 0x9406 | ((d & 0x1f) << 4);
+  const ror = (d: number) => 0x9407 | ((d & 0x1f) << 4);
   const dec = (d: number) => 0x940a | ((d & 0x1f) << 4);
   const brne = (k: number) => 0xf401 | ((k & 0x7f) << 3);
   // SBIW Rd+1:Rd,K where Rd is one of r24,r26,r28,r30.
@@ -731,6 +733,27 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
+  function createShiftRightDecLoop(count: number, highReg = 25, counterReg = 18): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      lsr(highReg),
+      ror(highReg - 1),
+      ror(highReg - 2),
+      ror(highReg - 3),
+      dec(counterReg),
+      brne(-6),
+      0x0000,
+    ]);
+    cpu.data[highReg - 3] = 0xe1;
+    cpu.data[highReg - 2] = 0x78;
+    cpu.data[highReg - 1] = 0x9a;
+    cpu.data[highReg] = 0xc3;
+    cpu.data[counterReg] = count & 0xff;
+    cpu.data[SREG_ADDR] = 0xe1;
+    return cpu;
+  }
+
   function createArduinoMicrosBody(): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -893,6 +916,91 @@ describe("fast-path opcode parity", () => {
     cpu.run(13);
 
     expect(elapsed).toEqual([1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1]);
+  });
+
+  test("shift-right counted loop bulk path matches the handler path", () => {
+    const variants = [
+      { count: 1, highReg: 25, counterReg: 18, target: 6 },
+      { count: 3, highReg: 25, counterReg: 18, target: 20 },
+      { count: 5, highReg: 19, counterReg: 25, target: 34 },
+      { count: 0, highReg: 25, counterReg: 18, target: 1791 },
+    ];
+    for (const variant of variants) {
+      const slow = createShiftRightDecLoop(variant.count, variant.highReg, variant.counterReg);
+      const fast = createShiftRightDecLoop(variant.count, variant.highReg, variant.counterReg);
+      slow.onTrace(() => {});
+
+      slow.run(variant.target);
+      fast.run(variant.target);
+
+      expectSameCoreState(fast, slow, [
+        variant.counterReg,
+        variant.highReg - 3,
+        variant.highReg - 2,
+        variant.highReg - 1,
+        variant.highReg,
+        SREG_ADDR,
+      ]);
+    }
+  });
+
+  test("shift-right counted loop refuses overlapping counter registers", () => {
+    const slow = createShiftRightDecLoop(3, 25, 22);
+    const fast = createShiftRightDecLoop(3, 25, 22);
+    slow.onTrace(() => {});
+
+    slow.run(20);
+    fast.run(20);
+
+    expectSameCoreState(fast, slow, [22, 23, 24, 25, SREG_ADDR]);
+  });
+
+  test("shift-right counted loop does not skip when run target lands inside the block", () => {
+    const slow = createShiftRightDecLoop(3);
+    const fast = createShiftRightDecLoop(3);
+    slow.onTrace(() => {});
+
+    slow.run(10);
+    fast.run(10);
+
+    expectSameCoreState(fast, slow, [18, 22, 23, 24, 25, SREG_ADDR]);
+  });
+
+  test("shift-right counted loop does not skip over clock events", () => {
+    const slow = createShiftRightDecLoop(3);
+    const fast = createShiftRightDecLoop(3);
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 14);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 14);
+
+    slow.run(20);
+    fast.run(20);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([14]);
+    expectSameCoreState(fast, slow, [18, 22, 23, 24, 25, SREG_ADDR]);
+  });
+
+  test("shift-right counted loop preserves per-instruction cycle listeners", () => {
+    const cpu = createShiftRightDecLoop(2);
+    const elapsed: number[] = [];
+    cpu.onCycles((cycles) => elapsed.push(cycles));
+
+    cpu.run(13);
+
+    expect(elapsed).toEqual([1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1]);
+  });
+
+  test("profileRun reports the shift-right counted loop block", () => {
+    const cpu = createShiftRightDecLoop(5);
+    let sawBlock = false;
+    cpu.profileRun(34, (event) => {
+      if (event.blockKind === "shift-right-dec") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
   });
 
   test("Arduino micros() body fast block matches the handler path", () => {

@@ -324,6 +324,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     body: ["continue;"],
   },
   {
+    name: "shift-right-dec-block",
+    guard: "(opcode & 0xfe0f) === 0x9406 && this.tryRunFastBlock(pc, opcode, target)",
+    body: ["continue;"],
+  },
+  {
     name: "udivmodsi4-loop-block",
     guard: "opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
