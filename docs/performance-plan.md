@@ -65,6 +65,11 @@ step-by-step history of how we got here.
 - [x] **Rejected dispatch-tree prototype** — a high-nibble generated dispatch tree
   was correct, but it increased generated-function size enough to hurt
   `tight-loop`; it was removed instead of kept.
+- [x] **Rejected direct handler-table fallback prototype** — exposing the decoder's
+  frozen opcode table and skipping the PC-local decode cache was correct, but it
+  made the real target worse: `sensor-format` measured **32.8M/s** (`repeats 10`)
+  and **31.2M/s** in the full fixture mix (`repeats 5`), below the current
+  checked-in baseline. It was removed.
 - [x] **Commit/checkpoint the current arc** — landed the dirty work as logical
   commits so the measured baseline is stable before opening another performance
   project.
@@ -130,13 +135,10 @@ dispatching one instruction:
    not copy avr8js code (you'd re-derive logic you already have and adapt it to a
    different object model). Expectation: this **matches** avr8js (~1.0x on real
    code); it does not beat it, because it still dispatches once per instruction.
-   - Cheaper interim that may capture part of the win with far less code: generate
-     a decode `switch` that routes every opcode to a stable, generated handler
-     target (or a generated inline wrapper) instead of the per-PC
-     `executor.handlerFor(opcode)` fallback. The current handlers live behind the
-     injected `Decoder`, so this is not a literal `this.ret(opcode)` method-call
-     rewrite; it still needs a measured prototype before becoming the plan of
-     record.
+   - Already rejected: a cheaper direct-handler-table fallback swap did not help
+     the real target. The next prototype must remove the indirect handler call by
+     generating inline opcode bodies or generated wrappers that V8 can optimize,
+     not simply route to the same bound handlers another way.
 - [ ] **Translate-once block JIT → BEAT avr8js on real code.** Compile hot basic
    blocks (branches included) into one JS function via `new Function`, cached by
    block-start PC, so a hot region pays dispatch *zero* times after the first
@@ -185,9 +187,9 @@ bun run build:demo && bun run test:e2e # browser/demo release gate
 ## Recommended next step
 
 **Checkpoint complete.** The code and docs now describe a measured, green
-baseline: `DEC`/`RET` were kept, the dispatch-tree prototype was rejected, and
-`sensor-format` is still below avr8js. The current arc is landed as logical
-commits:
+baseline: `DEC`/`RET` were kept, the dispatch-tree and direct-handler-table
+prototypes were rejected, and `sensor-format` is still below avr8js. The current
+arc is landed as logical commits:
 
 - [x] generated fast-core implementation/tests (`__udivmodsi4`,
   `shift-right-dec`, `umulhisi3`, `DEC`, `RET`)
@@ -195,8 +197,9 @@ commits:
   `benchmark-plan.md`, old `07`-`10` doc replacement)
 - [x] benchmark result note and validation evidence
 
-The next implementation step is **the full monolithic generated core prototype**,
-not another small per-shape FastBlock.
+The next implementation step is **the full monolithic generated core prototype**:
+generate inline/wrapper opcode bodies behind a gate, benchmark `sensor-format`
+first, and keep it only if the real-code row improves.
 
 ## Open decision
 
