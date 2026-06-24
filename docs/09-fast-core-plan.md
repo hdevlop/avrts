@@ -1,5 +1,8 @@
 # Fast-Core Plan (profiling-driven)
 
+For the current post-Step-5d execution checklist, continue in
+[`10-avr8js-parity-execution-plan.md`](10-avr8js-parity-execution-plan.md).
+
 This plan continues from `08-avr8js-parity-plan.md`. Doc 08 named the two root
 causes (per-instruction peripheral fan-out, and megamorphic handler dispatch) and
 the prerequisites for fixing each. This doc is the **action-ordered** follow-up: a
@@ -36,13 +39,14 @@ Two consequences fall straight out of this:
    branch — 0xf3f1 lands there and reads the Z bit). So half of the hot loop is
    already fast-pathed. **`SBIW` (0x9720) is the only missing half** — it falls
    through to the megamorphic `decodeCache[pc]` handler call.
-2. The peripherals are **idle** during these spins, yet `tickPeripherals` still fans
-   out six `tick(...)` calls *per instruction* — ~12 per loop iteration — while
-   avr8js does one due-check. avrts pays the fan-out tax hardest exactly when
-   nothing is happening.
+2. The peripherals are **idle** during these spins, yet at the time of profiling
+   `tickPeripherals` still fanned out six `tick(...)` calls *per instruction* —
+   ~12 per loop iteration — while avr8js does one due-check. avrts paid the
+   fan-out tax hardest exactly when nothing was happening. (This fan-out has since
+   been removed — see Step 3, now DONE.)
 
-So both root causes from doc 08 hit this loop every iteration: SBIW pays dispatch
-(49% of instructions), the fan-out pays on 100%. That ranks the work.
+So both root causes from doc 08 hit this loop every iteration: SBIW paid dispatch
+(49% of instructions), the fan-out paid on 100%. That ranked the work.
 
 ---
 
@@ -129,33 +133,36 @@ plan, decide ladder-vs-kind-cache.
 
 ---
 
-## Step 3 — peripheral migration (the bigger structural win)
+## Step 3 — peripheral migration (the bigger structural win) — DONE
 
-This is doc 08's Root Cause 1, unchanged in plan but **reinforced** by the profile:
-the busy-wait fixtures prove the fan-out is a pure idle tax — 12 early-returning
-`tick(...)` calls per loop iteration that produce nothing. Removing it is worth more
-than the SBIW dispatch (it hits 100% of instructions vs SBIW's 49%); it is simply
-more expensive and gated by prerequisites, so it comes second.
+> **Status: completed.** This was doc 08's Root Cause 1. It has since been carried
+> out in full and is the headline reason serial/analog reached parity. The
+> details below are kept as the rationale; for the current verify-don't-redo
+> checklist see [`10-avr8js-parity-execution-plan.md` Step 5](10-avr8js-parity-execution-plan.md).
 
-Follow doc 08 exactly:
+The busy-wait fixtures proved the fan-out was a pure idle tax — early-returning
+`tick(...)` calls per loop iteration that produced nothing. Removing it was worth
+more than the SBIW dispatch (it hit 100% of instructions vs SBIW's 49%).
 
-1. **Prerequisite first:** the CPU event-order refactor so cycle-exact clock events
-   fire per-cycle, before `onCycles` listeners
-   ([08-avr8js-parity-plan.md, "Prerequisite"](08-avr8js-parity-plan.md)).
-2. Then migrate out of `tickPeripherals` ([src/avr.ts:929](../src/avr.ts#L929)):
-   Timer2 → Timer0 → Timer1 → ADC → USART → exti, then delete the `cpu.onCycles`
-   registration. Watchdog is already migrated; exti is a half-step.
+What shipped:
 
-Constraints, test gates, and the cache/restore rule are all in doc 08 — do not
-re-derive them here. The on-read live-`TCNT` hook and the USART level-triggered UDRE
-re-arm are the two sharp edges.
+1. The CPU event-order refactor: cycle-exact clock events fire per-cycle in the
+   `advanceCycleExact` loop, and the fast path checks `nextClockEvent` /
+   `runDueClockEvents` with a single null-check when nothing is scheduled.
+2. **All** peripherals migrated onto `addClockEvent`/`clearClockEvent` — watchdog,
+   USART, Timer0, Timer1, Timer2, ADC, EXTI — and `avr.ts`'s per-instruction
+   `tickPeripherals` / `onCycles` fan-out was deleted entirely.
 
-### Done when
+The two sharp edges called out in doc 08 — the on-read live-`TCNT` hook and the
+USART level-triggered UDRE re-arm — were handled and are covered by the
+peripheral-fidelity and timing suites.
 
-- Idle peripherals do no per-instruction work between scheduled events.
-- `serial-print` / `analog-write` move materially toward avr8js; `delay-blink`
-  improves once Timer0 is event-scheduled.
-- All doc 08 correctness gates green in both `fast` and `cycle-exact` mode.
+### Done when (met)
+
+- Idle peripherals do no per-instruction work between scheduled events. ✔
+- `serial-print` / `analog-write` reached parity; `delay-blink` improved once
+  Timer0 became event-scheduled. ✔
+- doc 08 correctness gates green in both `fast` and `cycle-exact` mode. ✔
 
 ---
 
@@ -478,12 +485,20 @@ analog-write, 5M cycles    79.1M/s vs avr8js 71.4M/s = 1.11x
 
 ---
 
-## Recommended order (summary)
+## Recommended order (summary) — SUPERSEDED (kept for history)
 
-1. **Inline SBIW** — cheap, prerequisite-free, ~half of serial/analog's instructions. Ship first.
-2. **Event-order refactor → peripheral migration** — the big structural win; the busy-wait profile proves the fan-out is the dominant idle tax.
-3. **Kind-cache dispatch** — only once the inline ladder is long enough to justify it.
-4. **Generated core / JIT** — only if throughput becomes the product. Generated core = parity; block JIT = beat.
+> This was the *original* ordering. The implementation deliberately diverged from
+> it: the guarded FastBlocks and the generated core (Steps 4a–5d above) landed
+> **before** the peripheral migration, and the migration then completed in full.
+> The kind-cache was never needed — numeric hot switches plus the FastBlock cache
+> covered it. For the live, action-ordered plan from here, follow
+> [`10-avr8js-parity-execution-plan.md`](10-avr8js-parity-execution-plan.md); the
+> list below is historical.
+
+1. ~~**Inline SBIW**~~ — done (and generalized into the generated `SBIW` arm).
+2. ~~**Event-order refactor → peripheral migration**~~ — done; all peripherals are event-scheduled (see Step 3).
+3. ~~**Kind-cache dispatch**~~ — not pursued; superseded by numeric hot switches + FastBlock cache.
+4. **Generated core / JIT** — generated core shipped (Steps 5c–5d); a true block JIT remains the only path to *beat* avr8js generally (doc 10 Steps 4/6).
 
 Run before and after every patch:
 
