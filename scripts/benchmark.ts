@@ -2,6 +2,7 @@ import { AVR } from "../src";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
 import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
+import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
 
 const DEFAULT_CLOCK_HZ = 16_000_000;
 
@@ -75,6 +76,12 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       description: "Arduino analogWrite PWM fixture",
       cycles: cycles(500_000),
       create: () => AVR(analogWriteHex),
+    },
+    {
+      name: "sensor-format",
+      description: "Arduino PROGMEM/math/Serial formatting fixture",
+      cycles: cycles(5_000_000),
+      create: () => AVR(sensorFormatHex),
     },
   ];
 }

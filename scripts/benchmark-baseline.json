@@ -6,6 +6,7 @@
     "delay-blink": { "reference": 17000000, "floor": 1700000 },
     "serial-print": { "reference": 3880000, "floor": 1000000 },
     "serial-print-listener": { "reference": 4040000, "floor": 1000000 },
-    "analog-write": { "reference": 7760000, "floor": 1500000 }
+    "analog-write": { "reference": 7760000, "floor": 1500000 },
+    "sensor-format": { "reference": 17000000, "floor": 1000000 }
   }
 }
