@@ -7,8 +7,9 @@
  * loop comparison. Both simulators are wired with the same peripheral set
  * (timers 0/1/2, USART0, ADC, GPIO B/C/D, watchdog) so neither
  * gets a free pass by skipping peripheral work — though note the two use
- * different peripheral-timing architectures (avrts ticks every instruction;
- * avr8js schedules clock events), which is itself part of what is being compared.
+ * different peripheral-timing architectures (avrts's default runtime uses CPU
+ * clock events; this avr8js loop calls cpu.tick() after each instruction), which
+ * is itself part of what is being compared.
  *
  *   bun run scripts/benchmark-compare.ts [--repeats N] [--case NAME] [--cycles N]
  */
