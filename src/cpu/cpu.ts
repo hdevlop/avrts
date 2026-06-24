@@ -66,6 +66,7 @@ const FAST_BLOCK_SHIFT_RIGHT_DEC = 5;
 const FAST_BLOCK_ARDUINO_MICROS = 6;
 const FAST_BLOCK_SUBCMP_RUN = 7;
 const FAST_BLOCK_UDIVMODSI4_LOOP = 8;
+const FAST_BLOCK_UMULHISI3 = 9;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -90,6 +91,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "arduino-micros",
   "subcmp-run",
   "udivmodsi4-loop",
+  "umulhisi3",
 ];
 
 /**
@@ -752,7 +754,25 @@ export class CPU {
         else if ((opcode & 0xfe0f) === 0x9406 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
+        else if ((opcode & 0xfe0f) === 0x940a) {
+          const d = regD5(opcode);
+          const result = (data[d]! - 1) & 0xff;
+          data[d] = result;
+          const v = result === 0x7f;
+          const n = (result & 0x80) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
         else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
+        else if (opcode === 0x9fa2 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
         else if ((opcode & 0xfc00) === 0x0c00) {
@@ -833,6 +853,10 @@ export class CPU {
           this.pushWord(pc + 2);
           const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
           this.pc = (high << 16) | flash[pc + 1]!;
+          this.cycles += 4;
+        }
+        else if (opcode === 0x9508) {
+          this.pc = this.popWord();
           this.cycles += 4;
         }
         else if ((opcode & 0xfe0f) === 0x900c) {
@@ -1267,7 +1291,26 @@ export class CPU {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
         }
+        else if ((opcode & 0xfe0f) === 0x940a) {
+          const d = regD5(opcode);
+          const result = (data[d]! - 1) & 0xff;
+          data[d] = result;
+          const v = result === 0x7f;
+          const n = (result & 0x80) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
         else if (opcode === 0x1f66 && this.tryRunFastBlock(pc, opcode, target)) {
+          this.profileFastBlock(listener, pc, opcode, before);
+          continue;
+        }
+        else if (opcode === 0x9fa2 && this.tryRunFastBlock(pc, opcode, target)) {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
         }
@@ -1350,6 +1393,10 @@ export class CPU {
           this.pushWord(pc + 2);
           const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
           this.pc = (high << 16) | flash[pc + 1]!;
+          this.cycles += 4;
+        }
+        else if (opcode === 0x9508) {
+          this.pc = this.popWord();
           this.cycles += 4;
         }
         else if ((opcode & 0xfe0f) === 0x900c) {
@@ -1598,6 +1645,8 @@ export class CPU {
         return this.runSubCmpRunBlock(pc, target);
       case FAST_BLOCK_UDIVMODSI4_LOOP:
         return this.runUdivmodsi4LoopBlock(pc, target);
+      case FAST_BLOCK_UMULHISI3:
+        return this.runUmulhisi3Block(pc, target);
       default:
         return false;
     }
@@ -1622,6 +1671,9 @@ export class CPU {
     }
     if (opcode === 0x1f66) {
       return this.isUdivmodsi4LoopBlock(pc) ? FAST_BLOCK_UDIVMODSI4_LOOP : FAST_BLOCK_NONE;
+    }
+    if (opcode === 0x9fa2) {
+      return this.isUmulhisi3Block(pc) ? FAST_BLOCK_UMULHISI3 : FAST_BLOCK_NONE;
     }
     return FAST_BLOCK_NONE;
   }
@@ -1755,6 +1807,87 @@ export class CPU {
 
     this._cycles += elapsed;
     this.pc = pc + 6;
+    return true;
+  }
+
+  private isUmulhisi3Block(pc: number): boolean {
+    const flash = this.flash;
+    const exact: Array<[number, number]> = [
+      [pc + 0, 0x9fa2], // MUL r26,r18
+      [pc + 1, 0x01b0], // MOVW r22,r0
+      [pc + 2, 0x9fb3], // MUL r27,r19
+      [pc + 3, 0x01c0], // MOVW r24,r0
+      [pc + 4, 0x9fa3], // MUL r26,r19
+      [pc + 5, 0x0d70], // ADD r23,r0
+      [pc + 6, 0x1d81], // ADC r24,r1
+      [pc + 7, 0x2411], // EOR r1,r1
+      [pc + 8, 0x1d91], // ADC r25,r1
+      [pc + 9, 0x9fb2], // MUL r27,r18
+      [pc + 10, 0x0d70], // ADD r23,r0
+      [pc + 11, 0x1d81], // ADC r24,r1
+      [pc + 12, 0x2411], // EOR r1,r1
+      [pc + 13, 0x1d91], // ADC r25,r1
+      [pc + 14, 0x9508], // RET
+    ];
+    for (const [addr, opcode] of exact) {
+      if (flash[addr] !== opcode) return false;
+    }
+    return true;
+  }
+
+  private runUmulhisi3Block(pc: number, target: number): boolean {
+    const blockCycles = 22;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    const data = this.data;
+    const al = data[26]!;
+    const ah = data[27]!;
+    const bl = data[18]!;
+    const bh = data[19]!;
+
+    const p0 = al * bl;
+    const p1 = ah * bh;
+    const p2 = al * bh;
+    const p3 = ah * bl;
+
+    let r23 = (p0 >> 8) + (p2 & 0xff);
+    let carry = r23 > 0xff ? 1 : 0;
+    r23 &= 0xff;
+    let r24 = (p1 & 0xff) + (p2 >> 8) + carry;
+    carry = r24 > 0xff ? 1 : 0;
+    r24 &= 0xff;
+    let r25 = (p1 >> 8) + carry;
+
+    r23 += p3 & 0xff;
+    carry = r23 > 0xff ? 1 : 0;
+    r23 &= 0xff;
+    r24 += (p3 >> 8) + carry;
+    carry = r24 > 0xff ? 1 : 0;
+    r24 &= 0xff;
+
+    const beforeFinal = r25 & 0xff;
+    const finalSum = beforeFinal + carry;
+    r25 = finalSum & 0xff;
+    const n = (r25 & 0x80) !== 0;
+    const v = (~beforeFinal & r25 & 0x80) !== 0;
+
+    data[0] = p3 & 0xff;
+    data[1] = 0;
+    data[22] = p0 & 0xff;
+    data[23] = r23;
+    data[24] = r24;
+    data[25] = r25;
+    data[SREG_ADDR] =
+      (data[SREG_ADDR]! & ~SREG_ARITH_MASK) |
+      ((beforeFinal & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+      (v ? SREG_V : 0) |
+      (n ? SREG_N : 0) |
+      (r25 === 0 ? SREG_Z : 0) |
+      (finalSum > 0xff ? SREG_C : 0) |
+      (n !== v ? SREG_S : 0);
+
+    this._cycles += blockCycles;
+    this.pc = this.popWord();
     return true;
   }
 

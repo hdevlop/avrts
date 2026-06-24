@@ -31,7 +31,8 @@ export type FastBlockProfileKind =
   | "shift-right-dec"
   | "arduino-micros"
   | "subcmp-run"
-  | "udivmodsi4-loop";
+  | "udivmodsi4-loop"
+  | "umulhisi3";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {

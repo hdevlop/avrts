@@ -331,6 +331,25 @@ describe("fast-path opcode parity", () => {
     }
   });
 
+  test("DEC fast path matches the handler path across flag edges", () => {
+    const cases = [
+      { before: 0x01, sreg: 0xe1 }, // zero result; preserve C/H/T/I
+      { before: 0x80, sreg: 0x00 }, // positive result after decrement
+      { before: 0x00, sreg: 0x21 }, // wraps negative and preserves C/H
+      { before: 0x7f, sreg: 0xc1 }, // signed overflow edge
+    ];
+
+    for (const testCase of cases) {
+      const setup = (cpu: CPU) => {
+        cpu.data[7] = testCase.before;
+        cpu.data[SREG_ADDR] = testCase.sreg;
+      };
+      const ticked = runOneViaTick(dec(7), setup);
+      const fast = runOneViaFastRun(dec(7), setup);
+      expectSameCoreState(fast, ticked, [7, SREG_ADDR]);
+    }
+  });
+
   // Subtract/compare group share MOV's register layout for the reg-reg forms.
   const sub = (d: number, r: number) =>
     0x1800 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
@@ -694,6 +713,18 @@ describe("fast-path opcode parity", () => {
     expectSameCoreState(fast, ticked, [SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
   });
 
+  test("RET generated fast path matches the handler path", () => {
+    const setup = (cpu: CPU) => {
+      cpu.pushWord(0x0123);
+      cpu.data[SREG_ADDR] = 0xa5;
+    };
+
+    const ticked = runOneViaTick(0x9508, setup);
+    const fast = runOneViaFastRun(0x9508, setup);
+
+    expectSameCoreState(fast, ticked, [SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
   function createZeroSbiwBreqLoop(pairLow: 24 | 26 | 28 | 30): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -1001,6 +1032,96 @@ describe("fast-path opcode parity", () => {
     });
 
     expect(sawBlock).toBe(true);
+  });
+
+  function loadUmulhisi3(cpu: CPU): void {
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      0x9fa2, // MUL r26,r18
+      0x01b0, // MOVW r22,r0
+      0x9fb3, // MUL r27,r19
+      0x01c0, // MOVW r24,r0
+      0x9fa3, // MUL r26,r19
+      0x0d70, // ADD r23,r0
+      0x1d81, // ADC r24,r1
+      0x2411, // EOR r1,r1
+      0x1d91, // ADC r25,r1
+      0x9fb2, // MUL r27,r18
+      0x0d70, // ADD r23,r0
+      0x1d81, // ADC r24,r1
+      0x2411, // EOR r1,r1
+      0x1d91, // ADC r25,r1
+      0x9508, // RET
+    ]);
+    cpu.pushWord(0x0123);
+  }
+
+  function seedUmulhisi3(cpu: CPU, left: number, right: number, sreg: number): void {
+    for (let r = 0; r < 32; r += 1) cpu.data[r] = (r * 17 + 3) & 0xff;
+    cpu.data[26] = left & 0xff;
+    cpu.data[27] = (left >> 8) & 0xff;
+    cpu.data[18] = right & 0xff;
+    cpu.data[19] = (right >> 8) & 0xff;
+    cpu.data[SREG_ADDR] = sreg;
+  }
+
+  test("avr-libc __umulhisi3 block matches the handler path", () => {
+    const cases = [
+      { left: 0x0000, right: 0xffff, sreg: 0xa0 },
+      { left: 0x0001, right: 0x0001, sreg: 0x00 },
+      { left: 0x1234, right: 0x00ff, sreg: 0x7c },
+      { left: 0xffff, right: 0xffff, sreg: 0xff },
+    ];
+    for (const { left, right, sreg } of cases) {
+      const slow = new CPU();
+      const fast = new CPU();
+      loadUmulhisi3(slow);
+      loadUmulhisi3(fast);
+      slow.onTrace(() => {});
+      seedUmulhisi3(slow, left, right, sreg);
+      seedUmulhisi3(fast, left, right, sreg);
+
+      slow.run(22);
+      fast.run(22);
+
+      expect(fast.pc).toBe(slow.pc);
+      expect(fast.cycles).toBe(slow.cycles);
+      expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    }
+  });
+
+  test("profileRun reports the avr-libc __umulhisi3 block", () => {
+    const cpu = new CPU();
+    loadUmulhisi3(cpu);
+    seedUmulhisi3(cpu, 0x1234, 0x00ff, 0);
+    let sawBlock = false;
+    cpu.profileRun(22, (event) => {
+      if (event.blockKind === "umulhisi3") sawBlock = true;
+    });
+    expect(sawBlock).toBe(true);
+  });
+
+  test("avr-libc __umulhisi3 block refuses to cross a clock event", () => {
+    const slow = new CPU();
+    const fast = new CPU();
+    loadUmulhisi3(slow);
+    loadUmulhisi3(fast);
+    slow.onTrace(() => {});
+    seedUmulhisi3(slow, 0x1234, 0x00ff, 0);
+    seedUmulhisi3(fast, 0x1234, 0x00ff, 0);
+    slow.addClockEvent(() => {
+      slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
+    }, 3);
+    fast.addClockEvent(() => {
+      fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
+    }, 3);
+
+    slow.run(22);
+    fast.run(22);
+
+    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    expect(fast.pc).toBe(slow.pc);
+    expect(fast.cycles).toBe(slow.cycles);
   });
 
   test("Arduino micros() body fast block matches the handler path", () => {
