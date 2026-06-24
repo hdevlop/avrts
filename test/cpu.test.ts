@@ -237,7 +237,7 @@ describe("SREG flags", () => {
   });
 });
 
-describe("runFast opcode parity", () => {
+describe("fast-path opcode parity", () => {
   function runOneViaTick(opcode: number, setup?: (cpu: CPU) => void): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -327,6 +327,356 @@ describe("runFast opcode parity", () => {
       const fast = runOneViaFastRun(opcode, setup);
       expectSameCoreState(fast, ticked, [testCase.d, testCase.d + 1, SREG_ADDR]);
     }
+  });
+
+  // Subtract/compare group share MOV's register layout for the reg-reg forms.
+  const sub = (d: number, r: number) =>
+    0x1800 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  const sbc = (d: number, r: number) =>
+    0x0800 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  const cp = (d: number, r: number) =>
+    0x1400 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  const cpc = (d: number, r: number) =>
+    0x0400 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  // Immediate forms target r16..r31; immediate nibbles split like LDI.
+  const subi = (d: number, k: number) =>
+    0x5000 | (((d - 16) & 0x0f) << 4) | ((k & 0xf0) << 4) | (k & 0x0f);
+  const sbci = (d: number, k: number) =>
+    0x4000 | (((d - 16) & 0x0f) << 4) | ((k & 0xf0) << 4) | (k & 0x0f);
+  const cpi = (d: number, k: number) =>
+    0x3000 | (((d - 16) & 0x0f) << 4) | ((k & 0xf0) << 4) | (k & 0x0f);
+
+  // Operand pairs that exercise the flag edges: no-borrow, borrow, half-carry,
+  // signed overflow, zero, and negative results.
+  const subEdgeCases: Array<{ dv: number; rv: number }> = [
+    { dv: 0x50, rv: 0x10 }, // plain, no borrow
+    { dv: 0x10, rv: 0x20 }, // borrow / carry
+    { dv: 0x10, rv: 0x01 }, // half-carry (low nibble borrow)
+    { dv: 0x80, rv: 0x01 }, // signed overflow
+    { dv: 0x42, rv: 0x42 }, // zero result
+    { dv: 0x00, rv: 0x01 }, // negative result + borrow
+    { dv: 0xff, rv: 0xff }, // full-width zero
+  ];
+  // SREG seeds toggling C (carry-in) and Z (multi-byte preservation).
+  const sregSeeds = [0x00, 1 << 0 /* C */, 1 << 1 /* Z */, (1 << 0) | (1 << 1), 0xff];
+
+  // Building a Decoder is expensive, so reuse two CPUs (handler + fast) across the
+  // whole flag-edge cross product, resetting state per case instead of
+  // reconstructing. reset() clears the decode and fast-block caches.
+  function makeSubtractParity() {
+    const tickCpu = new CPU();
+    tickCpu.setExecutor(new Decoder());
+    const fastCpu = new CPU();
+    fastCpu.setExecutor(new Decoder());
+    const capture = (cpu: CPU, touched: number[]) => ({
+      pc: cpu.pc,
+      cycles: cpu.cycles,
+      sreg: cpu.sreg.value,
+      data: touched.map((addr) => cpu.data[addr]),
+    });
+    return (opcode: number, setup: (cpu: CPU) => void, touched: number[]) => {
+      tickCpu.reset();
+      tickCpu.flash[0] = opcode;
+      setup(tickCpu);
+      tickCpu.tick();
+      fastCpu.reset();
+      fastCpu.flash[0] = opcode;
+      setup(fastCpu);
+      fastCpu.run(1);
+      const fast = capture(fastCpu, touched);
+      expect(fast).toEqual(capture(tickCpu, touched));
+      return fast;
+    };
+  }
+
+  test("SUB/CP fast path matches the handler path across flag edges", () => {
+    const parity = makeSubtractParity();
+    for (const { dv, rv } of subEdgeCases) {
+      for (const seed of sregSeeds) {
+        parity(
+          sub(5, 6),
+          (cpu) => {
+            cpu.data[5] = dv;
+            cpu.data[6] = rv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [5, 6, SREG_ADDR],
+        );
+        // CP must not write its destination.
+        const cpResult = parity(
+          cp(7, 8),
+          (cpu) => {
+            cpu.data[7] = dv;
+            cpu.data[8] = rv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [7, 8, SREG_ADDR],
+        );
+        expect(cpResult.data[0]).toBe(dv);
+      }
+    }
+  });
+
+  test("SBC/CPC fast path matches the handler path (carry-in + multi-byte Z)", () => {
+    const parity = makeSubtractParity();
+    for (const { dv, rv } of subEdgeCases) {
+      for (const seed of sregSeeds) {
+        parity(
+          sbc(5, 6),
+          (cpu) => {
+            cpu.data[5] = dv;
+            cpu.data[6] = rv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [5, 6, SREG_ADDR],
+        );
+        const cpcResult = parity(
+          cpc(7, 8),
+          (cpu) => {
+            cpu.data[7] = dv;
+            cpu.data[8] = rv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [7, 8, SREG_ADDR],
+        );
+        expect(cpcResult.data[0]).toBe(dv);
+      }
+    }
+  });
+
+  test("SUBI/SBCI/CPI fast path matches the handler path", () => {
+    const parity = makeSubtractParity();
+    const immCases: Array<{ dv: number; k: number }> = [
+      { dv: 0x50, k: 0x10 },
+      { dv: 0x10, k: 0x20 },
+      { dv: 0x10, k: 0x01 },
+      { dv: 0x80, k: 0x01 },
+      { dv: 0x42, k: 0x42 },
+      { dv: 0x00, k: 0xff },
+    ];
+    for (const { dv, k } of immCases) {
+      for (const seed of sregSeeds) {
+        parity(
+          subi(20, k),
+          (cpu) => {
+            cpu.data[20] = dv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [20, SREG_ADDR],
+        );
+        parity(
+          sbci(21, k),
+          (cpu) => {
+            cpu.data[21] = dv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [21, SREG_ADDR],
+        );
+        const cpiResult = parity(
+          cpi(22, k),
+          (cpu) => {
+            cpu.data[22] = dv;
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [22, SREG_ADDR],
+        );
+        expect(cpiResult.data[0]).toBe(dv);
+      }
+    }
+  });
+
+  test("ADD/ADC fast path matches the handler path across flag edges", () => {
+    const parity = makeSubtractParity();
+    const addCases: Array<{ dv: number; rv: number }> = [
+      { dv: 0x10, rv: 0x20 }, // plain
+      { dv: 0xf0, rv: 0x20 }, // carry out
+      { dv: 0x08, rv: 0x08 }, // half-carry
+      { dv: 0x40, rv: 0x40 }, // signed overflow
+      { dv: 0x00, rv: 0x00 }, // zero
+      { dv: 0x80, rv: 0x80 }, // overflow + carry, zero result
+      { dv: 0xff, rv: 0x01 }, // wrap to zero with carry
+    ];
+    for (const { dv, rv } of addCases) {
+      for (const seed of sregSeeds) {
+        const setup = (cpu: CPU) => {
+          cpu.data[5] = dv;
+          cpu.data[6] = rv;
+          cpu.data[SREG_ADDR] = seed;
+        };
+        parity(add(5, 6), setup, [5, 6, SREG_ADDR]);
+        parity(adc(5, 6), setup, [5, 6, SREG_ADDR]);
+      }
+    }
+  });
+
+  test("ADIW fast path matches the handler path", () => {
+    const parity = makeSubtractParity();
+    const adiw = (d: 24 | 26 | 28 | 30, k: number) =>
+      0x9600 | ((((d - 24) / 2) & 0x03) << 4) | ((k & 0x30) << 2) | (k & 0x0f);
+    const cases: Array<{ d: 24 | 26 | 28 | 30; before: number; k: number }> = [
+      { d: 24, before: 0x0000, k: 0 },
+      { d: 26, before: 0x00ff, k: 1 }, // low->high carry
+      { d: 28, before: 0x7fff, k: 1 }, // signed overflow
+      { d: 30, before: 0xffff, k: 1 }, // wrap to zero + carry
+      { d: 24, before: 0x1234, k: 0x3f }, // max immediate
+    ];
+    for (const { d, before, k } of cases) {
+      for (const seed of sregSeeds) {
+        parity(
+          adiw(d, k),
+          (cpu) => {
+            setWord(cpu, d, before);
+            cpu.data[SREG_ADDR] = seed;
+          },
+          [d, d + 1, SREG_ADDR],
+        );
+      }
+    }
+  });
+
+  test("MOVW fast path matches the handler path", () => {
+    const parity = makeSubtractParity();
+    const movw = (d: number, r: number) => 0x0100 | (((d >> 1) & 0x0f) << 4) | ((r >> 1) & 0x0f);
+    const cases: Array<{ d: number; r: number }> = [
+      { d: 24, r: 2 },
+      { d: 4, r: 30 },
+      { d: 0, r: 16 },
+    ];
+    for (const { d, r } of cases) {
+      parity(
+        movw(d, r),
+        (cpu) => {
+          cpu.data[r] = 0xbe;
+          cpu.data[r + 1] = 0xef;
+          cpu.data[d] = 0x00;
+          cpu.data[d + 1] = 0x00;
+          cpu.data[SREG_ADDR] = 0xa5;
+        },
+        [d, d + 1, r, r + 1, SREG_ADDR],
+      );
+    }
+  });
+
+  test("PUSH fast path matches the handler path (SP + stack byte)", () => {
+    const parity = makeSubtractParity();
+    const push = (r: number) => 0x920f | ((r & 0x1f) << 4);
+    for (const r of [0, 17, 31]) {
+      parity(
+        push(r),
+        (cpu) => {
+          cpu.data[r] = 0x3c;
+          cpu.data[SREG_ADDR] = 0xa5;
+        },
+        [r, RAMEND, SPL_ADDR, SPH_ADDR, SREG_ADDR],
+      );
+    }
+  });
+
+  test("POP fast path matches the handler path (SP + dest reg)", () => {
+    const parity = makeSubtractParity();
+    const pop = (r: number) => 0x900f | ((r & 0x1f) << 4);
+    for (const r of [0, 17, 31]) {
+      parity(
+        pop(r),
+        (cpu) => {
+          cpu.SP = RAMEND - 1;
+          cpu.data[RAMEND] = 0x5a;
+          cpu.data[SREG_ADDR] = 0xa5;
+        },
+        [r, RAMEND, SPL_ADDR, SPH_ADDR, SREG_ADDR],
+      );
+    }
+  });
+
+  test("LD indirect fast path matches the handler path (X/Y/Z, all modes)", () => {
+    const parity = makeSubtractParity();
+    const d = 5;
+    const variants: Array<{ op: number; ptr: number }> = [
+      { op: 0x900c, ptr: 26 }, // LD X
+      { op: 0x900d, ptr: 26 }, // LD X+
+      { op: 0x900e, ptr: 26 }, // LD -X
+      { op: 0x9009, ptr: 28 }, // LD Y+
+      { op: 0x900a, ptr: 28 }, // LD -Y
+      { op: 0x9001, ptr: 30 }, // LD Z+
+      { op: 0x9002, ptr: 30 }, // LD -Z
+    ];
+    for (const { op, ptr } of variants) {
+      parity(
+        op | (d << 4),
+        (cpu) => {
+          cpu.data[ptr] = 0x00;
+          cpu.data[ptr + 1] = 0x02; // pointer = 0x0200
+          cpu.data[0x200] = 0x77; // post-inc / no-change read target
+          cpu.data[0x1ff] = 0x66; // pre-dec read target
+          cpu.data[SREG_ADDR] = 0xa5;
+        },
+        [d, ptr, ptr + 1, 0x1ff, 0x200, SREG_ADDR],
+      );
+    }
+  });
+
+  test("ST indirect fast path matches the handler path (X/Y/Z, all modes)", () => {
+    const parity = makeSubtractParity();
+    const variants: Array<{ op: number; ptr: number; r: number }> = [
+      { op: 0x920c, ptr: 26, r: 5 }, // ST X
+      { op: 0x920d, ptr: 26, r: 5 }, // ST X+
+      { op: 0x920e, ptr: 26, r: 5 }, // ST -X
+      { op: 0x9209, ptr: 28, r: 5 }, // ST Y+
+      { op: 0x920a, ptr: 28, r: 5 }, // ST -Y
+      { op: 0x9201, ptr: 30, r: 5 }, // ST Z+
+      { op: 0x9202, ptr: 30, r: 5 }, // ST -Z
+      { op: 0x920d, ptr: 26, r: 26 }, // ST X+ storing the pointer reg itself (edge)
+    ];
+    for (const { op, ptr, r } of variants) {
+      parity(
+        op | (r << 4),
+        (cpu) => {
+          cpu.data[ptr] = 0x00;
+          cpu.data[ptr + 1] = 0x02; // pointer = 0x0200
+          if (r !== ptr && r !== ptr + 1) cpu.data[r] = 0x3c;
+          cpu.data[SREG_ADDR] = 0xa5;
+        },
+        [r, ptr, ptr + 1, 0x1ff, 0x200, SREG_ADDR],
+      );
+    }
+  });
+
+  test("ST to an IO register fires the same write hook on both paths", () => {
+    const make = () => {
+      const cpu = new CPU();
+      cpu.setExecutor(new Decoder());
+      return cpu;
+    };
+    const setup = (cpu: CPU) => {
+      cpu.data[26] = PORTB & 0xff; // X -> PORTB
+      cpu.data[27] = (PORTB >> 8) & 0xff;
+      cpu.data[5] = 0xff;
+    };
+    const opcode = 0x920c | (5 << 4); // ST X, r5
+    const tickCpu = make();
+    tickCpu.flash[0] = opcode;
+    setup(tickCpu);
+    tickCpu.tick();
+    const fastCpu = make();
+    fastCpu.flash[0] = opcode;
+    setup(fastCpu);
+    fastCpu.run(1);
+    // Whole-data comparison: any hook-driven side effect must match byte-for-byte.
+    expect(Array.from(fastCpu.data)).toEqual(Array.from(tickCpu.data));
+  });
+
+  test("LPM fast path matches the handler path", () => {
+    const parity = makeSubtractParity();
+    const seed = (z: number) => (cpu: CPU) => {
+      cpu.flash[0x100] = 0xbeef; // byte 0x200 -> 0xef, byte 0x201 -> 0xbe
+      cpu.data[30] = z & 0xff;
+      cpu.data[31] = (z >> 8) & 0xff;
+      cpu.data[SREG_ADDR] = 0xa5;
+    };
+    parity(0x95c8, seed(0x200), [0, 30, 31, SREG_ADDR]); // LPM R0
+    parity(0x9004 | (5 << 4), seed(0x200), [5, 30, 31, SREG_ADDR]); // LPM r5, Z
+    parity(0x9005 | (5 << 4), seed(0x200), [5, 30, 31, SREG_ADDR]); // LPM r5, Z+ (even)
+    parity(0x9005 | (5 << 4), seed(0x201), [5, 30, 31, SREG_ADDR]); // LPM r5, Z+ (odd byte)
   });
 
   test("CALL generated fast path matches the handler path", () => {
@@ -450,7 +800,7 @@ describe("runFast opcode parity", () => {
   test("zero-SBIW/BREQ idle loop bulk path matches the handler path", () => {
     const slow = createZeroSbiwBreqLoop(28);
     const fast = createZeroSbiwBreqLoop(28);
-    slow.onTrace(() => {}); // disables runFast, keeping CPU.run() as the slow reference
+    slow.onTrace(() => {}); // disables the fast path, keeping CPU.run() as the slow reference
 
     slow.run(100);
     fast.run(100);
@@ -610,6 +960,91 @@ describe("runFast opcode parity", () => {
     expect(cpu.cycles).toBe(20);
   });
 
+});
+
+describe("subcmp-run fast block (Step 4)", () => {
+  // Arduino delay()'s 64-bit elapsed compare: SUB; SBC; SBC; SBC; CPI; SBCI; CPC; CPC.
+  const delayChain = [0x1968, 0x0979, 0x098a, 0x099b, 0x3e68, 0x4073, 0x0581, 0x0591];
+
+  function loadChain(cpu: CPU, ops: number[], sreg = 0xe2): void {
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([...ops, 0x0000]);
+    for (let r = 0; r < 32; r += 1) cpu.data[r] = (r * 7 + 3) & 0xff;
+    cpu.data[SREG_ADDR] = sreg;
+  }
+
+  function expectSame(fast: CPU, slow: CPU): void {
+    expect(fast.pc).toBe(slow.pc);
+    expect(fast.cycles).toBe(slow.cycles);
+    expect(fast.sreg.value).toBe(slow.sreg.value);
+    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+  }
+
+  // Several SREG seeds toggle carry-in and the previous-Z used by SBC/SBCI/CPC.
+  for (const sreg of [0x00, 0x01, 0x02, 0x03, 0xe2]) {
+    test(`block path matches the handler for the delay chain (SREG=0x${sreg.toString(16)})`, () => {
+      const fast = new CPU();
+      loadChain(fast, delayChain, sreg);
+      const slow = new CPU();
+      loadChain(slow, delayChain, sreg);
+      fast.run(delayChain.length); // block executes all 8 in one dispatch
+      for (let i = 0; i < delayChain.length; i += 1) slow.tick();
+      expectSame(fast, slow);
+    });
+  }
+
+  test("the delay chain is recognized as a subcmp-run fast block", () => {
+    const cpu = new CPU();
+    loadChain(cpu, delayChain);
+    let sawBlock = false;
+    cpu.profileRun(delayChain.length, (event) => {
+      if (event.blockKind === "subcmp-run") sawBlock = true;
+    });
+    expect(sawBlock).toBe(true);
+  });
+
+  test("a short run (< min length) is not blocked but still correct", () => {
+    const twoOps = [0x1968, 0x0979]; // only 2 sub/cmp ops, below SUBCMP_RUN_MIN
+    const fast = new CPU();
+    loadChain(fast, twoOps);
+    const slow = new CPU();
+    loadChain(slow, twoOps);
+    fast.run(twoOps.length);
+    for (let i = 0; i < twoOps.length; i += 1) slow.tick();
+    expectSame(fast, slow);
+  });
+
+  test("block refuses to cross a scheduled clock event (fires it on time)", () => {
+    const bump = (cpu: CPU) => () => {
+      cpu.data[0x100] = (cpu.data[0x100]! + 1) & 0xff;
+    };
+    const fast = new CPU();
+    loadChain(fast, delayChain);
+    const slow = new CPU();
+    loadChain(slow, delayChain);
+    fast.addClockEvent(bump(fast), 3); // event mid-block -> block must decline
+    slow.addClockEvent(bump(slow), 3);
+    fast.run(delayChain.length);
+    for (let i = 0; i < delayChain.length; i += 1) slow.tick();
+    expectSame(fast, slow);
+    expect(fast.data[0x100]).toBe(1); // fired exactly once, at the right cycle
+  });
+
+  test("block declines when a cycle listener is installed", () => {
+    const fast = new CPU();
+    loadChain(fast, delayChain);
+    const slow = new CPU();
+    loadChain(slow, delayChain);
+    const fastCycles: number[] = [];
+    const slowCycles: number[] = [];
+    fast.onCycles((n) => fastCycles.push(n));
+    slow.onCycles((n) => slowCycles.push(n));
+    fast.run(delayChain.length);
+    for (let i = 0; i < delayChain.length; i += 1) slow.tick();
+    expectSame(fast, slow);
+    // With a listener the block declines, so cycles are reported per instruction.
+    expect(fastCycles).toEqual(slowCycles);
+  });
 });
 
 describe("decode cache (Phase 4 predecode)", () => {

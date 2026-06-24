@@ -26,6 +26,7 @@ import type {
 } from "./types";
 import type { CpuSnapshot } from "../snapshot";
 import {
+  SREG_ARITH_MASK,
   SREG_C,
   SREG_H,
   SREG_I,
@@ -39,6 +40,7 @@ import {
   regD4,
   regD5,
   regR5,
+  sub8,
 } from "./alu";
 
 const NOOP = (): void => {};
@@ -61,6 +63,20 @@ const FAST_BLOCK_RJMP_SELF = 2;
 const FAST_BLOCK_ZERO_SBIW_BREQ = 3;
 const FAST_BLOCK_SHIFT_LEFT_DEC = 4;
 const FAST_BLOCK_ARDUINO_MICROS = 5;
+const FAST_BLOCK_SUBCMP_RUN = 6;
+
+// Minimum straight-line subtract/compare run length worth executing as one block
+// (the Arduino delay() 64-bit compare chain is 8 long).
+const SUBCMP_RUN_MIN = 3;
+
+// Subtract/compare-class descriptors (0 = not in the class).
+const SUBCMP_SUB = 1;
+const SUBCMP_SBC = 2;
+const SUBCMP_CP = 3;
+const SUBCMP_CPC = 4;
+const SUBCMP_SUBI = 5;
+const SUBCMP_SBCI = 6;
+const SUBCMP_CPI = 7;
 
 const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   undefined,
@@ -69,6 +85,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "zero-sbiw-breq",
   "shift-left-dec",
   "arduino-micros",
+  "subcmp-run",
 ];
 
 /**
@@ -499,103 +516,7 @@ export class CPU {
     );
   }
 
-  private runFast(target: number): void {
-    const executor = this.executor;
-    if (!executor) {
-      throw new Error("CPU has no executor — call setExecutor(new Decoder()) first.");
-    }
-    const flash = this.flash;
-    const data = this.data;
-    const decodeCache = this.decodeCache;
-    while (this._cycles < target) {
-      if (this.sleeping) {
-        this.tick();
-      } else {
-        const pc = this.pc;
-        const opcode = flash[pc]!;
-        if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
-          continue;
-        } else if (opcode === 0x0000) {
-          this.pc += 1;
-          this.cycles += 1;
-        } else if ((opcode & 0xf000) === 0xc000) {
-          const k = opcode & 0x0fff;
-          if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) continue;
-          this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
-          this.cycles += 2;
-        } else if ((opcode & 0xfc00) === 0xf000) {
-          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
-            const k = (opcode >> 3) & 0x7f;
-            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
-            this.cycles += 2;
-          } else {
-            this.pc += 1;
-            this.cycles += 1;
-          }
-        } else if ((opcode & 0xfc00) === 0xf400) {
-          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) === 0) {
-            const k = (opcode >> 3) & 0x7f;
-            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
-            this.cycles += 2;
-          } else {
-            this.pc += 1;
-            this.cycles += 1;
-          }
-        } else if ((opcode & 0xff00) === 0x9700) {
-          const d = 24 + (((opcode >> 4) & 0x03) * 2);
-          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
-          const before = data[d]! | (data[d + 1]! << 8);
-          const result = (before - k) & 0xffff;
-          data[d] = result & 0xff;
-          data[d + 1] = (result >> 8) & 0xff;
-          const n = (result & 0x8000) !== 0;
-          const v = (before & ~result & 0x8000) !== 0;
-          const flags =
-            (v ? SREG_V : 0) |
-            (n ? SREG_N : 0) |
-            (result === 0 ? SREG_Z : 0) |
-            (before < k ? SREG_C : 0) |
-            (n !== v ? SREG_S : 0);
-          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
-          this.pc += 1;
-          this.cycles += 2;
-        } else if ((opcode & 0xf000) === 0xe000) {
-          data[regD4(opcode)] = imm8(opcode);
-          this.pc += 1;
-          this.cycles += 1;
-        } else if ((opcode & 0xfc00) === 0x2c00) {
-          data[regD5(opcode)] = data[regR5(opcode)]!;
-          this.pc += 1;
-          this.cycles += 1;
-        } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
-          continue;
-        } else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
-          continue;
-        } else {
-          let handler = decodeCache[pc];
-          if (handler === undefined) {
-            handler = executor.handlerFor(opcode);
-            if (handler === undefined) {
-              executor.execute(this, opcode); // throws UnknownOpcodeError
-              this.serviceInterrupts();
-              continue;
-            }
-            decodeCache[pc] = handler;
-          }
-          handler(this, opcode);
-        }
-        this.serviceInterrupts();
-      }
-      if (
-        this.breakpoints.size !== 0 ||
-        this.traceListeners.length !== 0 ||
-        this.pauseOnUnknownOpcode
-      ) {
-        this.runTicksUntil(target);
-        return;
-      }
-    }
-  }
+
 
   // BEGIN GENERATED FAST CORE
   private runGeneratedFastCore(target: number): void {
@@ -674,17 +595,390 @@ export class CPU {
           this.pc += 1;
           this.cycles += 1;
         }
+        else if ((opcode & 0xff00) === 0x0100) {
+          const d = ((opcode >> 4) & 0x0f) << 1;
+          const r = (opcode & 0x0f) << 1;
+          data[d] = data[r]!;
+          data[d + 1] = data[r + 1]!;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1800 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
+        else if ((opcode & 0xfc00) === 0x1800) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0800) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x5000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x4000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1400) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0400) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x3000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
         else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
         }
+        else if ((opcode & 0xfc00) === 0x0c00) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const sum = dv + rv;
+          const result = sum & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = (~(dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) + (rv & 0x0f) > 0x0f ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (sum > 0xff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1c00) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const sum = dv + rv + carry;
+          const result = sum & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = (~(dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) + (rv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (sum > 0xff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xff00) === 0x9600) {
+          const d = 24 + (((opcode >> 4) & 0x03) * 2);
+          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+          const before = data[d]! | (data[d + 1]! << 8);
+          const full = before + k;
+          const result = full & 0xffff;
+          data[d] = result & 0xff;
+          data[d + 1] = (result >> 8) & 0xff;
+          const n = (result & 0x8000) !== 0;
+          const v = (~before & result & 0x8000) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (full > 0xffff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 2;
+        }
         else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
           continue;
+        }
+        else if ((opcode & 0xfe0f) === 0x920f) {
+          this.pushByte(data[regD5(opcode)]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900f) {
+          data[regD5(opcode)] = this.popByte();
+          this.pc += 1;
+          this.cycles += 2;
         }
         else if ((opcode & 0xfe0e) === 0x940e) {
           this.pushWord(pc + 2);
           const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
           this.pc = (high << 16) | flash[pc + 1]!;
           this.cycles += 4;
+        }
+        else if ((opcode & 0xfe0f) === 0x900c) {
+          const d = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900d) {
+          const d = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[26] = next & 0xff;
+          data[27] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900e) {
+          const d = regD5(opcode);
+          const addr = ((data[26]! | (data[27]! << 8)) - 1) & 0xffff;
+          data[26] = addr & 0xff;
+          data[27] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9009) {
+          const d = regD5(opcode);
+          const addr = data[28]! | (data[29]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[28] = next & 0xff;
+          data[29] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900a) {
+          const d = regD5(opcode);
+          const addr = ((data[28]! | (data[29]! << 8)) - 1) & 0xffff;
+          data[28] = addr & 0xff;
+          data[29] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9001) {
+          const d = regD5(opcode);
+          const addr = data[30]! | (data[31]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9002) {
+          const d = regD5(opcode);
+          const addr = ((data[30]! | (data[31]! << 8)) - 1) & 0xffff;
+          data[30] = addr & 0xff;
+          data[31] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920c) {
+          const r = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920d) {
+          const r = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[26] = next & 0xff;
+          data[27] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920e) {
+          const r = regD5(opcode);
+          const addr = ((data[26]! | (data[27]! << 8)) - 1) & 0xffff;
+          data[26] = addr & 0xff;
+          data[27] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9209) {
+          const r = regD5(opcode);
+          const addr = data[28]! | (data[29]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[28] = next & 0xff;
+          data[29] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920a) {
+          const r = regD5(opcode);
+          const addr = ((data[28]! | (data[29]! << 8)) - 1) & 0xffff;
+          data[28] = addr & 0xff;
+          data[29] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9201) {
+          const r = regD5(opcode);
+          const addr = data[30]! | (data[31]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9202) {
+          const r = regD5(opcode);
+          const addr = ((data[30]! | (data[31]! << 8)) - 1) & 0xffff;
+          data[30] = addr & 0xff;
+          data[31] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if (opcode === 0x95c8) {
+          const ld = 0;
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
+        }
+        else if ((opcode & 0xfe0f) === 0x9004) {
+          const ld = regD5(opcode);
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
+        }
+        else if ((opcode & 0xfe0f) === 0x9005) {
+          const ld = regD5(opcode);
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          const next = (z + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
         }
         else {
           let handler = decodeCache[pc];
@@ -721,10 +1015,11 @@ export class CPU {
     }
   }
 
+  // BEGIN GENERATED FAST PROFILED
   private runFastProfiled(target: number, listener: ProfileRunListener): void {
     const executor = this.executor;
     if (!executor) {
-      throw new Error("CPU has no executor — call setExecutor(new Decoder()) first.");
+      throw new Error("CPU has no executor - call setExecutor(new Decoder()) first.");
     }
     const flash = this.flash;
     const data = this.data;
@@ -743,10 +1038,12 @@ export class CPU {
         if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
-        } else if (opcode === 0x0000) {
+        }
+        else if (opcode === 0x0000) {
           this.pc += 1;
           this.cycles += 1;
-        } else if ((opcode & 0xf000) === 0xc000) {
+        }
+        else if ((opcode & 0xf000) === 0xc000) {
           const k = opcode & 0x0fff;
           if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) {
             this.profileFastBlock(listener, pc, opcode, before);
@@ -754,7 +1051,8 @@ export class CPU {
           }
           this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
           this.cycles += 2;
-        } else if ((opcode & 0xfc00) === 0xf000) {
+        }
+        else if ((opcode & 0xfc00) === 0xf000) {
           if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
             const k = (opcode >> 3) & 0x7f;
             this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
@@ -763,7 +1061,8 @@ export class CPU {
             this.pc += 1;
             this.cycles += 1;
           }
-        } else if ((opcode & 0xfc00) === 0xf400) {
+        }
+        else if ((opcode & 0xfc00) === 0xf400) {
           if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) === 0) {
             const k = (opcode >> 3) & 0x7f;
             this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
@@ -772,44 +1071,430 @@ export class CPU {
             this.pc += 1;
             this.cycles += 1;
           }
-        } else if ((opcode & 0xff00) === 0x9700) {
+        }
+        else if ((opcode & 0xff00) === 0x9700) {
           const d = 24 + (((opcode >> 4) & 0x03) * 2);
           const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
-          const beforeValue = data[d]! | (data[d + 1]! << 8);
-          const result = (beforeValue - k) & 0xffff;
+          const before = data[d]! | (data[d + 1]! << 8);
+          const result = (before - k) & 0xffff;
           data[d] = result & 0xff;
           data[d + 1] = (result >> 8) & 0xff;
           const n = (result & 0x8000) !== 0;
-          const v = (beforeValue & ~result & 0x8000) !== 0;
+          const v = (before & ~result & 0x8000) !== 0;
           const flags =
             (v ? SREG_V : 0) |
             (n ? SREG_N : 0) |
             (result === 0 ? SREG_Z : 0) |
-            (beforeValue < k ? SREG_C : 0) |
+            (before < k ? SREG_C : 0) |
             (n !== v ? SREG_S : 0);
           data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
           this.pc += 1;
           this.cycles += 2;
-        } else if ((opcode & 0xf000) === 0xe000) {
+        }
+        else if ((opcode & 0xf000) === 0xe000) {
           data[regD4(opcode)] = imm8(opcode);
           this.pc += 1;
           this.cycles += 1;
-        } else if ((opcode & 0xfc00) === 0x2c00) {
+        }
+        else if ((opcode & 0xfc00) === 0x2c00) {
           data[regD5(opcode)] = data[regR5(opcode)]!;
           this.pc += 1;
           this.cycles += 1;
-        } else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
+        }
+        else if ((opcode & 0xff00) === 0x0100) {
+          const d = ((opcode >> 4) & 0x0f) << 1;
+          const r = (opcode & 0x0f) << 1;
+          data[d] = data[r]!;
+          data[d + 1] = data[r + 1]!;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1800 && this.tryRunFastBlock(pc, opcode, target)) {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
-        } else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
+        }
+        else if ((opcode & 0xfc00) === 0x1800) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0800) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x5000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x4000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1400) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0400) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const prevZ = (data[SREG_ADDR]! & SREG_Z) !== 0;
+          const result = (dv - rv - carry) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 && prevZ ? SREG_Z : 0) |
+            (dv - rv - carry < 0 ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0x3000) {
+          const d = regD4(opcode);
+          const dv = data[d]!;
+          const rv = imm8(opcode);
+          const result = (dv - rv) & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (dv < rv ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
           this.profileFastBlock(listener, pc, opcode, before);
           continue;
-        } else {
+        }
+        else if ((opcode & 0xfc00) === 0x0c00) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const sum = dv + rv;
+          const result = sum & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = (~(dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) + (rv & 0x0f) > 0x0f ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (sum > 0xff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x1c00) {
+          const d = regD5(opcode);
+          const dv = data[d]!;
+          const rv = data[regR5(opcode)]!;
+          const carry = (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+          const sum = dv + rv + carry;
+          const result = sum & 0xff;
+          const n = (result & 0x80) !== 0;
+          const v = (~(dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+          const flags =
+            ((dv & 0x0f) + (rv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (sum > 0xff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
+          data[d] = result;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xff00) === 0x9600) {
+          const d = 24 + (((opcode >> 4) & 0x03) * 2);
+          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+          const before = data[d]! | (data[d + 1]! << 8);
+          const full = before + k;
+          const result = full & 0xffff;
+          data[d] = result & 0xff;
+          data[d + 1] = (result >> 8) & 0xff;
+          const n = (result & 0x8000) !== 0;
+          const v = (~before & result & 0x8000) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (full > 0xffff ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
+          this.profileFastBlock(listener, pc, opcode, before);
+          continue;
+        }
+        else if ((opcode & 0xfe0f) === 0x920f) {
+          this.pushByte(data[regD5(opcode)]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900f) {
+          data[regD5(opcode)] = this.popByte();
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0e) === 0x940e) {
+          this.pushWord(pc + 2);
+          const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
+          this.pc = (high << 16) | flash[pc + 1]!;
+          this.cycles += 4;
+        }
+        else if ((opcode & 0xfe0f) === 0x900c) {
+          const d = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900d) {
+          const d = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[26] = next & 0xff;
+          data[27] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900e) {
+          const d = regD5(opcode);
+          const addr = ((data[26]! | (data[27]! << 8)) - 1) & 0xffff;
+          data[26] = addr & 0xff;
+          data[27] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9009) {
+          const d = regD5(opcode);
+          const addr = data[28]! | (data[29]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[28] = next & 0xff;
+          data[29] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x900a) {
+          const d = regD5(opcode);
+          const addr = ((data[28]! | (data[29]! << 8)) - 1) & 0xffff;
+          data[28] = addr & 0xff;
+          data[29] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9001) {
+          const d = regD5(opcode);
+          const addr = data[30]! | (data[31]! << 8);
+          data[d] = this.readData(addr);
+          const next = (addr + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9002) {
+          const d = regD5(opcode);
+          const addr = ((data[30]! | (data[31]! << 8)) - 1) & 0xffff;
+          data[30] = addr & 0xff;
+          data[31] = (addr >> 8) & 0xff;
+          data[d] = this.readData(addr);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920c) {
+          const r = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920d) {
+          const r = regD5(opcode);
+          const addr = data[26]! | (data[27]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[26] = next & 0xff;
+          data[27] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920e) {
+          const r = regD5(opcode);
+          const addr = ((data[26]! | (data[27]! << 8)) - 1) & 0xffff;
+          data[26] = addr & 0xff;
+          data[27] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9209) {
+          const r = regD5(opcode);
+          const addr = data[28]! | (data[29]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[28] = next & 0xff;
+          data[29] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x920a) {
+          const r = regD5(opcode);
+          const addr = ((data[28]! | (data[29]! << 8)) - 1) & 0xffff;
+          data[28] = addr & 0xff;
+          data[29] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9201) {
+          const r = regD5(opcode);
+          const addr = data[30]! | (data[31]! << 8);
+          this.writeData(addr, data[r]!);
+          const next = (addr + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfe0f) === 0x9202) {
+          const r = regD5(opcode);
+          const addr = ((data[30]! | (data[31]! << 8)) - 1) & 0xffff;
+          data[30] = addr & 0xff;
+          data[31] = (addr >> 8) & 0xff;
+          this.writeData(addr, data[r]!);
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if (opcode === 0x95c8) {
+          const ld = 0;
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
+        }
+        else if ((opcode & 0xfe0f) === 0x9004) {
+          const ld = regD5(opcode);
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
+        }
+        else if ((opcode & 0xfe0f) === 0x9005) {
+          const ld = regD5(opcode);
+          const z = data[30]! | (data[31]! << 8);
+          const word = flash[z >> 1]!;
+          data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+          const next = (z + 1) & 0xffff;
+          data[30] = next & 0xff;
+          data[31] = (next >> 8) & 0xff;
+          this.pc += 1;
+          this.cycles += 3;
+        }
+        else {
           let handler = decodeCache[pc];
           if (handler === undefined) {
             handler = executor.handlerFor(opcode);
             if (handler === undefined) {
-              executor.execute(this, opcode); // throws UnknownOpcodeError
+              executor.execute(this, opcode);
               this.serviceInterrupts();
               listener(this.profileState(pc, opcode, before, "instruction"));
               continue;
@@ -831,6 +1516,7 @@ export class CPU {
       }
     }
   }
+  // END GENERATED FAST PROFILED
 
   private profileFastBlock(
     listener: ProfileRunListener,
@@ -888,6 +1574,8 @@ export class CPU {
         return this.runShiftLeftDecLoopBlock(pc, opcode, target);
       case FAST_BLOCK_ARDUINO_MICROS:
         return this.runArduinoMicrosBlock(pc, target);
+      case FAST_BLOCK_SUBCMP_RUN:
+        return this.runSubCmpRunBlock(pc, target);
       default:
         return false;
     }
@@ -904,7 +1592,66 @@ export class CPU {
     if (opcode === 0xb73f) {
       return this.isArduinoMicrosBlock(pc) ? FAST_BLOCK_ARDUINO_MICROS : FAST_BLOCK_NONE;
     }
+    if ((opcode & 0xfc00) === 0x1800) {
+      return this.subCmpRunLength(pc) >= SUBCMP_RUN_MIN ? FAST_BLOCK_SUBCMP_RUN : FAST_BLOCK_NONE;
+    }
     return FAST_BLOCK_NONE;
+  }
+
+  /** Decode the subtract/compare class for the straight-line block. */
+  private subCmpKind(opcode: number): number {
+    // Returns 0 if not in the class; otherwise a small descriptor encoding
+    // immediate/carry/writeback. Mirrors the SUB/SBC/CP/CPC/SUBI/SBCI/CPI arms.
+    const top = opcode & 0xfc00;
+    if (top === 0x1800) return SUBCMP_SUB;
+    if (top === 0x0800) return SUBCMP_SBC;
+    if (top === 0x1400) return SUBCMP_CP;
+    if (top === 0x0400) return SUBCMP_CPC;
+    const topN = opcode & 0xf000;
+    if (topN === 0x5000) return SUBCMP_SUBI;
+    if (topN === 0x4000) return SUBCMP_SBCI;
+    if (topN === 0x3000) return SUBCMP_CPI;
+    return 0;
+  }
+
+  /** Count consecutive subtract/compare-class instructions starting at `pc`. */
+  private subCmpRunLength(pc: number): number {
+    let n = 0;
+    const flash = this.flash;
+    while (pc + n < flash.length && this.subCmpKind(flash[pc + n]!) !== 0) n += 1;
+    return n;
+  }
+
+  /**
+   * Step 4 straight-line block: a run of register/immediate subtract & compare
+   * instructions (no memory, IO, or control flow) executed in one host dispatch
+   * instead of one ladder traversal each. The Arduino `delay()` 64-bit elapsed
+   * compare is the motivating shape (`SUB; SBC; SBC; SBC; CPI; SBCI; CPC; CPC`).
+   * Flag math is the same `sub8` the handlers use, so it is provably identical.
+   */
+  private runSubCmpRunBlock(pc: number, target: number): boolean {
+    const length = this.subCmpRunLength(pc);
+    if (length < SUBCMP_RUN_MIN) return false;
+    // Each instruction is one cycle; refuse to cross the target, a clock event,
+    // a cycle listener, or an enabled pending interrupt (canRunFastBlock).
+    if (!this.canRunFastBlock(target, length)) return false;
+
+    const data = this.data;
+    for (let i = 0; i < length; i += 1) {
+      const opcode = this.flash[pc + i]!;
+      const kind = this.subCmpKind(opcode);
+      const immediate = kind === SUBCMP_SUBI || kind === SUBCMP_SBCI || kind === SUBCMP_CPI;
+      const carryUsed = kind === SUBCMP_SBC || kind === SUBCMP_SBCI || kind === SUBCMP_CPC;
+      const writeback = kind !== SUBCMP_CP && kind !== SUBCMP_CPC && kind !== SUBCMP_CPI;
+      const d = immediate ? regD4(opcode) : regD5(opcode);
+      const r = immediate ? imm8(opcode) : data[regR5(opcode)]!;
+      const carryIn = carryUsed && (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0;
+      const result = sub8(this, data[d]!, r, carryIn, carryUsed);
+      if (writeback) data[d] = result;
+    }
+    this.pc = pc + length;
+    this.cycles += length;
+    return true;
   }
 
   /**

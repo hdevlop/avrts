@@ -1,19 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { CPU } from "../src/cpu";
-import {
-  GENERATED_FAST_CORE_ARM_NAMES,
-  GENERATED_FAST_CORE_METHOD_NAME,
-} from "../src/cpu/generated/fast-core";
+import { GENERATED_FAST_CORE_ARM_NAMES } from "../src/cpu/generated/fast-core";
 import {
   CPU_FAST_CORE_PATH,
   GENERATED_FAST_CORE_PATH,
   generateFastCoreRegion,
+  generateFastCoreRegions,
   generateFastCoreSource,
   generatedFastCoreArmNames,
 } from "../scripts/generate-fast-core";
 import { createBenchmarkCases, type BenchmarkCase } from "../scripts/benchmark";
-
-type RunFast = (this: CPU, target: number) => void;
 
 interface RuntimeSignature {
   pc: number;
@@ -24,7 +19,7 @@ interface RuntimeSignature {
 
 function captureSignature(testCase: BenchmarkCase): RuntimeSignature {
   const avr = testCase.create();
-  avr.runCycles(testCase.cycles);
+  avr.runCycles(testCase.cycles); // fast path: CPU.run() -> generated fast core
   return {
     pc: avr.cpu.pc,
     cycles: avr.cpu.cycles,
@@ -33,17 +28,16 @@ function captureSignature(testCase: BenchmarkCase): RuntimeSignature {
   };
 }
 
-function withHandwrittenFastCore<T>(fn: () => T): T {
-  const prototype = CPU.prototype as unknown as Record<string, RunFast>;
-  const original = prototype[GENERATED_FAST_CORE_METHOD_NAME];
-  const handwritten = prototype.runFast;
-  if (original === undefined) throw new Error("missing generated fast core method");
-  prototype[GENERATED_FAST_CORE_METHOD_NAME] = handwritten;
-  try {
-    return fn();
-  } finally {
-    prototype[GENERATED_FAST_CORE_METHOD_NAME] = original;
-  }
+function captureViaTick(testCase: BenchmarkCase): RuntimeSignature {
+  const avr = testCase.create();
+  const target = avr.cpu.cycles + testCase.cycles;
+  while (avr.cpu.cycles < target) avr.cpu.tick(); // pure handler path, one instr at a time
+  return {
+    pc: avr.cpu.pc,
+    cycles: avr.cpu.cycles,
+    data: Array.from(avr.cpu.data),
+    serialText: avr.serial.getText(),
+  };
 }
 
 describe("generated fast core", () => {
@@ -51,6 +45,9 @@ describe("generated fast core", () => {
     const generated = await Bun.file(GENERATED_FAST_CORE_PATH).text();
     expect(generated).toBe(generateFastCoreSource());
     const cpuSource = await Bun.file(CPU_FAST_CORE_PATH).text();
+    // Both single-sourced ladders (core + profiled) must be present verbatim —
+    // this is what makes them impossible to drift apart.
+    for (const region of generateFastCoreRegions()) expect(cpuSource).toContain(region);
     expect(cpuSource).toContain(generateFastCoreRegion());
   });
 
@@ -58,11 +55,33 @@ describe("generated fast core", () => {
     expect(GENERATED_FAST_CORE_ARM_NAMES.join("\n")).toBe(generatedFastCoreArmNames().join("\n"));
   });
 
+  // The real correctness anchor: the generated fast core must reach exactly the
+  // same end-state as the plain tick()/handler interpreter on every fixture.
   for (const testCase of createBenchmarkCases()) {
-    test(`matches handwritten runFast for ${testCase.name}`, () => {
-      const handwritten = withHandwrittenFastCore(() => captureSignature(testCase));
-      const generated = captureSignature(testCase);
-      expect(generated).toEqual(handwritten);
+    test(`generated fast core matches the tick()/handler path for ${testCase.name}`, () => {
+      expect(captureSignature(testCase)).toEqual(captureViaTick(testCase));
+    });
+  }
+
+  // The profiled ladder is generated from the same arms as the run() ladder, so
+  // it must reach identical end-state and account for every elapsed cycle. This
+  // is what keeps `profile:opcodes --mode fast` honest as new arms are added.
+  for (const testCase of createBenchmarkCases()) {
+    test(`profiled ladder matches run() and bills every cycle for ${testCase.name}`, () => {
+      const expected = captureSignature(testCase);
+      const avr = testCase.create();
+      const start = avr.cpu.cycles;
+      let summed = 0;
+      avr.cpu.profileRun(testCase.cycles, (event) => {
+        summed += event.elapsedCycles;
+      });
+      expect({
+        pc: avr.cpu.pc,
+        cycles: avr.cpu.cycles,
+        data: Array.from(avr.cpu.data),
+        serialText: avr.serial.getText(),
+      }).toEqual(expected);
+      expect(summed).toBe(avr.cpu.cycles - start);
     });
   }
 });

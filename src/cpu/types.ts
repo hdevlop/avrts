@@ -28,7 +28,8 @@ export type FastBlockProfileKind =
   | "rjmp-self"
   | "zero-sbiw-breq"
   | "shift-left-dec"
-  | "arduino-micros";
+  | "arduino-micros"
+  | "subcmp-run";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {
