@@ -1,5 +1,5 @@
 import { CPU } from "../src/cpu";
-import { runGeneratedFastCore } from "../src/cpu/generated/fast-core";
+import { GENERATED_FAST_CORE_METHOD_NAME } from "../src/cpu/generated/fast-core";
 import {
   createBenchmarkCases,
   runBenchmarkCase,
@@ -38,14 +38,16 @@ function parseArgs(args: string[]): GeneratedBenchmarkOptions {
   return options;
 }
 
-function withGeneratedFastCore<T>(fn: () => T): T {
-  const prototype = CPU.prototype as unknown as { runFast: RunFast };
-  const original = prototype.runFast;
-  prototype.runFast = runGeneratedFastCore as RunFast;
+function withHandwrittenFastCore<T>(fn: () => T): T {
+  const prototype = CPU.prototype as unknown as Record<string, RunFast>;
+  const original = prototype[GENERATED_FAST_CORE_METHOD_NAME];
+  const handwritten = prototype.runFast;
+  if (original === undefined) throw new Error("missing generated fast core method");
+  prototype[GENERATED_FAST_CORE_METHOD_NAME] = handwritten;
   try {
     return fn();
   } finally {
-    prototype.runFast = original;
+    prototype[GENERATED_FAST_CORE_METHOD_NAME] = original;
   }
 }
 
@@ -53,8 +55,8 @@ function best(testCase: BenchmarkCase, repeats: number, generated: boolean): num
   let top = 0;
   for (let i = 0; i < repeats; i += 1) {
     const result = generated
-      ? withGeneratedFastCore(() => runBenchmarkCase(testCase, 1))
-      : runBenchmarkCase(testCase, 1);
+      ? runBenchmarkCase(testCase, 1)
+      : withHandwrittenFastCore(() => runBenchmarkCase(testCase, 1));
     top = Math.max(top, result.cyclesPerSecond);
   }
   return top;

@@ -447,7 +447,7 @@ export class CPU {
     this._breakpointHit = false;
     const target = this._cycles + maxCycles;
     if (this.canUseFastRun()) {
-      this.runFast(target);
+      this.runGeneratedFastCore(target);
       return;
     }
     while (this._cycles < target) {
@@ -596,6 +596,116 @@ export class CPU {
       }
     }
   }
+
+  // BEGIN GENERATED FAST CORE
+  private runGeneratedFastCore(target: number): void {
+    const executor = this.executor;
+    if (!executor) {
+      throw new Error("CPU has no executor - call setExecutor(new Decoder()) first.");
+    }
+    const flash = this.flash;
+    const data = this.data;
+    const decodeCache = this.decodeCache;
+    while (this._cycles < target) {
+      if (this.sleeping) {
+        this.tick();
+      } else {
+        const pc = this.pc;
+        const opcode = flash[pc]!;
+        if ((opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
+        else if (opcode === 0x0000) {
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xf000) === 0xc000) {
+          const k = opcode & 0x0fff;
+          if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) continue;
+          this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xfc00) === 0xf000) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        }
+        else if ((opcode & 0xfc00) === 0xf400) {
+          if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) === 0) {
+            const k = (opcode >> 3) & 0x7f;
+            this.pc += (k >= 0x40 ? k - 0x80 : k) + 1;
+            this.cycles += 2;
+          } else {
+            this.pc += 1;
+            this.cycles += 1;
+          }
+        }
+        else if ((opcode & 0xff00) === 0x9700) {
+          const d = 24 + (((opcode >> 4) & 0x03) * 2);
+          const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+          const before = data[d]! | (data[d + 1]! << 8);
+          const result = (before - k) & 0xffff;
+          data[d] = result & 0xff;
+          data[d + 1] = (result >> 8) & 0xff;
+          const n = (result & 0x8000) !== 0;
+          const v = (before & ~result & 0x8000) !== 0;
+          const flags =
+            (v ? SREG_V : 0) |
+            (n ? SREG_N : 0) |
+            (result === 0 ? SREG_Z : 0) |
+            (before < k ? SREG_C : 0) |
+            (n !== v ? SREG_S : 0);
+          data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
+          this.pc += 1;
+          this.cycles += 2;
+        }
+        else if ((opcode & 0xf000) === 0xe000) {
+          data[regD4(opcode)] = imm8(opcode);
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x2c00) {
+          data[regD5(opcode)] = data[regR5(opcode)]!;
+          this.pc += 1;
+          this.cycles += 1;
+        }
+        else if ((opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
+        else if (opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)) {
+          continue;
+        }
+        else {
+          let handler = decodeCache[pc];
+          if (handler === undefined) {
+            handler = executor.handlerFor(opcode);
+            if (handler === undefined) {
+              executor.execute(this, opcode);
+              this.serviceInterrupts();
+              continue;
+            }
+            decodeCache[pc] = handler;
+          }
+          handler(this, opcode);
+        }
+        this.serviceInterrupts();
+      }
+      if (
+        this.breakpoints.size !== 0 ||
+        this.traceListeners.length !== 0 ||
+        this.pauseOnUnknownOpcode
+      ) {
+        this.runTicksUntil(target);
+        return;
+      }
+    }
+  }
+  // END GENERATED FAST CORE
 
   private runTicksUntil(target: number): void {
     while (this._cycles < target) {

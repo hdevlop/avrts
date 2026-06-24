@@ -395,38 +395,50 @@ analog-write, 5M cycles    78.4M/s vs avr8js 78.1M/s = 1.01x
 
 This is measurement cleanup only: no runtime hot path changed.
 
-### Step 5c implemented -- generated-core scaffold, not enabled
+### Step 5c implemented -- generated-core scaffold
 
 The generated-core work now has a safe first layer:
 
-- `scripts/generate-fast-core.ts` is the source for the generated fast-run body.
-- `src/cpu/generated/fast-core.ts` is committed generated output.
+- `scripts/generate-fast-core.ts` is the source for the generated fast-run body
+  and the generated metadata file.
+- `src/cpu/generated/fast-core.ts` is committed generated metadata.
+- `src/cpu/cpu.ts` has a generated, class-local `runGeneratedFastCore()` method
+  between explicit markers.
 - `bun run check:fast-core` fails if the committed output is stale.
 - `test/generated-fast-core.test.ts` checks freshness and runs the generated path
-  against the benchmark fixtures by temporarily patching `CPU.runFast`.
+  against the benchmark fixtures.
 - `bun run bench:generated-fast-core` A/Bs the handwritten hot path against the
-  generated one without changing production runtime behavior.
+  generated one.
 
-The generated path is deliberately **not** wired into `CPU.run()` yet. The first
-full A/B run was correct but mixed:
+The first external-function scaffold was correct but not strong enough to replace
+the handwritten hot path. Moving the generated body inside the `CPU` class removed
+that access shape, so `CPU.run()` now uses `runGeneratedFastCore()` for normal
+fast-mode execution. The old handwritten `runFast()` remains as a benchmark and
+parity baseline only.
+
+Short default A/B after the swap:
 
 ```text
-tight-loop, 2M cycles            generated/base = 1.09x
-delay-blink, 2M cycles           generated/base = 0.90x
-serial-print, 250k cycles        generated/base = 1.14x
-serial-print-listener, 250k      generated/base = 0.98x
-analog-write, 500k cycles        generated/base = 0.99x
+tight-loop, 2M cycles            generated/base = 0.98x
+delay-blink, 2M cycles           generated/base = 1.06x
+serial-print, 250k cycles        generated/base = 1.05x
+serial-print-listener, 250k      generated/base = 1.04x
+analog-write, 500k cycles        generated/base = 1.00x
 ```
 
-That is not strong enough to replace the handwritten hot path. The generated
-function currently runs outside the class and reaches private CPU internals
-through a patched method, so the next generator step is to emit a class-local
-body or otherwise remove that access shape before considering a runtime swap.
+Default avr8js compare after the swap:
 
-The next broad step is to move the scaffold from "externally generated function"
-to "class-local generated hot path" or a mini block compiler on top of the
-FastBlock cache. That is the point where the project crosses from "fast-path
-layer" into "second execution engine" territory.
+```text
+tight-loop, 10M cycles    163.7M/s vs avr8js 91.9M/s = 1.78x
+delay-blink, 50M cycles    77.0M/s vs avr8js 50.4M/s = 1.53x
+serial-print, 5M cycles    78.9M/s vs avr8js 77.2M/s = 1.02x
+analog-write, 5M cycles    78.5M/s vs avr8js 76.4M/s = 1.03x
+```
+
+The next broad step is to expand generation beyond the current hot arms or start
+a mini block compiler on top of the FastBlock cache. Every expansion needs the
+same freshness check, parity coverage, and A/B gate before it replaces handwritten
+logic.
 
 ---
 
