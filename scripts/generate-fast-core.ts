@@ -3,6 +3,8 @@ const CPU_SOURCE_URL = new URL("../src/cpu/cpu.ts", import.meta.url);
 
 const GENERATED_REGION_BEGIN = "  // BEGIN GENERATED FAST CORE";
 const GENERATED_REGION_END = "  // END GENERATED FAST CORE";
+const GENERATED_UDIVMODSI4_CFG_BEGIN = "  // BEGIN GENERATED UDIVMODSI4 CFG REGION";
+const GENERATED_UDIVMODSI4_CFG_END = "  // END GENERATED UDIVMODSI4 CFG REGION";
 
 export const GENERATED_FAST_CORE_PATH = GENERATED_FAST_CORE_URL;
 export const CPU_FAST_CORE_PATH = CPU_SOURCE_URL;
@@ -19,6 +21,51 @@ interface GeneratedArm {
    */
   profiledBody?: readonly string[];
 }
+
+type CfgInstruction =
+  | { op: "adcSelf"; register: number }
+  | { op: "sub"; d: number; r: number; carryUsed: boolean; writeback: boolean }
+  | { op: "dec"; register: number }
+  | { op: "branchCarrySet" };
+
+interface CfgBasicBlock {
+  label: string;
+  summary: string;
+  instructions: readonly CfgInstruction[];
+}
+
+const UDIVMODSI4_CFG_BLOCKS: readonly CfgBasicBlock[] = [
+  {
+    label: "ep",
+    summary: "ADC r22,r22; ADC r23,r23; ADC r24,r24; ADC r25,r25",
+    instructions: [
+      { op: "adcSelf", register: 22 },
+      { op: "adcSelf", register: 23 },
+      { op: "adcSelf", register: 24 },
+      { op: "adcSelf", register: 25 },
+      { op: "dec", register: 1 },
+    ],
+  },
+  {
+    label: "body",
+    summary: "ADC x4; CP/CPC x4; BRCS; optional SUB/SBC x4",
+    instructions: [
+      { op: "adcSelf", register: 26 },
+      { op: "adcSelf", register: 27 },
+      { op: "adcSelf", register: 30 },
+      { op: "adcSelf", register: 31 },
+      { op: "sub", d: 26, r: 18, carryUsed: false, writeback: false },
+      { op: "sub", d: 27, r: 19, carryUsed: true, writeback: false },
+      { op: "sub", d: 30, r: 20, carryUsed: true, writeback: false },
+      { op: "sub", d: 31, r: 21, carryUsed: true, writeback: false },
+      { op: "branchCarrySet" },
+      { op: "sub", d: 26, r: 18, carryUsed: false, writeback: true },
+      { op: "sub", d: 27, r: 19, carryUsed: true, writeback: true },
+      { op: "sub", d: 30, r: 20, carryUsed: true, writeback: true },
+      { op: "sub", d: 31, r: 21, carryUsed: true, writeback: true },
+    ],
+  },
+];
 
 
 /**
@@ -460,6 +507,146 @@ export function generateFastCoreSource(): string {
   ].join("\n");
 }
 
+export function generateUdivmodsi4CfgRegion(): string {
+  return [
+    GENERATED_UDIVMODSI4_CFG_BEGIN,
+    ...generateUdivmodsi4CfgMethodLines(),
+    GENERATED_UDIVMODSI4_CFG_END,
+  ].join("\n");
+}
+
+function generateUdivmodsi4CfgMethodLines(): string[] {
+  return [
+    "  private runGeneratedUdivmodsi4CfgBlock(pc: number, target: number): boolean {",
+    "    const data = this.data;",
+    "    const loops = data[1] === 0 ? 256 : data[1]!;",
+    "    // Same guard contract as the handwritten block. This is the worst-case CFG",
+    "    // path: final ep is 6 cycles; each prior iteration can take ep(7)+body(13).",
+    "    const maxCycles = 6 + (loops - 1) * 20;",
+    "    if (!this.canRunFastBlock(target, maxCycles)) return false;",
+    "",
+    "    let elapsed = 0;",
+    "    let sreg = data[SREG_ADDR]!;",
+    "",
+    "    while (true) {",
+    ...indentLines(generateCfgBlockLines(UDIVMODSI4_CFG_BLOCKS[0]!), 6),
+    "",
+    ...indentLines(generateCfgBlockLines(UDIVMODSI4_CFG_BLOCKS[1]!), 6),
+    "    }",
+    "",
+    "    data[SREG_ADDR] = sreg;",
+    "    this._cycles += elapsed;",
+    "    this.pc = pc + 6;",
+    "    return true;",
+    "  }",
+  ];
+}
+
+function generateCfgBlockLines(block: CfgBasicBlock): string[] {
+  const lines = [`// ${block.label} block: ${block.summary}`];
+  for (const instruction of block.instructions) lines.push(...generateCfgInstructionLines(instruction));
+  return lines;
+}
+
+function generateCfgInstructionLines(instruction: CfgInstruction): string[] {
+  switch (instruction.op) {
+    case "adcSelf":
+      return generateCfgAdcSelfLines(instruction.register);
+    case "sub":
+      return generateCfgSubLines(instruction.d, instruction.r, instruction.carryUsed, instruction.writeback);
+    case "dec":
+      return [
+        `const dec = (data[${instruction.register}]! - 1) & 0xff;`,
+        `data[${instruction.register}] = dec;`,
+        "const decN = (dec & 0x80) !== 0;",
+        "const decV = dec === 0x7f;",
+        "sreg =",
+        "  (sreg & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) |",
+        "  (decV ? SREG_V : 0) |",
+        "  (decN ? SREG_N : 0) |",
+        "  (dec === 0 ? SREG_Z : 0) |",
+        "  (decN !== decV ? SREG_S : 0);",
+        "elapsed += 1;",
+        "if (dec === 0) {",
+        "  elapsed += 1; // BRNE not taken",
+        "  break;",
+        "}",
+        "elapsed += 2; // BRNE taken to body",
+      ];
+    case "branchCarrySet":
+      return [
+        "if ((sreg & SREG_C) !== 0) {",
+        "  elapsed += 2; // BRCS taken to ep",
+        "  continue;",
+        "}",
+        "elapsed += 1; // BRCS not taken",
+      ];
+  }
+}
+
+function generateCfgAdcSelfLines(register: number): string[] {
+  return [
+    "{",
+    `  const dv = data[${register}]!;`,
+    "  const carry = (sreg & SREG_C) !== 0 ? 1 : 0;",
+    "  const sum = dv + dv + carry;",
+    "  const result = sum & 0xff;",
+    "  const n = (result & 0x80) !== 0;",
+    "  const v = ((dv ^ result) & 0x80) !== 0;",
+    "  const flags =",
+    "    ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |",
+    "    (v ? SREG_V : 0) |",
+    "    (n ? SREG_N : 0) |",
+    "    (result === 0 ? SREG_Z : 0) |",
+    "    (sum > 0xff ? SREG_C : 0) |",
+    "    (n !== v ? SREG_S : 0);",
+    "  sreg = (sreg & ~SREG_ARITH_MASK) | flags;",
+    `  data[${register}] = result;`,
+    "  elapsed += 1;",
+    "}",
+  ];
+}
+
+function generateCfgSubLines(d: number, r: number, carryUsed: boolean, writeback: boolean): string[] {
+  const lines = [
+    "{",
+    `  const dv = data[${d}]!;`,
+    `  const rv = data[${r}]!;`,
+  ];
+  if (carryUsed) {
+    lines.push("  const carry = (sreg & SREG_C) !== 0 ? 1 : 0;", "  const prevZ = (sreg & SREG_Z) !== 0;");
+  }
+  lines.push(
+    `  const result = (dv - rv${carryUsed ? " - carry" : ""}) & 0xff;`,
+    "  const n = (result & 0x80) !== 0;",
+    "  const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;",
+    "  const flags =",
+  );
+  if (carryUsed) {
+    lines.push(
+      "    ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |",
+      "    (v ? SREG_V : 0) |",
+      "    (n ? SREG_N : 0) |",
+      "    (result === 0 && prevZ ? SREG_Z : 0) |",
+      "    (dv - rv - carry < 0 ? SREG_C : 0) |",
+      "    (n !== v ? SREG_S : 0);",
+    );
+  } else {
+    lines.push(
+      "    ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |",
+      "    (v ? SREG_V : 0) |",
+      "    (n ? SREG_N : 0) |",
+      "    (result === 0 ? SREG_Z : 0) |",
+      "    (dv < rv ? SREG_C : 0) |",
+      "    (n !== v ? SREG_S : 0);",
+    );
+  }
+  lines.push("  sreg = (sreg & ~SREG_ARITH_MASK) | flags;");
+  if (writeback) lines.push(`  data[${d}] = result;`);
+  lines.push("  elapsed += 1;", "}");
+  return lines;
+}
+
 type LadderVariant = "core" | "profiled";
 
 /**
@@ -492,13 +679,32 @@ const LADDER_REGIONS: readonly LadderRegion[] = [
   },
 ];
 
+interface GeneratedCpuRegion {
+  begin: string;
+  end: string;
+  generate: () => string;
+}
+
+const CPU_GENERATED_REGIONS: readonly GeneratedCpuRegion[] = [
+  ...LADDER_REGIONS.map((region) => ({
+    begin: region.begin,
+    end: region.end,
+    generate: () => generateRegion(region),
+  })),
+  {
+    begin: GENERATED_UDIVMODSI4_CFG_BEGIN,
+    end: GENERATED_UDIVMODSI4_CFG_END,
+    generate: generateUdivmodsi4CfgRegion,
+  },
+];
+
 export function generateFastCoreRegion(): string {
   return generateRegion(LADDER_REGIONS[0]!);
 }
 
-/** All three single-sourced ladder regions (core, fast-run twin, profiled). */
+/** All single-sourced CPU regions: fast ladders plus generated CFG blocks. */
 export function generateFastCoreRegions(): string[] {
-  return LADDER_REGIONS.map(generateRegion);
+  return CPU_GENERATED_REGIONS.map((region) => region.generate());
 }
 
 function generateRegion(region: LadderRegion): string {
@@ -611,16 +817,16 @@ function indentLines(lines: readonly string[], spaces: number): string[] {
   return lines.map((line) => (line.length === 0 ? line : `${prefix}${line}`));
 }
 
-function replaceRegion(source: string, region: LadderRegion): string {
+function replaceRegion(source: string, region: GeneratedCpuRegion): string {
   const begin = source.indexOf(region.begin);
   if (begin < 0) throw new Error(`Missing generated fast core marker: ${region.begin}`);
   const end = source.indexOf(region.end, begin);
   if (end < 0) throw new Error(`Missing generated fast core marker: ${region.end}`);
   const afterEnd = end + region.end.length;
-  return `${source.slice(0, begin)}${generateRegion(region)}${source.slice(afterEnd)}`;
+  return `${source.slice(0, begin)}${region.generate()}${source.slice(afterEnd)}`;
 }
 
-function extractRegion(source: string, region: LadderRegion): string {
+function extractRegion(source: string, region: GeneratedCpuRegion): string {
   const begin = source.indexOf(region.begin);
   if (begin < 0) throw new Error(`Missing generated fast core marker: ${region.begin}`);
   const end = source.indexOf(region.end, begin);
@@ -638,9 +844,9 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     const cpuSource = await Bun.file(CPU_SOURCE_URL).text();
-    for (const region of LADDER_REGIONS) {
-      if (extractRegion(cpuSource, region) !== generateRegion(region)) {
-        console.error(`Generated ladder ${region.method} is stale. Run \`bun run generate:fast-core\`.`);
+    for (const region of CPU_GENERATED_REGIONS) {
+      if (extractRegion(cpuSource, region) !== region.generate()) {
+        console.error(`Generated CPU region ${region.begin.trim()} is stale. Run \`bun run generate:fast-core\`.`);
         process.exit(1);
       }
     }
@@ -649,7 +855,7 @@ async function main(): Promise<void> {
 
   await Bun.write(GENERATED_FAST_CORE_URL, metadataSource);
   let cpuSource = await Bun.file(CPU_SOURCE_URL).text();
-  for (const region of LADDER_REGIONS) cpuSource = replaceRegion(cpuSource, region);
+  for (const region of CPU_GENERATED_REGIONS) cpuSource = replaceRegion(cpuSource, region);
   await Bun.write(CPU_SOURCE_URL, cpuSource);
 }
 

@@ -235,10 +235,12 @@ dispatching one instruction:
         `check:fast-core`, typecheck, and a full `bench:compare -- --repeats 5`.
         Keep it only if `sensor-format` improves and the full mix is
         neutral-or-better.
-   - **Concrete next implementation slice:** build the instruction-description
-     layer and tests for the `__udivmodsi4` CFG only; do not add a general JIT
-     runtime first. The deliverable is a generated, parity-tested region compiler
-     for the hot helper loop, with benchmark opt-in wiring.
+   - [x] **Instruction-description emitter extraction** (June 25, 2026).
+     `scripts/generate-fast-core.ts` now owns the `__udivmodsi4` CFG region via a
+     small two-block descriptor (`ep` + `body`) and instruction emitters for
+     `ADC self`, `CP`/`CPC`, `SUB`/`SBC`, `DEC`, and `BRCS`. The generated CPU
+     region is guarded by `bun run check:fast-core`, just like the fast-core
+     ladders.
    - [x] **Implemented first CFG region slice: `__udivmodsi4` generated-CFG mode**
      (June 25, 2026). Added a selectable `CPU.udivmodsi4RegionMode` with the
      generated-CFG path as the default and the old handwritten FastBlock kept as
@@ -257,10 +259,16 @@ dispatching one instruction:
      `118,675,881/s` (`2.30x`), `serial-print` `80,583,684/s` (`1.21x`),
      `analog-write` `81,597,083/s` (`1.14x`), `sensor-format`
      `32,171,389/s` (`0.66x`).
-   - Next implementation slice: extract the duplicated region semantics into a
-     small instruction-description emitter so future CFG regions are generated
-     from shared `ADC`/`CP`/`CPC`/`SUB`/`SBC`/`DEC` semantics rather than being
-     hand-expanded into `CPU`.
+   - Post-extraction validation: `bun run typecheck`, `bun run check:fast-core`,
+     and `bun test test/cpu.test.ts test/generated-fast-core.test.ts` all passed.
+     Full default benchmark after the emitter move (`bench:compare -- --repeats
+     5`): `tight-loop` `173,323,142/s` (`1.97x` avr8js), `delay-blink`
+     `119,660,967/s` (`2.34x`), `serial-print` `75,695,414/s` (`1.12x`),
+     `analog-write` `76,598,535/s` (`1.08x`), `sensor-format` `31,471,599/s`
+     (`0.65x`).
+   - Next implementation slice: profile again, then use the CFG emitter for the
+     next isolated helper-loop region only if the profile shows one with enough
+     weight to matter on `sensor-format` or another real compiled fixture.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -323,13 +331,15 @@ landed as logical commits:
   (next code slice is a generated `__udivmodsi4` CFG compiler)
 - [x] implemented generated-CFG `__udivmodsi4` region as the default path
   (handwritten block remains selectable for A/B benchmarks)
+- [x] extracted the `__udivmodsi4` CFG path into a generated CPU region backed
+  by a small instruction-description emitter
 
 The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
-If real compiled Arduino throughput is still the goal, extract the now-proven
-`__udivmodsi4` CFG semantics into a small instruction-description emitter so the
-next region can be generated from shared semantics instead of hand-expanded CPU
-code. Do not add more incremental arms, generated-dispatch variants, or generic
-translated-block layers unless a fresh profile shows a large, isolated win.
+If real compiled Arduino throughput is still the goal, profile the current
+generated-CFG baseline and use the emitter for the next isolated helper-loop
+region only if it is large enough to move a real fixture. Do not add more
+incremental arms, generated-dispatch variants, or generic translated-block
+layers unless a fresh profile shows a large, isolated win.
 
 ## Open decision
 

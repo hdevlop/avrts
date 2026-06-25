@@ -1821,6 +1821,7 @@ export class CPU {
     return true;
   }
 
+  // BEGIN GENERATED UDIVMODSI4 CFG REGION
   private runGeneratedUdivmodsi4CfgBlock(pc: number, target: number): boolean {
     const data = this.data;
     const loops = data[1] === 0 ? 256 : data[1]!;
@@ -1906,7 +1907,6 @@ export class CPU {
         data[25] = result;
         elapsed += 1;
       }
-
       const dec = (data[1]! - 1) & 0xff;
       data[1] = dec;
       const decN = (dec & 0x80) !== 0;
@@ -1997,7 +1997,6 @@ export class CPU {
         data[31] = result;
         elapsed += 1;
       }
-
       {
         const dv = data[26]!;
         const rv = data[18]!;
@@ -2068,13 +2067,11 @@ export class CPU {
         sreg = (sreg & ~SREG_ARITH_MASK) | flags;
         elapsed += 1;
       }
-
       if ((sreg & SREG_C) !== 0) {
         elapsed += 2; // BRCS taken to ep
         continue;
       }
       elapsed += 1; // BRCS not taken
-
       {
         const dv = data[26]!;
         const rv = data[18]!;
@@ -2156,6 +2153,7 @@ export class CPU {
     this.pc = pc + 6;
     return true;
   }
+  // END GENERATED UDIVMODSI4 CFG REGION
 
   private isUmulhisi3Block(pc: number): boolean {
     const flash = this.flash;
