@@ -266,9 +266,29 @@ dispatching one instruction:
      `119,660,967/s` (`2.34x`), `serial-print` `75,695,414/s` (`1.12x`),
      `analog-write` `76,598,535/s` (`1.08x`), `sensor-format` `31,471,599/s`
      (`0.65x`).
-   - Next implementation slice: profile again, then use the CFG emitter for the
-     next isolated helper-loop region only if the profile shows one with enough
-     weight to matter on `sensor-format` or another real compiled fixture.
+   - [x] **Semantic-direct `__udivmodsi4` prototype promoted to default** (June
+     25, 2026). The exact avr-libc entry state (`counter=33`, cleared
+     remainder, carry clear, nonzero divisor) now computes quotient/remainder
+     directly, writes the same pre-epilogue complemented quotient and remainder
+     registers, preserves final SREG semantics, and falls back to generated-CFG
+     for noncanonical synthetic states. A/B remains available with
+     `--udivmodsi4-region handwritten|generated-cfg|semantic-direct`.
+   - Semantic-direct validation: `bun run typecheck`, `bun run check:fast-core`,
+     and `bun test test/cpu.test.ts test/generated-fast-core.test.ts` all passed.
+     Focused `sensor-format --repeats 10`: generated-CFG `33,142,345/s` vs
+     semantic-direct `36,330,318/s`. Full mix `--repeats 5`: generated-CFG
+     `sensor-format` `31,503,366/s` vs semantic-direct `33,852,885/s`; full
+     semantic-direct mix was `tight-loop` `169,620,034/s` (`1.83x` avr8js),
+     `delay-blink` `115,827,504/s` (`2.22x`), `serial-print` `80,973,365/s`
+     (`1.19x`), `analog-write` `78,994,682/s` (`1.10x`), `sensor-format`
+     `33,852,885/s` (`0.69x`). Final no-flag/default full mix:
+     `tight-loop` `174,185,985/s` (`1.94x` avr8js), `delay-blink`
+     `116,175,673/s` (`2.25x`), `serial-print` `79,612,637/s` (`1.17x`),
+     `analog-write` `79,771,789/s` (`1.12x`), `sensor-format`
+     `33,858,593/s` (`0.70x`).
+   - Next implementation slice: profile the semantic-direct baseline and only
+     pursue another helper/block if it is still isolated and large enough to move
+     `sensor-format` or another real compiled fixture.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -333,13 +353,15 @@ landed as logical commits:
   (handwritten block remains selectable for A/B benchmarks)
 - [x] extracted the `__udivmodsi4` CFG path into a generated CPU region backed
   by a small instruction-description emitter
+- [x] promoted semantic-direct `__udivmodsi4` as the default after A/B
+  benchmarks showed the best real-fixture win
 
 The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
 If real compiled Arduino throughput is still the goal, profile the current
-generated-CFG baseline and use the emitter for the next isolated helper-loop
-region only if it is large enough to move a real fixture. Do not add more
-incremental arms, generated-dispatch variants, or generic translated-block
-layers unless a fresh profile shows a large, isolated win.
+semantic-direct baseline and only take the next isolated helper/block if it is
+large enough to move a real fixture. Do not add more incremental arms,
+generated-dispatch variants, or generic translated-block layers unless a fresh
+profile shows a large, isolated win.
 
 ## Open decision
 

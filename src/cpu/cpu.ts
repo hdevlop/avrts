@@ -45,7 +45,7 @@ import {
 
 const NOOP = (): void => {};
 
-export type Udivmodsi4RegionMode = "handwritten" | "generated-cfg";
+export type Udivmodsi4RegionMode = "handwritten" | "generated-cfg" | "semantic-direct";
 
 /**
  * A scheduled clock event (Phase 7 event-driven peripherals). Peripherals call
@@ -105,10 +105,10 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
  */
 export class CPU {
   /**
-   * Selector for the `__udivmodsi4` hot region. The generated CFG-style path is
-   * the default after beating the handwritten FastBlock on sensor-format.
+   * Selector for the `__udivmodsi4` hot region. The semantic-direct path is the
+   * default after beating the generated CFG block on sensor-format.
    */
-  static udivmodsi4RegionMode: Udivmodsi4RegionMode = "generated-cfg";
+  static udivmodsi4RegionMode: Udivmodsi4RegionMode = "semantic-direct";
 
   /** Program memory: 16-bit words, indexed by the program counter. */
   readonly flash: Uint16Array;
@@ -1652,6 +1652,9 @@ export class CPU {
       case FAST_BLOCK_SUBCMP_RUN:
         return this.runSubCmpRunBlock(pc, target);
       case FAST_BLOCK_UDIVMODSI4_LOOP:
+        if (CPU.udivmodsi4RegionMode === "semantic-direct") {
+          return this.runSemanticUdivmodsi4Block(pc, target);
+        }
         if (CPU.udivmodsi4RegionMode === "generated-cfg") {
           return this.runGeneratedUdivmodsi4CfgBlock(pc, target);
         }
@@ -1819,6 +1822,60 @@ export class CPU {
     this._cycles += elapsed;
     this.pc = pc + 6;
     return true;
+  }
+
+  private runSemanticUdivmodsi4Block(pc: number, target: number): boolean {
+    const data = this.data;
+    const divisor =
+      (data[18]! | (data[19]! << 8) | (data[20]! << 16) | (data[21]! << 24)) >>> 0;
+    const remainder = (data[26]! | (data[27]! << 8) | (data[30]! << 16) | (data[31]! << 24)) >>> 0;
+
+    if (
+      data[1] !== 33 ||
+      divisor === 0 ||
+      remainder !== 0 ||
+      (data[SREG_ADDR]! & SREG_C) !== 0
+    ) {
+      return this.runGeneratedUdivmodsi4CfgBlock(pc, target);
+    }
+
+    const maxCycles = 646; // 6 + 32 * 20, matching the generated-CFG guard.
+    if (!this.canRunFastBlock(target, maxCycles)) return false;
+
+    const dividend =
+      (data[22]! | (data[23]! << 8) | (data[24]! << 16) | (data[25]! << 24)) >>> 0;
+    const quotient = Math.floor(dividend / divisor) >>> 0;
+    const modulo = (dividend - quotient * divisor) >>> 0;
+    const complementedQuotient = ~quotient >>> 0;
+
+    data[1] = 0;
+    data[22] = complementedQuotient & 0xff;
+    data[23] = (complementedQuotient >>> 8) & 0xff;
+    data[24] = (complementedQuotient >>> 16) & 0xff;
+    data[25] = (complementedQuotient >>> 24) & 0xff;
+    data[26] = modulo & 0xff;
+    data[27] = (modulo >>> 8) & 0xff;
+    data[30] = (modulo >>> 16) & 0xff;
+    data[31] = (modulo >>> 24) & 0xff;
+
+    data[SREG_ADDR] =
+      (data[SREG_ADDR]! & (SREG_I | SREG_T)) |
+      SREG_Z |
+      ((complementedQuotient >>> 24) & 0x10 ? SREG_H : 0);
+
+    this._cycles += 550 + this.popcount32(quotient) * 3;
+    this.pc = pc + 6;
+    return true;
+  }
+
+  private popcount32(value: number): number {
+    let bits = value >>> 0;
+    let count = 0;
+    while (bits !== 0) {
+      count += bits & 1;
+      bits >>>= 1;
+    }
+    return count;
   }
 
   // BEGIN GENERATED UDIVMODSI4 CFG REGION

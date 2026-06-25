@@ -1253,11 +1253,13 @@ describe("fast-path opcode parity", () => {
       { counter: 1, dividend: 0x00000000, divisor: 1, remainder: 0, sreg: 0x00 },
       { counter: 2, dividend: 0x80000000, divisor: 3, remainder: 0, sreg: 0x01 },
       { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0x00 },
+      { counter: 33, dividend: 0x7fffffff, divisor: 1, remainder: 0, sreg: 0x80 },
+      { counter: 33, dividend: 0xffffffff, divisor: 1, remainder: 0, sreg: 0x40 },
       { counter: 33, dividend: 0xffffffff, divisor: 0x0000ffff, remainder: 0x00ff00ff, sreg: 0xa0 },
       { counter: 0, dividend: 0x89abcdef, divisor: 0x00012345, remainder: 0, sreg: 0x20 },
     ];
 
-    for (const mode of ["handwritten", "generated-cfg"] as const) {
+    for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
       for (const variant of cases) {
         const previousMode = CPU.udivmodsi4RegionMode;
         CPU.udivmodsi4RegionMode = mode;
@@ -1302,7 +1304,7 @@ describe("fast-path opcode parity", () => {
   });
 
   test("avr-libc __udivmodsi4 loop block refuses to cross a clock event", () => {
-    for (const mode of ["handwritten", "generated-cfg"] as const) {
+    for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
       const previousMode = CPU.udivmodsi4RegionMode;
       CPU.udivmodsi4RegionMode = mode;
       try {

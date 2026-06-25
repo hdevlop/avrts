@@ -140,7 +140,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 }
 
 function parseArgs(args: string[]): CompareOptions {
-  const options: CompareOptions = { repeats: 3, udivmodsi4Region: "generated-cfg" };
+  const options: CompareOptions = { repeats: 3, udivmodsi4Region: "semantic-direct" };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--repeats") {
@@ -159,9 +159,9 @@ function parseArgs(args: string[]): CompareOptions {
 }
 
 function parseUdivmodsi4RegionMode(value: string | undefined): Udivmodsi4RegionMode {
-  if (value === "handwritten" || value === "generated-cfg") return value;
+  if (value === "handwritten" || value === "generated-cfg" || value === "semantic-direct") return value;
   throw new Error(
-    `--udivmodsi4-region expects "handwritten" or "generated-cfg", got ${value}.`,
+    `--udivmodsi4-region expects "handwritten", "generated-cfg", or "semantic-direct", got ${value}.`,
   );
 }
 

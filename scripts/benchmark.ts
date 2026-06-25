@@ -90,7 +90,7 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
 export function runBenchmarkCase(
   testCase: BenchmarkCase,
   repeats = 3,
-  udivmodsi4Region: Udivmodsi4RegionMode = "generated-cfg",
+  udivmodsi4Region: Udivmodsi4RegionMode = "semantic-direct",
 ): BenchmarkResult {
   const start = nowMs();
   const previousRegion = CPU.udivmodsi4RegionMode;
@@ -126,7 +126,7 @@ export function runBenchmarks(options: BenchmarkOptions = {}): BenchmarkResult[]
     throw new Error(`Unknown benchmark case "${options.only}".`);
   }
   return cases.map((testCase) =>
-    runBenchmarkCase(testCase, repeats, options.udivmodsi4Region ?? "generated-cfg"),
+    runBenchmarkCase(testCase, repeats, options.udivmodsi4Region ?? "semantic-direct"),
   );
 }
 
@@ -152,9 +152,9 @@ function parseArgs(args: string[]): BenchmarkOptions & { json: boolean } {
 }
 
 function parseUdivmodsi4RegionMode(value: string | undefined): Udivmodsi4RegionMode {
-  if (value === "handwritten" || value === "generated-cfg") return value;
+  if (value === "handwritten" || value === "generated-cfg" || value === "semantic-direct") return value;
   throw new Error(
-    `--udivmodsi4-region expects "handwritten" or "generated-cfg", got ${value}.`,
+    `--udivmodsi4-region expects "handwritten", "generated-cfg", or "semantic-direct", got ${value}.`,
   );
 }
 
