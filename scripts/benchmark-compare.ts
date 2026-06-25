@@ -13,7 +13,7 @@
  *
  *   bun run scripts/benchmark-compare.ts [--repeats N] [--case NAME] [--cycles N]
  */
-import { AVR } from "../src";
+import { AVR, CPU, type Udivmodsi4RegionMode } from "../src";
 import { loadHex } from "../src/loader";
 import { FLASH_WORDS } from "../src/cpu";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
@@ -54,6 +54,7 @@ interface CompareOptions {
   repeats: number;
   cycles?: number;
   only?: string;
+  udivmodsi4Region: Udivmodsi4RegionMode;
 }
 
 const WORKLOADS: Workload[] = [
@@ -74,7 +75,7 @@ function programFor(hex?: string): Uint16Array {
   return progMem;
 }
 
-function runAvrts(workload: Workload): number {
+function runAvrts(workload: Workload, udivmodsi4Region: Udivmodsi4RegionMode): number {
   const create = () => {
     if (workload.hex === undefined) {
       const avr = AVR();
@@ -84,8 +85,14 @@ function runAvrts(workload: Workload): number {
     return AVR(workload.hex);
   };
   const start = performance.now();
-  const avr = create();
-  avr.runCycles(workload.cycles);
+  const previousRegion = CPU.udivmodsi4RegionMode;
+  CPU.udivmodsi4RegionMode = udivmodsi4Region;
+  try {
+    const avr = create();
+    avr.runCycles(workload.cycles);
+  } finally {
+    CPU.udivmodsi4RegionMode = previousRegion;
+  }
   const elapsed = Math.max(0.001, performance.now() - start);
   return workload.cycles / (elapsed / 1000);
 }
@@ -133,7 +140,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 }
 
 function parseArgs(args: string[]): CompareOptions {
-  const options: CompareOptions = { repeats: 3 };
+  const options: CompareOptions = { repeats: 3, udivmodsi4Region: "generated-cfg" };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--repeats") {
@@ -142,11 +149,20 @@ function parseArgs(args: string[]): CompareOptions {
       options.cycles = parsePositiveInt(args[++i], "--cycles");
     } else if (arg === "--case") {
       options.only = args[++i];
+    } else if (arg === "--udivmodsi4-region") {
+      options.udivmodsi4Region = parseUdivmodsi4RegionMode(args[++i]);
     } else {
       throw new Error(`Unknown benchmark-compare argument "${arg}".`);
     }
   }
   return options;
+}
+
+function parseUdivmodsi4RegionMode(value: string | undefined): Udivmodsi4RegionMode {
+  if (value === "handwritten" || value === "generated-cfg") return value;
+  throw new Error(
+    `--udivmodsi4-region expects "handwritten" or "generated-cfg", got ${value}.`,
+  );
 }
 
 function main(): void {
@@ -159,13 +175,19 @@ function main(): void {
   }));
   if (workloads.length === 0) throw new Error(`Unknown benchmark case "${options.only}".`);
 
-  console.log(`avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz)\n`);
+  console.log(
+    `avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz, udivmodsi4 ${options.udivmodsi4Region})\n`,
+  );
   const head = `${"workload".padEnd(14)}${"cycles".padStart(12)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
   console.log(head);
   console.log("-".repeat(head.length));
 
   for (const workload of workloads) {
-    const avrts = best(runAvrts, workload, options.repeats);
+    const avrts = best(
+      (candidate) => runAvrts(candidate, options.udivmodsi4Region),
+      workload,
+      options.repeats,
+    );
     const avr8 = best(runAvr8js, workload, options.repeats);
     const ratio = avr8 === 0 ? 0 : avrts / avr8;
     console.log(

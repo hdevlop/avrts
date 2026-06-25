@@ -45,6 +45,8 @@ import {
 
 const NOOP = (): void => {};
 
+export type Udivmodsi4RegionMode = "handwritten" | "generated-cfg";
+
 /**
  * A scheduled clock event (Phase 7 event-driven peripherals). Peripherals call
  * `addClockEvent` to fire `callback` at an absolute `cycles` boundary instead of
@@ -102,6 +104,12 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
  * choke point peripherals will hook in later phases.
  */
 export class CPU {
+  /**
+   * Selector for the `__udivmodsi4` hot region. The generated CFG-style path is
+   * the default after beating the handwritten FastBlock on sensor-format.
+   */
+  static udivmodsi4RegionMode: Udivmodsi4RegionMode = "generated-cfg";
+
   /** Program memory: 16-bit words, indexed by the program counter. */
   readonly flash: Uint16Array;
   /** Data space: R0..R31, I/O registers, then SRAM — one flat byte array. */
@@ -1644,6 +1652,9 @@ export class CPU {
       case FAST_BLOCK_SUBCMP_RUN:
         return this.runSubCmpRunBlock(pc, target);
       case FAST_BLOCK_UDIVMODSI4_LOOP:
+        if (CPU.udivmodsi4RegionMode === "generated-cfg") {
+          return this.runGeneratedUdivmodsi4CfgBlock(pc, target);
+        }
         return this.runUdivmodsi4LoopBlock(pc, target);
       case FAST_BLOCK_UMULHISI3:
         return this.runUmulhisi3Block(pc, target);
@@ -1805,6 +1816,342 @@ export class CPU {
       subOp(31, 21, true, true);
     }
 
+    this._cycles += elapsed;
+    this.pc = pc + 6;
+    return true;
+  }
+
+  private runGeneratedUdivmodsi4CfgBlock(pc: number, target: number): boolean {
+    const data = this.data;
+    const loops = data[1] === 0 ? 256 : data[1]!;
+    // Same guard contract as the handwritten block. This is the worst-case CFG
+    // path: final ep is 6 cycles; each prior iteration can take ep(7)+body(13).
+    const maxCycles = 6 + (loops - 1) * 20;
+    if (!this.canRunFastBlock(target, maxCycles)) return false;
+
+    let elapsed = 0;
+    let sreg = data[SREG_ADDR]!;
+
+    while (true) {
+      // ep block: ADC r22,r22; ADC r23,r23; ADC r24,r24; ADC r25,r25
+      {
+        const dv = data[22]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[22] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[23]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[23] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[24]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[24] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[25]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[25] = result;
+        elapsed += 1;
+      }
+
+      const dec = (data[1]! - 1) & 0xff;
+      data[1] = dec;
+      const decN = (dec & 0x80) !== 0;
+      const decV = dec === 0x7f;
+      sreg =
+        (sreg & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) |
+        (decV ? SREG_V : 0) |
+        (decN ? SREG_N : 0) |
+        (dec === 0 ? SREG_Z : 0) |
+        (decN !== decV ? SREG_S : 0);
+      elapsed += 1;
+      if (dec === 0) {
+        elapsed += 1; // BRNE not taken
+        break;
+      }
+      elapsed += 2; // BRNE taken to body
+
+      // body block: ADC x4; CP/CPC x4; BRCS; optional SUB/SBC x4
+      {
+        const dv = data[26]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[26] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[27]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[27] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[30]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[30] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[31]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const sum = dv + dv + carry;
+        const result = sum & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) + (dv & 0x0f) + carry > 0x0f ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (sum > 0xff ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[31] = result;
+        elapsed += 1;
+      }
+
+      {
+        const dv = data[26]!;
+        const rv = data[18]!;
+        const result = (dv - rv) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (dv < rv ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        elapsed += 1;
+      }
+      {
+        const dv = data[27]!;
+        const rv = data[19]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        elapsed += 1;
+      }
+      {
+        const dv = data[30]!;
+        const rv = data[20]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        elapsed += 1;
+      }
+      {
+        const dv = data[31]!;
+        const rv = data[21]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        elapsed += 1;
+      }
+
+      if ((sreg & SREG_C) !== 0) {
+        elapsed += 2; // BRCS taken to ep
+        continue;
+      }
+      elapsed += 1; // BRCS not taken
+
+      {
+        const dv = data[26]!;
+        const rv = data[18]!;
+        const result = (dv - rv) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (dv < rv ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[26] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[27]!;
+        const rv = data[19]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[27] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[30]!;
+        const rv = data[20]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[30] = result;
+        elapsed += 1;
+      }
+      {
+        const dv = data[31]!;
+        const rv = data[21]!;
+        const carry = (sreg & SREG_C) !== 0 ? 1 : 0;
+        const prevZ = (sreg & SREG_Z) !== 0;
+        const result = (dv - rv - carry) & 0xff;
+        const n = (result & 0x80) !== 0;
+        const v = ((dv ^ rv) & (dv ^ result) & 0x80) !== 0;
+        const flags =
+          ((dv & 0x0f) - (rv & 0x0f) - carry < 0 ? SREG_H : 0) |
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 && prevZ ? SREG_Z : 0) |
+          (dv - rv - carry < 0 ? SREG_C : 0) |
+          (n !== v ? SREG_S : 0);
+        sreg = (sreg & ~SREG_ARITH_MASK) | flags;
+        data[31] = result;
+        elapsed += 1;
+      }
+    }
+
+    data[SREG_ADDR] = sreg;
     this._cycles += elapsed;
     this.pc = pc + 6;
     return true;

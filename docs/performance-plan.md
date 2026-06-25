@@ -239,6 +239,28 @@ dispatching one instruction:
      layer and tests for the `__udivmodsi4` CFG only; do not add a general JIT
      runtime first. The deliverable is a generated, parity-tested region compiler
      for the hot helper loop, with benchmark opt-in wiring.
+   - [x] **Implemented first CFG region slice: `__udivmodsi4` generated-CFG mode**
+     (June 25, 2026). Added a selectable `CPU.udivmodsi4RegionMode` with the
+     generated-CFG path as the default and the old handwritten FastBlock kept as
+     an A/B fallback. The CFG path preserves the existing `canRunFastBlock()`
+     guard contract, passes the same handler-parity and clock-event refusal tests
+     as the handwritten block, and can still be benchmarked with
+     `--udivmodsi4-region handwritten|generated-cfg`.
+   - Validation: `bun run typecheck`, `bun run check:fast-core`, and
+     `bun test test/cpu.test.ts test/generated-fast-core.test.ts` all passed.
+   - Benchmark result: `sensor-format --repeats 10` improved from
+     `34,088,252/s` (handwritten) to `36,378,399/s` (generated-CFG). Full mix
+     `--repeats 5` also improved the important real-code fixture:
+     handwritten `sensor-format` `29,523,764/s` vs generated-CFG
+     `32,472,340/s`. Final no-flag/default full mix with generated-CFG:
+     `tight-loop` `172,091,863/s` (`1.88x` avr8js), `delay-blink`
+     `118,675,881/s` (`2.30x`), `serial-print` `80,583,684/s` (`1.21x`),
+     `analog-write` `81,597,083/s` (`1.14x`), `sensor-format`
+     `32,171,389/s` (`0.66x`).
+   - Next implementation slice: extract the duplicated region semantics into a
+     small instruction-description emitter so future CFG regions are generated
+     from shared `ADC`/`CP`/`CPC`/`SUB`/`SBC`/`DEC` semantics rather than being
+     hand-expanded into `CPU`.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -299,12 +321,14 @@ landed as logical commits:
   (correct after tightening, but still slower/mixed; code reverted)
 - [x] completed JIT compiler design pass from fresh `sensor-format` profiles
   (next code slice is a generated `__udivmodsi4` CFG compiler)
+- [x] implemented generated-CFG `__udivmodsi4` region as the default path
+  (handwritten block remains selectable for A/B benchmarks)
 
 The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
-If real compiled Arduino throughput is still the goal, implement the designed
-first slice: a generated `__udivmodsi4` control-flow-region compiler using
-single-source instruction semantics and the existing FastBlock guard contract.
-Do not add more incremental arms, generated-dispatch variants, or generic
+If real compiled Arduino throughput is still the goal, extract the now-proven
+`__udivmodsi4` CFG semantics into a small instruction-description emitter so the
+next region can be generated from shared semantics instead of hand-expanded CPU
+code. Do not add more incremental arms, generated-dispatch variants, or generic
 translated-block layers unless a fresh profile shows a large, isolated win.
 
 ## Open decision

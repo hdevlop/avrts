@@ -1257,22 +1257,30 @@ describe("fast-path opcode parity", () => {
       { counter: 0, dividend: 0x89abcdef, divisor: 0x00012345, remainder: 0, sreg: 0x20 },
     ];
 
-    for (const variant of cases) {
-      const slow = new CPU();
-      const fast = new CPU();
-      loadUdivmodsi4Loop(slow);
-      loadUdivmodsi4Loop(fast);
-      slow.onTrace(() => {});
-      seedUdivmodsi4State(slow, variant);
-      seedUdivmodsi4State(fast, variant);
-      const target = UDIVMOD_MAX_CYCLES(variant.counter);
+    for (const mode of ["handwritten", "generated-cfg"] as const) {
+      for (const variant of cases) {
+        const previousMode = CPU.udivmodsi4RegionMode;
+        CPU.udivmodsi4RegionMode = mode;
+        try {
+          const slow = new CPU();
+          const fast = new CPU();
+          loadUdivmodsi4Loop(slow);
+          loadUdivmodsi4Loop(fast);
+          slow.onTrace(() => {});
+          seedUdivmodsi4State(slow, variant);
+          seedUdivmodsi4State(fast, variant);
+          const target = UDIVMOD_MAX_CYCLES(variant.counter);
 
-      slow.run(target);
-      fast.run(target);
+          slow.run(target);
+          fast.run(target);
 
-      expect(fast.pc).toBe(slow.pc);
-      expect(fast.cycles).toBe(slow.cycles);
-      expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+          expect(fast.pc).toBe(slow.pc);
+          expect(fast.cycles).toBe(slow.cycles);
+          expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+        } finally {
+          CPU.udivmodsi4RegionMode = previousMode;
+        }
+      }
     }
   });
 
@@ -1294,29 +1302,37 @@ describe("fast-path opcode parity", () => {
   });
 
   test("avr-libc __udivmodsi4 loop block refuses to cross a clock event", () => {
-    const slow = new CPU();
-    const fast = new CPU();
-    loadUdivmodsi4Loop(slow);
-    loadUdivmodsi4Loop(fast);
-    slow.onTrace(() => {});
-    const variant = { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0 };
-    seedUdivmodsi4State(slow, variant);
-    seedUdivmodsi4State(fast, variant);
-    slow.addClockEvent(() => {
-      slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
-    }, 3);
-    fast.addClockEvent(() => {
-      fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
-    }, 3);
+    for (const mode of ["handwritten", "generated-cfg"] as const) {
+      const previousMode = CPU.udivmodsi4RegionMode;
+      CPU.udivmodsi4RegionMode = mode;
+      try {
+        const slow = new CPU();
+        const fast = new CPU();
+        loadUdivmodsi4Loop(slow);
+        loadUdivmodsi4Loop(fast);
+        slow.onTrace(() => {});
+        const variant = { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0 };
+        seedUdivmodsi4State(slow, variant);
+        seedUdivmodsi4State(fast, variant);
+        slow.addClockEvent(() => {
+          slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
+        }, 3);
+        fast.addClockEvent(() => {
+          fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
+        }, 3);
 
-    const target = UDIVMOD_MAX_CYCLES(33);
-    slow.run(target);
-    fast.run(target);
+        const target = UDIVMOD_MAX_CYCLES(33);
+        slow.run(target);
+        fast.run(target);
 
-    expect(fast.pc).toBe(slow.pc);
-    expect(fast.cycles).toBe(slow.cycles);
-    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
-    expect(fast.data[0x100]).toBe(1);
+        expect(fast.pc).toBe(slow.pc);
+        expect(fast.cycles).toBe(slow.cycles);
+        expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+        expect(fast.data[0x100]).toBe(1);
+      } finally {
+        CPU.udivmodsi4RegionMode = previousMode;
+      }
+    }
   });
 
 });

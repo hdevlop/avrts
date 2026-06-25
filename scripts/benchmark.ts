@@ -1,4 +1,4 @@
-import { AVR } from "../src";
+import { AVR, CPU, type Udivmodsi4RegionMode } from "../src";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
 import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
@@ -27,6 +27,7 @@ export interface BenchmarkOptions {
   cycles?: number;
   repeats?: number;
   only?: string;
+  udivmodsi4Region?: Udivmodsi4RegionMode;
 }
 
 export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
@@ -86,11 +87,21 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
   ];
 }
 
-export function runBenchmarkCase(testCase: BenchmarkCase, repeats = 3): BenchmarkResult {
+export function runBenchmarkCase(
+  testCase: BenchmarkCase,
+  repeats = 3,
+  udivmodsi4Region: Udivmodsi4RegionMode = "generated-cfg",
+): BenchmarkResult {
   const start = nowMs();
-  for (let i = 0; i < repeats; i += 1) {
-    const avr = testCase.create();
-    avr.runCycles(testCase.cycles);
+  const previousRegion = CPU.udivmodsi4RegionMode;
+  CPU.udivmodsi4RegionMode = udivmodsi4Region;
+  try {
+    for (let i = 0; i < repeats; i += 1) {
+      const avr = testCase.create();
+      avr.runCycles(testCase.cycles);
+    }
+  } finally {
+    CPU.udivmodsi4RegionMode = previousRegion;
   }
   const elapsedMs = Math.max(0.001, nowMs() - start);
   const totalCycles = testCase.cycles * repeats;
@@ -114,7 +125,9 @@ export function runBenchmarks(options: BenchmarkOptions = {}): BenchmarkResult[]
   if (cases.length === 0) {
     throw new Error(`Unknown benchmark case "${options.only}".`);
   }
-  return cases.map((testCase) => runBenchmarkCase(testCase, repeats));
+  return cases.map((testCase) =>
+    runBenchmarkCase(testCase, repeats, options.udivmodsi4Region ?? "generated-cfg"),
+  );
 }
 
 function parseArgs(args: string[]): BenchmarkOptions & { json: boolean } {
@@ -129,11 +142,20 @@ function parseArgs(args: string[]): BenchmarkOptions & { json: boolean } {
       options.repeats = parsePositiveInt(args[++i], "--repeats");
     } else if (arg === "--case") {
       options.only = args[++i];
+    } else if (arg === "--udivmodsi4-region") {
+      options.udivmodsi4Region = parseUdivmodsi4RegionMode(args[++i]);
     } else {
       throw new Error(`Unknown benchmark argument "${arg}".`);
     }
   }
   return options;
+}
+
+function parseUdivmodsi4RegionMode(value: string | undefined): Udivmodsi4RegionMode {
+  if (value === "handwritten" || value === "generated-cfg") return value;
+  throw new Error(
+    `--udivmodsi4-region expects "handwritten" or "generated-cfg", got ${value}.`,
+  );
 }
 
 function parsePositiveInt(value: string | undefined, flag: string): number {
