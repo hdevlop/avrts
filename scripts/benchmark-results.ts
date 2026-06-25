@@ -165,7 +165,7 @@ function readRegisters(data: Uint8Array): Record<string, number> {
     portC: data[PORTC]!,
     portD: data[PORTD]!,
     ddrD: data[DDRD]!,
-    pinD: data[PIND]!,
+    pinD2: data[PIND]! & (1 << 2),
     ocr0b: data[OCR0B]!,
     ocr2b: data[OCR2B]!,
     tccr0a: data[TCCR0A]!,

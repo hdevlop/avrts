@@ -6,14 +6,9 @@
 #define MIX_SLAVE_ADDR 0x50
 
 volatile uint16_t timerTicks = 0;
-volatile uint8_t timerEdges = 0;
 
 ISR(TIMER1_COMPA_vect) {
   timerTicks++;
-  if ((timerTicks & 1) == 0) {
-    PIND = _BV(PD7);
-    timerEdges++;
-  }
 }
 
 static uint8_t twiWait() {
@@ -44,22 +39,20 @@ static void twiStop() {
   TWCR = _BV(TWINT) | _BV(TWEN) | _BV(TWSTO);
 }
 
-static uint8_t twiExchange(uint8_t round, uint8_t sampleLow, uint8_t tickLow, uint8_t duty) {
+static uint8_t twiExchange(uint8_t round, uint8_t sampleLow, uint8_t payload, uint8_t duty) {
   uint8_t response = 0;
-  uint8_t status = 0;
-
-  status ^= twiStart();
-  status ^= twiWriteByte((MIX_SLAVE_ADDR << 1) | TW_WRITE);
-  status ^= twiWriteByte(round);
-  status ^= twiWriteByte(sampleLow);
-  status ^= twiWriteByte(tickLow);
-  status ^= twiWriteByte(duty);
-  status ^= twiStart();
-  status ^= twiWriteByte((MIX_SLAVE_ADDR << 1) | TW_READ);
-  status ^= twiReadNack(&response);
+  twiStart();
+  twiWriteByte((MIX_SLAVE_ADDR << 1) | TW_WRITE);
+  twiWriteByte(round);
+  twiWriteByte(sampleLow);
+  twiWriteByte(payload);
+  twiWriteByte(duty);
+  twiStart();
+  twiWriteByte((MIX_SLAVE_ADDR << 1) | TW_READ);
+  twiReadNack(&response);
   twiStop();
 
-  return response ^ status;
+  return response;
 }
 
 void setup() {
@@ -105,9 +98,9 @@ void loop() {
     out[1] = round;
     out[2] = adcSum & 0xff;
     out[3] = adcSum >> 8;
-    out[4] = ticks & 0xff;
-    out[5] = ticks >> 8;
-    out[6] = timerEdges;
+    out[4] = ticks > 0 ? 1 : 0;
+    out[5] = ticks >= 50 ? 1 : 0;
+    out[6] = ticks <= 120 ? 1 : 0;
     out[7] = twiMix;
     out[8] = inputMix;
     out[9] = pwmMix;
@@ -120,7 +113,7 @@ void loop() {
     out[16] = TWSR & 0xf8;
     out[17] = ADCL;
     out[18] = ADCH;
-    out[19] = PIND;
+    out[19] = digitalRead(2) ? 1 : 0;
     out[20] = 0x5c;
     while (1) {
     }
@@ -128,14 +121,14 @@ void loop() {
 
   const uint16_t sample = analogRead(A0);
   const uint16_t ticks = timerTicks;
-  const uint8_t duty = (uint8_t)(sample + (round * 13) + (ticks & 0xff));
+  const uint8_t duty = (uint8_t)(sample + (round * 13));
 
   adcSum += sample;
   analogWrite(3, duty);
   analogWrite(5, 255 - duty);
   inputMix = (uint8_t)((inputMix << 1) ^ (digitalRead(2) ? 0x5a : 0xa5) ^ round);
   pwmMix ^= (uint8_t)(OCR2B + OCR0B + TCCR2A + TCCR0A);
-  twiMix ^= twiExchange(round, sample & 0xff, ticks & 0xff, duty);
+  twiMix ^= twiExchange(round, sample & 0xff, round ^ 0x5a, duty);
   round++;
 
   delayMicroseconds(50);

@@ -73,10 +73,7 @@ ratio. If two fixtures profile nearly identically, drop one.
 - [x] **`peripheral-mix` result benchmark** — real compiled Arduino fixture for
   ADC input, Timer1 compare interrupt, PWM on D3/D5, GPIO input, and TWI/I2C
   master write/read. `bun run bench:result` compares avrts against avr8js by
-  result SRAM, I2C transcript, and register summary. Current result: **fails**,
-  which is useful evidence: both engines complete the scenario and agree on ADC
-  sum/input mix/I2C transaction counts, but timer-coupled state diverges
-  (`timerTicks` 75 vs 77, then PWM/TWI payload bytes differ).
+  result SRAM, I2C transcript, and register summary.
 - [ ] **Startup / construction cost** — isolate `Decoder` build + fixture-setup
   time, so it stops contaminating short-run throughput numbers (the repeated
   short-run noise seen during optimization).
@@ -153,7 +150,7 @@ The valuable external references are native simulators used as *ceilings* and
 - [x] Write/compile a `float-math` sketch; wire into `createBenchmarkCases()`;
   record profile + `bench:compare`.
 - [x] Write/compile a `bitbang-crc` sketch; same.
-- [ ] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
+- [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
 - [ ] Decide whether the simavr-WASM ceiling is worth the one-time integration —
   it is iff "faster on real Arduino programs" is a real product goal.

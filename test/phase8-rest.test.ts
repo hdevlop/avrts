@@ -112,6 +112,7 @@ describe("TWI / I2C master", () => {
     ctrl();
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x28); // DATA ACK
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTO)); // STOP
+    expect(cpu.readData(TWSR) & 0xf8).toBe(0xf8); // idle after STOP
     expect(received).toEqual([0xab]);
   });
 

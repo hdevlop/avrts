@@ -84,6 +84,7 @@ export class Twi {
     this.awaitingAddress = false;
     this.current = undefined;
     this.currentAddress = null;
+    this.cpu.data[TWSR] = (this.cpu.readData(TWSR) & 0x07) | STATUS.IDLE;
     // STOP clears TWSTO and does NOT set TWINT.
     this.cpu.data[TWCR] = value & ~((1 << TWSTO) | (1 << TWINT));
   }
