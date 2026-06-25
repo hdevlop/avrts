@@ -22,6 +22,7 @@ import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-writ
 import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
 import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.hex" with { type: "text" };
 import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
+import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -67,6 +68,7 @@ const WORKLOADS: Workload[] = [
   { name: "sensor-format", cycles: 5_000_000, hex: sensorFormatHex },
   { name: "float-math", cycles: 5_000_000, hex: floatMathHex },
   { name: "bitbang-crc", cycles: 5_000_000, hex: bitbangCrcHex },
+  { name: "isr-heavy", cycles: 5_000_000, hex: isrHeavyHex },
 ];
 
 function programFor(hex?: string): Uint16Array {

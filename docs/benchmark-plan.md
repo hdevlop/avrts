@@ -44,7 +44,7 @@ Priority order (highest signal first):
     and `IN`/`OUT` port toggling.
   - Reveals: directly measures the megamorphic `handler()` fallback cost on
     common ops the generated core doesn't yet cover.
-- [ ] **`isr-heavy`** — software PWM / frequency counter / servo timing with
+- [x] **`isr-heavy`** — software PWM / frequency counter / servo timing with
   frequent timer or pin-change interrupts.
   - Stresses: ISR prologue/epilogue (`PUSH`/`POP`/`RETI`), frequent interrupt
     dispatch, and the clock-event scheduler under interrupt churn.
@@ -150,6 +150,8 @@ The valuable external references are native simulators used as *ceilings* and
 - [x] Write/compile a `float-math` sketch; wire into `createBenchmarkCases()`;
   record profile + `bench:compare`.
 - [x] Write/compile a `bitbang-crc` sketch; same.
+- [x] Write/compile an `isr-heavy` sketch; wire into result comparison,
+  benchmark/profile harnesses, and `bench:compare`.
 - [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
 - [ ] Decide whether the simavr-WASM ceiling is worth the one-time integration —
@@ -168,3 +170,10 @@ Captured locally on 2026-06-25 with `semantic-direct` `__udivmodsi4`.
   sampled 5,000,000 cycles and showed direct port/CRC loop rows (`CBI`, `SBI`,
   `SBIW`, `SBIC`, `BRNE`, `AND`). `bench:compare -- --repeats 5`: avrts
   **15,166,797/s**, avr8js **39,977,453/s**, ratio **0.38x**.
+- `isr-heavy`: `bench:result -- --case isr-heavy --analog 512 --d2 high`
+  matched avr8js result SRAM, empty I2C transcript, and register summary.
+  `profile:opcodes -- --case isr-heavy --mode fast --top 12` sampled
+  5,000,001 cycles and showed interrupt/delay-loop pressure (`LDS`, `SBRC`,
+  `RJMP`, `SBIW`, `BRNE`, `RETI`, `PUSH`). `bench:compare -- --case isr-heavy
+  --repeats 3`: avrts **19,600,487/s**, avr8js **41,494,912/s**, ratio
+  **0.47x**.

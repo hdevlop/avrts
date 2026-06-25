@@ -5,6 +5,7 @@ import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-writ
 import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
 import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.hex" with { type: "text" };
 import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
+import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 
 const DEFAULT_CLOCK_HZ = 16_000_000;
 
@@ -97,6 +98,12 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       description: "Arduino bit-banged IO and CRC fixture",
       cycles: cycles(5_000_000),
       create: () => AVR(bitbangCrcHex),
+    },
+    {
+      name: "isr-heavy",
+      description: "Arduino Timer1 ISR, software PWM, ADC, GPIO, and PWM fixture",
+      cycles: cycles(5_000_000),
+      create: () => AVR(isrHeavyHex),
     },
   ];
 }
