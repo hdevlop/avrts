@@ -167,6 +167,21 @@ dispatching one instruction:
    instruction than an interpreter. Large, separate project; hooks / cycle-exact /
    breakpoints all force a bail to the interpreter, so the JIT must match the
    interpreter on the golden suite.
+   - [x] Rejected first JIT slice: **direct-handler translated blocks** (June 25,
+     2026). The prototype cached a `new Function` per block-start PC and emitted
+     literal calls to the existing tested handlers for safe straight-line
+     register/stack/arithmetic blocks. It passed `check:fast-core`, typecheck,
+     and fixture parity, but it was much slower because it kept per-instruction
+     handler calls and disrupted the current fast-block wins. `sensor-format
+     --repeats 10` fell from `34,934,937/s` (JIT off) to `20,455,235/s`
+     (direct-handler blocks). Full mix `--repeats 5` regressed every case:
+     `tight-loop` `177,773,669/s` -> `46,547,740/s`, `delay-blink`
+     `120,470,548/s` -> `31,635,244/s`, `serial-print` `77,887,807/s` ->
+     `32,286,414/s`, `analog-write` `81,149,071/s` -> `34,167,172/s`, and
+     `sensor-format` `30,087,766/s` -> `18,758,045/s`. Code reverted.
+   - Next JIT attempt, if any, must inline opcode semantics into the generated
+     block body and preserve existing FastBlocks; translating to handler calls is
+     not a viable stepping stone.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -210,8 +225,9 @@ bun run build:demo && bun run test:e2e # browser/demo release gate
 **Checkpoint complete.** The code and docs now describe a measured, green
 baseline: `DEC`/`RET` were kept, the dispatch-tree, direct-handler-table, broad
 inline-linear-ladder, cold switch-tail, and bucketed whole-core generated-dispatch
-prototypes were rejected, and `sensor-format` is still below avr8js. The current
-arc is landed as logical commits:
+prototypes were rejected, the first direct-handler block-JIT slice was rejected,
+and `sensor-format` is still below avr8js. The current arc is landed as logical
+commits:
 
 - [x] generated fast-core implementation/tests (`__udivmodsi4`,
   `shift-right-dec`, `umulhisi3`, `DEC`, `RET`)
@@ -220,11 +236,14 @@ arc is landed as logical commits:
 - [x] benchmark result note and validation evidence
 - [x] rejected separate bucketed whole-core generated-dispatch prototype
   (correct but slower; code reverted)
+- [x] rejected direct-handler translated-block JIT prototype
+  (correct but much slower; code reverted)
 
 The next implementation step is the **translate-once block JIT** if real compiled
-Arduino throughput is still the goal. Do not add more incremental arms or
-generated-dispatch variants to the current ladder unless a fresh profile shows a
-large, isolated win.
+Arduino throughput is still the goal, but it must be an **inline-semantics block
+JIT** that preserves the current FastBlocks. Do not add more incremental arms,
+generated-dispatch variants, or handler-call translation layers unless a fresh
+profile shows a large, isolated win.
 
 ## Open decision
 
