@@ -294,7 +294,10 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 }
 
 function parseAnalog(value: string | undefined): number {
-  const parsed = parsePositiveInt(value, "--analog");
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`--analog expects a value from 0..1023, got ${value}.`);
+  }
   if (parsed > 1023) throw new Error(`--analog expects a value from 0..1023, got ${value}.`);
   return parsed;
 }
