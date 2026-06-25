@@ -147,10 +147,19 @@ dispatching one instruction:
    different object model). Expectation: this **matches** avr8js (~1.0x on real
    code); it does not beat it, because it still dispatches once per instruction.
    - Already rejected: direct-handler-table fallback, more inline bodies in the
-     existing linear ladder, and a cold high-nibble switch tail. The only
-     remaining monolithic-core variant worth trying is a **separate whole-core
-     generated interpreter replacement** behind a gate, not another incremental
-     tail bolted onto the current ladder.
+     existing linear ladder, and a cold high-nibble switch tail.
+   - [x] Rejected separate bucketed whole-core generated-dispatch prototype
+     behind a gate (June 25, 2026): it passed freshness, typecheck, and fixture
+     parity, but lost the benchmark gate. `sensor-format --repeats 10` fell from
+     `34,142,651/s` (ladder) to `32,313,915/s` (bucketed). Full mix
+     `--repeats 5` also regressed most cases: `tight-loop` `172,817,232/s` ->
+     `122,198,299/s`, `delay-blink` `118,989,852/s` -> `101,404,411/s`,
+     `analog-write` `76,402,015/s` -> `64,651,522/s`, and `sensor-format`
+     `29,147,585/s` -> `27,868,241/s`; only `serial-print` improved
+     (`74,324,244/s` -> `83,442,643/s`). Code reverted; result recorded here.
+   - No incremental generated-dispatch variant remains recommended. A true
+     all-opcode semantic generator would be a larger rewrite, not the next
+     narrow slice.
 - [ ] **Translate-once block JIT → BEAT avr8js on real code.** Compile hot basic
    blocks (branches included) into one JS function via `new Function`, cached by
    block-start PC, so a hot region pays dispatch *zero* times after the first
@@ -200,26 +209,26 @@ bun run build:demo && bun run test:e2e # browser/demo release gate
 
 **Checkpoint complete.** The code and docs now describe a measured, green
 baseline: `DEC`/`RET` were kept, the dispatch-tree, direct-handler-table, broad
-inline-linear-ladder, and cold switch-tail prototypes were rejected, and
-`sensor-format` is still below avr8js. The current arc is landed as logical
-commits:
+inline-linear-ladder, cold switch-tail, and bucketed whole-core generated-dispatch
+prototypes were rejected, and `sensor-format` is still below avr8js. The current
+arc is landed as logical commits:
 
 - [x] generated fast-core implementation/tests (`__udivmodsi4`,
   `shift-right-dec`, `umulhisi3`, `DEC`, `RET`)
 - [x] benchmark/comment/doc consolidation (`performance-plan.md`,
   `benchmark-plan.md`, old `07`-`10` doc replacement)
 - [x] benchmark result note and validation evidence
+- [x] rejected separate bucketed whole-core generated-dispatch prototype
+  (correct but slower; code reverted)
 
-The next implementation step is either **a separate whole-core generated
-interpreter replacement** or, if the goal is to beat avr8js rather than merely
-match it, skip ahead to the **translate-once block JIT**. Do not add more
-incremental arms to the current ladder unless a fresh profile shows a large,
-isolated win.
+The next implementation step is the **translate-once block JIT** if real compiled
+Arduino throughput is still the goal. Do not add more incremental arms or
+generated-dispatch variants to the current ladder unless a fresh profile shows a
+large, isolated win.
 
 ## Open decision
 
-Whether to pursue (1) full monolithic core and/or (2) the JIT depends entirely on
-whether **"fast on real compiled Arduino programs"** is an actual product goal. If
-it is, the next lever is the full monolithic core (to stop losing), then the JIT
-(to win). If the synthetic-fixture wins are sufficient, the engine is in a good,
-well-tested state and this work can be considered complete.
+Whether to pursue the JIT depends entirely on whether **"fast on real compiled
+Arduino programs"** is an actual product goal. If it is, the next lever is the
+translate-once block JIT. If the synthetic-fixture wins are sufficient, the engine
+is in a good, well-tested state and this work can be considered complete.
