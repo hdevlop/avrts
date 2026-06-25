@@ -3,6 +3,8 @@ import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { t
 import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
 import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
+import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.hex" with { type: "text" };
+import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
 
 const DEFAULT_CLOCK_HZ = 16_000_000;
 
@@ -83,6 +85,18 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       description: "Arduino PROGMEM/math/Serial formatting fixture",
       cycles: cycles(5_000_000),
       create: () => AVR(sensorFormatHex),
+    },
+    {
+      name: "float-math",
+      description: "Arduino soft-float math fixture",
+      cycles: cycles(5_000_000),
+      create: () => AVR(floatMathHex),
+    },
+    {
+      name: "bitbang-crc",
+      description: "Arduino bit-banged IO and CRC fixture",
+      cycles: cycles(5_000_000),
+      create: () => AVR(bitbangCrcHex),
     },
   ];
 }

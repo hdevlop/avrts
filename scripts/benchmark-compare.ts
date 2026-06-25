@@ -20,6 +20,8 @@ import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { t
 import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
 import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
+import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.hex" with { type: "text" };
+import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -63,6 +65,8 @@ const WORKLOADS: Workload[] = [
   { name: "serial-print", cycles: 5_000_000, hex: serialPrintHex },
   { name: "analog-write", cycles: 5_000_000, hex: analogWriteHex },
   { name: "sensor-format", cycles: 5_000_000, hex: sensorFormatHex },
+  { name: "float-math", cycles: 5_000_000, hex: floatMathHex },
+  { name: "bitbang-crc", cycles: 5_000_000, hex: bitbangCrcHex },
 ];
 
 function programFor(hex?: string): Uint16Array {

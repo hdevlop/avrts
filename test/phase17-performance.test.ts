@@ -82,6 +82,8 @@ describe("Phase 17 — browser performance", () => {
       "serial-print-listener",
       "analog-write",
       "sensor-format",
+      "float-math",
+      "bitbang-crc",
     ]);
   });
 
@@ -110,6 +112,8 @@ describe("Phase 17 — browser performance", () => {
       "serial-print-listener": 250_000,
       "analog-write": 500_000,
       "sensor-format": 1_000_000,
+      "float-math": 1_000_000,
+      "bitbang-crc": 1_000_000,
     };
     for (const [name, { floor }] of Object.entries(baseline.cases)) {
       test(name, () => {

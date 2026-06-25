@@ -17,7 +17,7 @@ reveals something the others can't), and add external references so "fast" and
 
 - Fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)): `tight-loop`,
   `delay-blink`, `serial-print`, `serial-print-listener`, `analog-write` (all
-  synthetic), plus `sensor-format` (real).
+  synthetic), plus `sensor-format`, `float-math`, and `bitbang-crc` (real).
 - Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js),
   `bun run profile:opcodes` (hot opcode / fast-block profile).
 - Only external comparison today: **avr8js**.
@@ -34,12 +34,12 @@ an entry to `createBenchmarkCases()`; it flows into `bench`, `bench:compare`, an
 
 Priority order (highest signal first):
 
-- [ ] **`float-math`** — `float` ops (`sin`/`cos`/`sqrt`/`*`/`/`).
+- [x] **`float-math`** — `float` ops (`sin`/`cos`/`sqrt`/`*`/`/`).
   - Stresses: avr-libc **soft-float** routines (AVR has no FPU) — large, branchy
     helper loops, the single biggest un-measured real-world cost.
   - Reveals: likely the **worst** avr8js gap; the strongest evidence for/against
     the full-monolithic-core investment.
-- [ ] **`bitbang-crc`** — software SPI/I2C bit-banging + CRC8/CRC16 over a buffer.
+- [x] **`bitbang-crc`** — software SPI/I2C bit-banging + CRC8/CRC16 over a buffer.
   - Stresses: **logic ops (`AND`/`OR`/`EOR`)** — *not inlined yet* — plus shifts
     and `IN`/`OUT` port toggling.
   - Reveals: directly measures the megamorphic `handler()` fallback cost on
@@ -90,7 +90,7 @@ The valuable external references are native simulators used as *ceilings* and
 | **simavr (native)** | C | **Accuracy oracle** (final-state cross-check) | medium |
 | **simulavr / qemu-avr** | C/C++ | Optional extra accuracy reference | high, low value |
 
-- [ ] **avr8js** — already the primary `bench:compare` target. Keep it.
+- [x] **avr8js** — already the primary `bench:compare` target. Keep it.
 - [ ] **simavr → WASM speed ceiling.** The single most *strategically valuable*
   addition: it answers the one question avr8js can't — **how far is interpreted
   JS from native logic running in the same environment?** That gap is the upside
@@ -143,8 +143,22 @@ The valuable external references are native simulators used as *ceilings* and
 
 ## Immediate next actions
 
-- [ ] Write/compile a `float-math` sketch; wire into `createBenchmarkCases()`;
+- [x] Write/compile a `float-math` sketch; wire into `createBenchmarkCases()`;
   record profile + `bench:compare`.
-- [ ] Write/compile a `bitbang-crc` sketch; same.
+- [x] Write/compile a `bitbang-crc` sketch; same.
 - [ ] Decide whether the simavr-WASM ceiling is worth the one-time integration —
   it is iff "faster on real Arduino programs" is a real product goal.
+
+## Recorded fixture evidence
+
+Captured locally on 2026-06-25 with `semantic-direct` `__udivmodsi4`.
+
+- `float-math`: `profile:opcodes -- --case float-math --mode fast --top 12`
+  sampled 5,000,001 cycles and showed soft-float helper loops dominated by
+  branch/shift/return rows (`BRNE`, `ROR`, `SBCI`, `LSR`, `RET`). `bench:compare
+  -- --repeats 5`: avrts **22,339,989/s**, avr8js **38,425,625/s**, ratio
+  **0.58x**.
+- `bitbang-crc`: `profile:opcodes -- --case bitbang-crc --mode fast --top 12`
+  sampled 5,000,000 cycles and showed direct port/CRC loop rows (`CBI`, `SBI`,
+  `SBIW`, `SBIC`, `BRNE`, `AND`). `bench:compare -- --repeats 5`: avrts
+  **15,166,797/s**, avr8js **39,977,453/s**, ratio **0.38x**.
