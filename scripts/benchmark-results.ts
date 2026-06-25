@@ -29,6 +29,9 @@ import peripheralMixHex from "../examples/arduino-peripheral-mix/arduino-periphe
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with {
   type: "text",
 };
+import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with {
+  type: "text",
+};
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -45,6 +48,8 @@ import {
   AVRTWI,
   type TWIEventHandler,
   twiConfig,
+  AVRUSART,
+  usart0Config,
 } from "avr8js";
 
 const CLOCK_HZ = 16_000_000;
@@ -54,12 +59,13 @@ const RESULT_START = 0xa7;
 const RESULT_END = 0x5c;
 const RESULT_MODE_ADDR = 0x02ff;
 const RESULT_HALT_MODE = 0x42;
+const STRING_HEAVY_SERIAL_FLUSH_CYCLES = 500_000;
 const DEFAULT_MAX_CYCLES = 5_000_000;
 const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
 const DEFAULT_SCENARIO: ResultScenario = "peripheral-mix";
 
-type ResultScenario = "peripheral-mix" | "isr-heavy";
+type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy";
 
 interface ResultOptions {
   scenario: ResultScenario;
@@ -82,6 +88,7 @@ interface ScenarioOutcome {
   result: number[];
   registers: Record<string, number>;
   twi: TwiTranscript;
+  serial: number[];
 }
 
 interface CompareResult {
@@ -94,6 +101,7 @@ interface CompareResult {
 const SCENARIO_HEX: Record<ResultScenario, string> = {
   "peripheral-mix": peripheralMixHex,
   "isr-heavy": isrHeavyHex,
+  "string-heavy": stringHeavyHex,
 };
 
 function programFor(hex: string): Uint16Array {
@@ -194,15 +202,20 @@ function readRegisters(data: Uint8Array): Record<string, number> {
 function runAvrts(options: ResultOptions): ScenarioOutcome {
   const avr = AVR({ hex: SCENARIO_HEX[options.scenario], timing: "cycle-exact" });
   const transcript = createTranscript();
+  const serial: number[] = [];
   avr.cpu.data[RESULT_MODE_ADDR] = RESULT_HALT_MODE;
   avr.analog(0).setValue(options.analogRaw);
   avr.pin(2).setInput(options.d2High);
+  avr.serial.onByte((byte) => serial.push(byte & 0xff));
   if (options.scenario === "peripheral-mix") {
     avr.twi.connect(0x50, createAvrtsTwiSlave(transcript));
   }
 
   while (avr.cpu.cycles < options.maxCycles && !isComplete(avr.cpu.data)) {
     avr.runCycles(10_000);
+  }
+  if (options.scenario === "string-heavy" && isComplete(avr.cpu.data)) {
+    avr.runCycles(STRING_HEAVY_SERIAL_FLUSH_CYCLES);
   }
 
   return {
@@ -212,6 +225,7 @@ function runAvrts(options: ResultOptions): ScenarioOutcome {
     result: readResult(avr.cpu.data),
     registers: readRegisters(avr.cpu.data),
     twi: transcript,
+    serial,
   };
 }
 
@@ -226,7 +240,10 @@ function runAvr8js(options: ResultOptions): ScenarioOutcome {
   new AVRTimer(cpu, timer2Config);
   const adc = new AVRADC(cpu, adcConfig);
   const twi = new AVRTWI(cpu, twiConfig, CLOCK_HZ);
+  const usart = new AVRUSART(cpu, usart0Config, CLOCK_HZ);
   const transcript = createTranscript();
+  const serial: number[] = [];
+  usart.onByteTransmit = (byte) => serial.push(byte & 0xff);
   if (options.scenario === "peripheral-mix") {
     twi.eventHandler = new Avr8jsTwiSlave(twi, transcript);
   }
@@ -236,6 +253,13 @@ function runAvr8js(options: ResultOptions): ScenarioOutcome {
   while (cpu.cycles < options.maxCycles && !isComplete(cpu.data)) {
     avrInstruction(cpu);
     cpu.tick();
+  }
+  if (options.scenario === "string-heavy" && isComplete(cpu.data)) {
+    const flushTarget = cpu.cycles + STRING_HEAVY_SERIAL_FLUSH_CYCLES;
+    while (cpu.cycles < flushTarget) {
+      avrInstruction(cpu);
+      cpu.tick();
+    }
   }
 
   // Touch these so the harness keeps constructing the same visible GPIO surface
@@ -249,6 +273,7 @@ function runAvr8js(options: ResultOptions): ScenarioOutcome {
     result: readResult(cpu.data),
     registers: readRegisters(cpu.data),
     twi: transcript,
+    serial,
   };
 }
 
@@ -265,6 +290,9 @@ function diffOutcomes(avrts: ScenarioOutcome, avr8js: ScenarioOutcome): string[]
   }
   if (JSON.stringify(avrts.twi) !== JSON.stringify(avr8js.twi)) {
     differences.push(`I2C transcript differs:\navrts  ${stableJson(avrts.twi)}\navr8js ${stableJson(avr8js.twi)}`);
+  }
+  if (JSON.stringify(avrts.serial) !== JSON.stringify(avr8js.serial)) {
+    differences.push(`serial output differs:\navrts  ${JSON.stringify(avrts.serial)}\navr8js ${JSON.stringify(avr8js.serial)}`);
   }
   if (JSON.stringify(avrts.registers) !== JSON.stringify(avr8js.registers)) {
     differences.push(`register summary differs:\navrts  ${stableJson(avrts.registers)}\navr8js ${stableJson(avr8js.registers)}`);
@@ -291,6 +319,10 @@ export function comparePeripheralMix(options: Partial<ResultOptions> = {}): Comp
 
 export function compareIsrHeavy(options: Partial<ResultOptions> = {}): CompareResult {
   return compareScenario("isr-heavy", options);
+}
+
+export function compareStringHeavy(options: Partial<ResultOptions> = {}): CompareResult {
+  return compareScenario("string-heavy", options);
 }
 
 function parseArgs(args: string[]): ResultOptions {
@@ -335,8 +367,8 @@ function parseAnalog(value: string | undefined): number {
 }
 
 function parseScenario(value: string | undefined): ResultScenario {
-  if (value === "peripheral-mix" || value === "isr-heavy") return value;
-  throw new Error(`--case expects peripheral-mix or isr-heavy, got ${value}.`);
+  if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy") return value;
+  throw new Error(`--case expects peripheral-mix, isr-heavy, or string-heavy, got ${value}.`);
 }
 
 function parseBoolean(value: string | undefined, flag: string): boolean {
@@ -352,6 +384,7 @@ function printOutcome(outcome: ScenarioOutcome): void {
       .join(" ")}`,
   );
   console.log(`       twi starts=${outcome.twi.starts.length} writes=${outcome.twi.writes.length} reads=${outcome.twi.reads.length} stops=${outcome.twi.stops}`);
+  console.log(`       serial bytes=${outcome.serial.length}`);
 }
 
 if (import.meta.main) {
@@ -366,7 +399,7 @@ if (import.meta.main) {
       for (const difference of result.differences) console.error(`\n${difference}`);
       process.exit(1);
     }
-    console.log("\nPASS: result block, I2C transcript, and register summary match.");
+    console.log("\nPASS: result block, serial output, I2C transcript, and register summary match.");
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
