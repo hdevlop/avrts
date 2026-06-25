@@ -182,6 +182,24 @@ dispatching one instruction:
    - Next JIT attempt, if any, must inline opcode semantics into the generated
      block body and preserve existing FastBlocks; translating to handler calls is
      not a viable stepping stone.
+   - [x] Rejected second JIT slice: **inline-semantics translated straight-line
+     blocks** (June 25, 2026). This prototype did inline register/flag semantics
+     directly into cached `new Function` blocks, preserved existing FastBlocks,
+     and refused to cross events/listeners/interrupts. It first exposed a
+     correctness edge around word arithmetic feeding `ADC`; after tightening the
+     candidate set (no `PUSH`/`POP`, no `ADIW`/`SBIW`, min block length 8), it
+     passed typecheck and fixture parity. It still lost the benchmark gate:
+     `sensor-format --repeats 10` was `32,257,315/s` with JIT off vs
+     `30,270,742/s` with inline semantics. Full mix `--repeats 5` also failed to
+     justify keeping it: `tight-loop` `162,115,017/s` -> `159,573,619/s`,
+     `delay-blink` `116,826,743/s` -> `104,566,087/s`, `serial-print`
+     `72,509,691/s` -> `72,854,649/s`, `analog-write` `65,779,693/s` ->
+     `72,715,850/s`, and `sensor-format` `27,773,951/s` -> `27,498,258/s`.
+     Code reverted.
+   - No narrow translated-block prototype remains recommended. A future JIT
+     would need a real compiler pass: profile hot branch-shaped regions, generate
+     semantics from a single instruction-description source, and prove it keeps
+     FastBlocks or replaces them with equivalent loop compilation.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -225,9 +243,9 @@ bun run build:demo && bun run test:e2e # browser/demo release gate
 **Checkpoint complete.** The code and docs now describe a measured, green
 baseline: `DEC`/`RET` were kept, the dispatch-tree, direct-handler-table, broad
 inline-linear-ladder, cold switch-tail, and bucketed whole-core generated-dispatch
-prototypes were rejected, the first direct-handler block-JIT slice was rejected,
-and `sensor-format` is still below avr8js. The current arc is landed as logical
-commits:
+prototypes were rejected, direct-handler and inline-semantics block-JIT slices
+were rejected, and `sensor-format` is still below avr8js. The current arc is
+landed as logical commits:
 
 - [x] generated fast-core implementation/tests (`__udivmodsi4`,
   `shift-right-dec`, `umulhisi3`, `DEC`, `RET`)
@@ -238,16 +256,20 @@ commits:
   (correct but slower; code reverted)
 - [x] rejected direct-handler translated-block JIT prototype
   (correct but much slower; code reverted)
+- [x] rejected inline-semantics translated-block JIT prototype
+  (correct after tightening, but still slower/mixed; code reverted)
 
-The next implementation step is the **translate-once block JIT** if real compiled
-Arduino throughput is still the goal, but it must be an **inline-semantics block
-JIT** that preserves the current FastBlocks. Do not add more incremental arms,
-generated-dispatch variants, or handler-call translation layers unless a fresh
-profile shows a large, isolated win.
+The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
+If real compiled Arduino throughput is still the goal, first design a real JIT
+compiler pass from profiles: branch-shaped hot-region selection, single-source
+instruction semantics, guard/bailout rules, and FastBlock equivalence. Do not add
+more incremental arms, generated-dispatch variants, or translated-block layers
+unless a fresh profile shows a large, isolated win.
 
 ## Open decision
 
-Whether to pursue the JIT depends entirely on whether **"fast on real compiled
-Arduino programs"** is an actual product goal. If it is, the next lever is the
-translate-once block JIT. If the synthetic-fixture wins are sufficient, the engine
-is in a good, well-tested state and this work can be considered complete.
+Whether to pursue a full JIT compiler depends entirely on whether **"fast on real
+compiled Arduino programs"** is an actual product goal. If it is, the next lever
+is a designed JIT compiler pass, not another local prototype. If the
+synthetic-fixture wins are sufficient, the engine is in a good, well-tested state
+and this work can be considered complete.
