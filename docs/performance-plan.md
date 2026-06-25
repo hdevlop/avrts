@@ -81,6 +81,12 @@ step-by-step history of how we got here.
   also passed parity, but still failed the real benchmark gate:
   `sensor-format` measured **34.3M/s** (`repeats 10`) and **30.4M/s** in the full
   fixture mix (`repeats 5`). It was removed.
+- [x] **Rejected final tail-inline retry** — after semantic-direct `__udivmodsi4`,
+  a smaller tail-only tranche for `AND`/`OR`/`EOR`/`ANDI`/`ORI`/`IN`/`OUT`/`CLI`
+  passed typecheck, `check:fast-core`, and focused parity tests. It improved
+  isolated `sensor-format --repeats 10` once (`39.5M/s`), but failed the full
+  fixture gate twice: `sensor-format` measured **32.9M/s** and **32.8M/s** in the
+  full mix (`repeats 5`), below the semantic-direct baseline. It was removed.
 - [x] **Commit/checkpoint the current arc** — landed the dirty work as logical
   commits so the measured baseline is stable before opening another performance
   project.
