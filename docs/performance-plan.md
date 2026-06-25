@@ -7,12 +7,12 @@ step-by-step history of how we got here.
 
 ## TL;DR
 
-- **Synthetic fixtures beat avr8js** (local best-of-5, 2026-06-24, after the
-  initial `DEC`/`RET` inline-arm slice): tight-loop **1.96x**, delay-blink **2.32x**,
-  serial-print **1.01x**,
-  analog-write **1.12x**.
-- **A real Arduino sketch (`sensor-format`) is still ~0.66x avr8js** — i.e.
-  avrts is *slower* on real, helper-heavy code.
+- **Synthetic fixtures beat avr8js** (local best-of-5, 2026-06-25): tight-loop
+  **1.84x**, delay-blink **2.48x**, serial-print **1.01x**, analog-write
+  **1.08x**.
+- **Real Arduino fixtures still trail avr8js**: sensor-format **0.69x**,
+  float-math **0.55x**, bitbang-crc **0.35x**. That is enough for a production
+  simulator readiness check, but not a "faster than avr8js" claim.
 - The current measured slice is green. The remaining gap is **architectural**
   (instruction dispatch), not one more small helper block.
 
@@ -59,6 +59,9 @@ step-by-step history of how we got here.
 - [x] **Real-sketch validation** — the `sensor-format` fixture (PROGMEM table reads,
    `map()`/multiply math, `analogWrite`, `Serial.print` number formatting) wired
    into `bench`, `bench:compare`, and `profile:opcodes`.
+- [x] **Expanded real-workload benchmark coverage** — `float-math` and
+   `bitbang-crc` were added as committed Arduino fixtures with `.ino`, `.hex`,
+   `.lst`, benchmark harness wiring, opcode profiles, and avr8js comparison rows.
 - [x] **Initial real-code inline-arm slice** — inline `DEC` and `RET`, add parity
   tests, benchmark serially, and keep only because the full fixture mix stayed
   neutral-or-better.
@@ -95,19 +98,21 @@ step-by-step history of how we got here.
   measurement gates.
 - [ ] **Later: translate-once block JIT** — only if the product goal is to beat
   avr8js on real compiled Arduino programs, not merely match it.
-- [ ] **Later: more real fixtures and external references** — `float-math`,
-  `bitbang-crc`, simavr-WASM speed ceiling, simavr-native accuracy oracle, and
-  final-state fidelity checks live in [`benchmark-plan.md`](benchmark-plan.md).
+- [ ] **Later: external references and fidelity checks** — simavr-WASM speed
+  ceiling, simavr-native accuracy oracle, and final-state fidelity checks live in
+  [`benchmark-plan.md`](benchmark-plan.md).
 
 ## Measured results
 
 ```text
-bench:compare, local best of 5 on 2026-06-24 after DEC/RET slice (16 MHz):
-tight-loop      1.96x   (synthetic: RJMP idle bulk-skip)
-delay-blink     2.32x   (micros block + subcmp block)
+bench:compare, local best of 5 on 2026-06-25 (16 MHz):
+tight-loop      1.84x   (synthetic: RJMP idle bulk-skip)
+delay-blink     2.48x   (micros block + subcmp block)
 serial-print    1.01x   (SBIW busy-wait bulk-skip)
-analog-write    1.12x   (SBIW busy-wait bulk-skip + inline ISR)
-sensor-format   0.66x   (REAL sketch: helper loops + Print/Serial)
+analog-write    1.08x   (SBIW busy-wait bulk-skip + inline ISR)
+sensor-format   0.69x   (REAL sketch: helper loops + Print/Serial)
+float-math      0.55x   (REAL sketch: soft-float helper loops)
+bitbang-crc     0.35x   (REAL sketch: port bit-banging + CRC loops)
 ```
 
 Implementation note: a high-nibble dispatch-tree prototype was tested first and
