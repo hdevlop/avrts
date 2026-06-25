@@ -200,6 +200,45 @@ dispatching one instruction:
      would need a real compiler pass: profile hot branch-shaped regions, generate
      semantics from a single instruction-description source, and prove it keeps
      FastBlocks or replaces them with equivalent loop compilation.
+   - [x] **JIT compiler design pass** (June 25, 2026). Fresh profile evidence
+     says the next useful JIT cannot be a straight-line-block wrapper:
+     `sensor-format --mode pc` is dominated by branch-shaped helper loops around
+     `__udivmodsi4`, especially `0x052d:BRNE` (160,479 hits, 316,175 cycles),
+     `0x0523:BRCS` (155,616 hits, 288,270 cycles), and the loop body at
+     `0x051b..0x052d` (`ADC/CPC/BRCS/SUB/SBC/ADC/DEC/BRNE`). Opcode totals agree:
+     `BRNE`, `BRCS`, `ADC`, `CPC`, `CP`, and `DEC` dominate the sample. The
+     compiler therefore has to compile **hot branch-shaped regions**, not just
+     fall-through runs.
+   - **Required design before implementation:**
+     1. Hot-region selector: use `profileRun()`/PC counts to find loop headers
+        and back-edges (`BRNE`, `BRCS`, `RJMP`) above a threshold; seed with the
+        known `__udivmodsi4` loop region (`0x051b..0x052d` in `sensor-format`) so
+        the first compiler target is the current bottleneck.
+     2. Region IR: represent a small control-flow graph of basic blocks with
+        explicit exits, cycle costs, branch conditions, and touched registers.
+        Stop at memory/IO/call/ret unless the instruction semantics are already
+        single-sourced and parity-tested.
+     3. Single-source semantics: do not hand-copy flag math into ad hoc
+        `new Function` strings again. Create instruction-description emitters
+        that can generate both the current fast-core arms and JIT IR/JS for
+        shared opcodes (`ADC`, `CP`, `CPC`, `SUB`, `SBC`, `DEC`, branches).
+     4. FastBlock equivalence: either keep current FastBlocks ahead of the JIT
+        or make the compiler generate equivalent loop code with the same
+        `canRunFastBlock()` guards. No JIT path may regress `tight-loop`,
+        `delay-blink`, or the helper-loop FastBlocks.
+     5. Guard/bailout contract: compile only in fast timing, with no cycle
+        listeners, no active trace/breakpoint/unknown-opcode pause, no enabled
+        pending interrupt, and no scheduled clock event inside the region's
+        worst-case cycle window. Bail to `runGeneratedFastCore()` otherwise.
+     6. Validation gate: first target is a generated `__udivmodsi4` CFG compiler
+        behind an opt-in flag. It must pass fixture parity vs `tick()`,
+        `check:fast-core`, typecheck, and a full `bench:compare -- --repeats 5`.
+        Keep it only if `sensor-format` improves and the full mix is
+        neutral-or-better.
+   - **Concrete next implementation slice:** build the instruction-description
+     layer and tests for the `__udivmodsi4` CFG only; do not add a general JIT
+     runtime first. The deliverable is a generated, parity-tested region compiler
+     for the hot helper loop, with benchmark opt-in wiring.
 - [ ] **More real fixtures + external references (only to scope product claims).** An
    I2C/SPI driver or a string-heavy sketch would broaden confidence, but
    `sensor-format` already answered the key question: the synthetic wins do not
@@ -258,13 +297,15 @@ landed as logical commits:
   (correct but much slower; code reverted)
 - [x] rejected inline-semantics translated-block JIT prototype
   (correct after tightening, but still slower/mixed; code reverted)
+- [x] completed JIT compiler design pass from fresh `sensor-format` profiles
+  (next code slice is a generated `__udivmodsi4` CFG compiler)
 
 The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
-If real compiled Arduino throughput is still the goal, first design a real JIT
-compiler pass from profiles: branch-shaped hot-region selection, single-source
-instruction semantics, guard/bailout rules, and FastBlock equivalence. Do not add
-more incremental arms, generated-dispatch variants, or translated-block layers
-unless a fresh profile shows a large, isolated win.
+If real compiled Arduino throughput is still the goal, implement the designed
+first slice: a generated `__udivmodsi4` control-flow-region compiler using
+single-source instruction semantics and the existing FastBlock guard contract.
+Do not add more incremental arms, generated-dispatch variants, or generic
+translated-block layers unless a fresh profile shows a large, isolated win.
 
 ## Open decision
 
