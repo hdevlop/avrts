@@ -32,6 +32,9 @@ import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with {
   type: "text",
 };
+import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with {
+  type: "text",
+};
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -65,7 +68,7 @@ const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
 const DEFAULT_SCENARIO: ResultScenario = "peripheral-mix";
 
-type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy";
+type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy" | "dsp-fixed";
 
 interface ResultOptions {
   scenario: ResultScenario;
@@ -102,6 +105,7 @@ const SCENARIO_HEX: Record<ResultScenario, string> = {
   "peripheral-mix": peripheralMixHex,
   "isr-heavy": isrHeavyHex,
   "string-heavy": stringHeavyHex,
+  "dsp-fixed": dspFixedHex,
 };
 
 function programFor(hex: string): Uint16Array {
@@ -325,6 +329,10 @@ export function compareStringHeavy(options: Partial<ResultOptions> = {}): Compar
   return compareScenario("string-heavy", options);
 }
 
+export function compareDspFixed(options: Partial<ResultOptions> = {}): CompareResult {
+  return compareScenario("dsp-fixed", options);
+}
+
 function parseArgs(args: string[]): ResultOptions {
   const options: ResultOptions = {
     scenario: DEFAULT_SCENARIO,
@@ -367,8 +375,8 @@ function parseAnalog(value: string | undefined): number {
 }
 
 function parseScenario(value: string | undefined): ResultScenario {
-  if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy") return value;
-  throw new Error(`--case expects peripheral-mix, isr-heavy, or string-heavy, got ${value}.`);
+  if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
+  throw new Error(`--case expects peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
 }
 
 function parseBoolean(value: string | undefined, flag: string): boolean {

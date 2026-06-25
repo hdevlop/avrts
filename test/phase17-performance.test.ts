@@ -86,6 +86,7 @@ describe("Phase 17 — browser performance", () => {
       "bitbang-crc",
       "isr-heavy",
       "string-heavy",
+      "dsp-fixed",
     ]);
   });
 
@@ -118,6 +119,7 @@ describe("Phase 17 — browser performance", () => {
       "bitbang-crc": 1_000_000,
       "isr-heavy": 1_000_000,
       "string-heavy": 1_000_000,
+      "dsp-fixed": 1_000_000,
     };
     for (const [name, { floor }] of Object.entries(baseline.cases)) {
       test(name, () => {

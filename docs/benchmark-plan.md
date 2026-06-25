@@ -49,7 +49,7 @@ Priority order (highest signal first):
   - Stresses: ISR prologue/epilogue (`PUSH`/`POP`/`RETI`), frequent interrupt
     dispatch, and the clock-event scheduler under interrupt churn.
   - Reveals: a path the synthetic fixtures barely touch; very common in firmware.
-- [ ] **`dsp-fixed`** — FIR filter / fixed-point math / PROGMEM-table interpolation.
+- [x] **`dsp-fixed`** — FIR filter / fixed-point math / PROGMEM-table interpolation.
   - Stresses: `MUL`/MAC loops, `LDD`/`STD` (displacement memory), `LPM`.
   - Reveals: multiply + displacement-memory mix (complements `sensor-format`'s
     divide-heavy mix).
@@ -154,6 +154,8 @@ The valuable external references are native simulators used as *ceilings* and
   benchmark/profile harnesses, and `bench:compare`.
 - [x] Write/compile a `string-heavy` sketch; wire into result comparison,
   benchmark/profile harnesses, and `bench:compare`.
+- [x] Write/compile a `dsp-fixed` sketch; wire into result comparison,
+  benchmark/profile harnesses, and `bench:compare`.
 - [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
 - [ ] Decide whether the simavr-WASM ceiling is worth the one-time integration —
@@ -187,3 +189,10 @@ Captured locally on 2026-06-25 with `semantic-direct` `__udivmodsi4`.
   `BRNE`, `ADC`, `DEC`, `ADD`). `bench:compare -- --case string-heavy
   --repeats 3`: avrts **17,428,040/s**, avr8js **50,343,240/s**, ratio
   **0.35x**.
+- `dsp-fixed`: `bench:result -- --case dsp-fixed --analog 512 --d2 high`
+  matched avr8js result SRAM, serial output, empty I2C transcript, and register
+  summary. `profile:opcodes -- --case dsp-fixed --mode fast --top 12` sampled
+  5,000,000 cycles and showed fixed-point DSP rows (`LDS`, `SBRC`, `RJMP`,
+  `CALL`, `JMP`, `MUL` via `umulhisi3`, `LPM`). `bench:compare -- --case
+  dsp-fixed --repeats 3`: avrts **14,990,782/s**, avr8js **52,060,882/s**,
+  ratio **0.29x**.

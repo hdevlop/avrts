@@ -24,6 +24,7 @@ import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.
 import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with { type: "text" };
+import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with { type: "text" };
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -71,6 +72,7 @@ const WORKLOADS: Workload[] = [
   { name: "bitbang-crc", cycles: 5_000_000, hex: bitbangCrcHex },
   { name: "isr-heavy", cycles: 5_000_000, hex: isrHeavyHex },
   { name: "string-heavy", cycles: 5_000_000, hex: stringHeavyHex },
+  { name: "dsp-fixed", cycles: 5_000_000, hex: dspFixedHex },
 ];
 
 function programFor(hex?: string): Uint16Array {

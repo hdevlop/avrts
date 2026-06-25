@@ -7,6 +7,7 @@ import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.
 import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with { type: "text" };
+import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with { type: "text" };
 
 const DEFAULT_CLOCK_HZ = 16_000_000;
 
@@ -111,6 +112,12 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       description: "Arduino String, snprintf, parsing, and Serial formatting fixture",
       cycles: cycles(5_000_000),
       create: () => AVR(stringHeavyHex),
+    },
+    {
+      name: "dsp-fixed",
+      description: "Arduino fixed-point FIR, PROGMEM, and ring-buffer fixture",
+      cycles: cycles(5_000_000),
+      create: () => AVR(dspFixedHex),
     },
   ];
 }
