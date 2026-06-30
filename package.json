@@ -10,6 +10,7 @@
     "bench": "bun run scripts/benchmark.ts",
     "bench:compare": "bun run scripts/benchmark-compare.ts",
     "bench:result": "bun run scripts/benchmark-results.ts",
+    "compile": "bun run scripts/compile.ts",
     "profile:opcodes": "bun run scripts/profile-opcodes.ts",
     "generate:fast-core": "bun run scripts/generate-fast-core.ts",
     "check:fast-core": "bun run scripts/generate-fast-core.ts --check",
