@@ -22,6 +22,7 @@ import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-writ
 import sensorFormatHex from "../examples/arduino-sensor-format/arduino-sensor-format.ino.hex" with { type: "text" };
 import floatMathHex from "../examples/arduino-float-math/arduino-float-math.ino.hex" with { type: "text" };
 import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex" with { type: "text" };
+import peripheralMixHex from "../examples/arduino-peripheral-mix/arduino-peripheral-mix.ino.hex" with { type: "text" };
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with { type: "text" };
 import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with { type: "text" };
@@ -60,6 +61,17 @@ interface CompareOptions {
   cycles?: number;
   only?: string;
   udivmodsi4Region: Udivmodsi4RegionMode;
+  /**
+   * Run each workload in its own subprocess (fresh JSC heap per fixture). This is
+   * the production-representative measurement: real use runs one firmware per CPU,
+   * so each fixture's hot methods stay monomorphic. The default single-process
+   * mode co-runs all 11 firmwares, which megamorphically deoptimizes avrts's
+   * shared hot path ~3x (avr8js is nearly immune) and under-reports real-code
+   * throughput. See docs/monolithic-generated-core-plan.md.
+   */
+  isolate: boolean;
+  /** Suppress the run header (used for isolate child processes). */
+  quiet: boolean;
 }
 
 const WORKLOADS: Workload[] = [
@@ -70,6 +82,7 @@ const WORKLOADS: Workload[] = [
   { name: "sensor-format", cycles: 5_000_000, hex: sensorFormatHex },
   { name: "float-math", cycles: 5_000_000, hex: floatMathHex },
   { name: "bitbang-crc", cycles: 5_000_000, hex: bitbangCrcHex },
+  { name: "peripheral-mix", cycles: 5_000_000, hex: peripheralMixHex },
   { name: "isr-heavy", cycles: 5_000_000, hex: isrHeavyHex },
   { name: "string-heavy", cycles: 5_000_000, hex: stringHeavyHex },
   { name: "dsp-fixed", cycles: 5_000_000, hex: dspFixedHex },
@@ -150,7 +163,12 @@ function parsePositiveInt(value: string | undefined, flag: string): number {
 }
 
 function parseArgs(args: string[]): CompareOptions {
-  const options: CompareOptions = { repeats: 3, udivmodsi4Region: "semantic-direct" };
+  const options: CompareOptions = {
+    repeats: 3,
+    udivmodsi4Region: "semantic-direct",
+    isolate: false,
+    quiet: false,
+  };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === "--repeats") {
@@ -161,6 +179,10 @@ function parseArgs(args: string[]): CompareOptions {
       options.only = args[++i];
     } else if (arg === "--udivmodsi4-region") {
       options.udivmodsi4Region = parseUdivmodsi4RegionMode(args[++i]);
+    } else if (arg === "--isolate") {
+      options.isolate = true;
+    } else if (arg === "--quiet") {
+      options.quiet = true;
     } else {
       throw new Error(`Unknown benchmark-compare argument "${arg}".`);
     }
@@ -185,12 +207,25 @@ function main(): void {
   }));
   if (workloads.length === 0) throw new Error(`Unknown benchmark case "${options.only}".`);
 
-  console.log(
-    `avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz, udivmodsi4 ${options.udivmodsi4Region})\n`,
-  );
-  const head = `${"workload".padEnd(14)}${"cycles".padStart(12)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
-  console.log(head);
-  console.log("-".repeat(head.length));
+  if (!options.quiet) {
+    const mode = options.isolate ? "isolated per-fixture process" : "single process";
+    console.log(
+      `avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz, udivmodsi4 ${options.udivmodsi4Region}, ${mode})\n`,
+    );
+    const head = `${"workload".padEnd(14)}${"cycles".padStart(12)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
+    console.log(head);
+    console.log("-".repeat(head.length));
+  }
+
+  // Isolate parent: re-invoke this script once per workload so each fixture gets a
+  // fresh JSC heap (production-representative; see CompareOptions.isolate). The
+  // children print only their data row (--quiet) and we forward it verbatim.
+  if (options.isolate && options.only === undefined) {
+    for (const workload of workloads) {
+      runIsolatedChild(workload.name, options);
+    }
+    return;
+  }
 
   for (const workload of workloads) {
     const avrts = best(
@@ -204,6 +239,27 @@ function main(): void {
       `${workload.name.padEnd(14)}${fmt(workload.cycles).padStart(12)}${(fmt(avrts) + "/s").padStart(16)}${(fmt(avr8) + "/s").padStart(16)}${`${ratio.toFixed(2)}x`.padStart(16)}`,
     );
   }
+}
+
+/** Spawn one child process to measure a single workload in a fresh heap. */
+function runIsolatedChild(name: string, options: CompareOptions): void {
+  const childArgs = [
+    "run",
+    import.meta.path,
+    "--quiet",
+    "--case",
+    name,
+    "--repeats",
+    String(options.repeats),
+    "--udivmodsi4-region",
+    options.udivmodsi4Region,
+  ];
+  if (options.cycles !== undefined) childArgs.push("--cycles", String(options.cycles));
+  const result = Bun.spawnSync(["bun", ...childArgs], { stdout: "pipe", stderr: "inherit" });
+  if (!result.success) {
+    throw new Error(`isolated child for "${name}" failed (exit ${result.exitCode}).`);
+  }
+  process.stdout.write(result.stdout.toString().trimEnd() + "\n");
 }
 
 main();

@@ -1,13 +1,8 @@
 const GENERATED_FAST_CORE_URL = new URL("../src/cpu/generated/fast-core.ts", import.meta.url);
-const CPU_SOURCE_URL = new URL("../src/cpu/cpu.ts", import.meta.url);
-
-const GENERATED_REGION_BEGIN = "  // BEGIN GENERATED FAST CORE";
-const GENERATED_REGION_END = "  // END GENERATED FAST CORE";
-const GENERATED_UDIVMODSI4_CFG_BEGIN = "  // BEGIN GENERATED UDIVMODSI4 CFG REGION";
-const GENERATED_UDIVMODSI4_CFG_END = "  // END GENERATED UDIVMODSI4 CFG REGION";
+const GENERATED_CORES_URL = new URL("../src/cpu/generated/cores.ts", import.meta.url);
 
 export const GENERATED_FAST_CORE_PATH = GENERATED_FAST_CORE_URL;
-export const CPU_FAST_CORE_PATH = CPU_SOURCE_URL;
+export const GENERATED_CORES_PATH = GENERATED_CORES_URL;
 
 interface GeneratedArm {
   name: string;
@@ -164,6 +159,51 @@ function addArm(
   return { name, guard, body };
 }
 
+/** Build AND/OR/EOR/ANDI/ORI-style logic arms, mirroring `logic()` flags. */
+function logicArm(name: string, guard: string, expression: string, dDecode: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      `const d = ${dDecode};`,
+      `const result = (${expression}) & 0xff;`,
+      "const flags =",
+      "  ((result & 0x80) !== 0 ? SREG_N | SREG_S : 0) |",
+      "  (result === 0 ? SREG_Z : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;",
+      "data[d] = result;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/** Build LSR/ROR/ASR-style shift arms, mirroring `shiftFlags()` flags. */
+function shiftArm(name: string, guard: string, resultExpression: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const d = regD5(opcode);",
+      "const value = data[d]!;",
+      `const result = (${resultExpression}) & 0xff;`,
+      "const carryOut = (value & 1) !== 0;",
+      "const n = (result & 0x80) !== 0;",
+      "const v = n !== carryOut;",
+      "const flags =",
+      "  (carryOut ? SREG_C : 0) |",
+      "  (n ? SREG_N : 0) |",
+      "  (result === 0 ? SREG_Z : 0) |",
+      "  (v ? SREG_V : 0) |",
+      "  (n !== v ? SREG_S : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;",
+      "data[d] = result;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
 /**
  * Build an inline LD/ST indirect arm (docs/performance-plan.md) mirroring
  * `loadIndirect`/`storeIndirect` in src/cpu/instructions.ts. Pointer registers
@@ -204,6 +244,81 @@ function memIndirectArm(
   return { name, guard, body };
 }
 
+/** Build two-word LDS/STS arms, mirroring src/cpu/instructions.ts exactly. */
+function memDirectArm(name: string, guard: string, kind: "ld" | "st"): GeneratedArm {
+  const body =
+    kind === "ld"
+      ? [
+          "data[regD5(opcode)] = this.readData(flash[pc + 1]!);",
+          "this.pc += 2;",
+          "this.cycles += 2;",
+        ]
+      : [
+          "this.writeData(flash[pc + 1]!, data[regD5(opcode)]!);",
+          "this.pc += 2;",
+          "this.cycles += 2;",
+        ];
+  return { name, guard, body };
+}
+
+/** Build LDD/STD Y/Z+q arms, where q uses the AVR displacement encoding. */
+function memDisplacementArm(
+  name: string,
+  guard: string,
+  ptrLow: 28 | 30,
+  kind: "ld" | "st",
+): GeneratedArm {
+  const ptrHigh = ptrLow + 1;
+  const body = [
+    "const q = (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);",
+    `const addr = ((data[${ptrLow}]! | (data[${ptrHigh}]! << 8)) + q) & 0xffff;`,
+    ...(kind === "ld"
+      ? ["data[regD5(opcode)] = this.readData(addr);"]
+      : ["this.writeData(addr, data[regD5(opcode)]!);"]),
+    "this.pc += 1;",
+    "this.cycles += 2;",
+  ];
+  return { name, guard, body };
+}
+
+/** Build CPSE/SBRC/SBRS/SBIC/SBIS arms, preserving two-word skip accounting. */
+function skipArm(name: string, guard: string, condition: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "this.pc += 1;",
+      "this.cycles += 1;",
+      `if (${condition}) {`,
+      "  const nextOpcode = flash[pc + 1]!;",
+      "  const twoWord =",
+      "    (nextOpcode & 0xfe0e) === 0x940c ||",
+      "    (nextOpcode & 0xfe0e) === 0x940e ||",
+      "    (nextOpcode & 0xfe0f) === 0x9000 ||",
+      "    (nextOpcode & 0xfe0f) === 0x9200;",
+      "  const words = twoWord ? 2 : 1;",
+      "  this.pc += words;",
+      "  this.cycles += words;",
+      "}",
+    ],
+  };
+}
+
+/** Build SBI/CBI arms for low I/O bit manipulation. */
+function ioBitArm(name: string, guard: string, setBit: boolean): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const a = (opcode >> 3) & 0x1f;",
+      "const mask = 1 << (opcode & 0x07);",
+      `this.writeIo(a, this.readIo(a) ${setBit ? "|" : "& ~"} mask);`,
+      "this.pc += 1;",
+      "this.cycles += 2;",
+    ],
+  };
+}
+
 /** Build an inline LPM arm (flash read; no IO hooks). `inc` post-increments Z. */
 function lpmArm(name: string, guard: string, dest: string, inc: boolean): GeneratedArm {
   const body = [
@@ -223,6 +338,137 @@ function lpmArm(name: string, guard: string, dest: string, inc: boolean): Genera
   return { name, guard, body };
 }
 
+/** Build INC, mirroring `inc` in src/cpu/instructions.ts (V on 0x7f->0x80). */
+function incArm(name: string, guard: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const d = regD5(opcode);",
+      "const result = (data[d]! + 1) & 0xff;",
+      "data[d] = result;",
+      "const v = result === 0x80;",
+      "const n = (result & 0x80) !== 0;",
+      "const flags =",
+      "  (v ? SREG_V : 0) |",
+      "  (n ? SREG_N : 0) |",
+      "  (result === 0 ? SREG_Z : 0) |",
+      "  (n !== v ? SREG_S : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/** Build COM (one's complement), mirroring `com`: C set, V cleared, S = N. */
+function comArm(name: string, guard: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const d = regD5(opcode);",
+      "const result = ~data[d]! & 0xff;",
+      "data[d] = result;",
+      "const flags =",
+      "  SREG_C |",
+      "  ((result & 0x80) !== 0 ? SREG_N | SREG_S : 0) |",
+      "  (result === 0 ? SREG_Z : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/** Build NEG (two's complement), mirroring `neg` byte-for-byte (H/V/N/Z/C/S). */
+function negArm(name: string, guard: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const d = regD5(opcode);",
+      "const dv = data[d]!;",
+      "const result = (0 - dv) & 0xff;",
+      "data[d] = result;",
+      "const n = (result & 0x80) !== 0;",
+      "const v = result === 0x80;",
+      "const flags =",
+      "  ((((result >> 3) & 1) | ((dv >> 3) & 1)) !== 0 ? SREG_H : 0) |",
+      "  (v ? SREG_V : 0) |",
+      "  (n ? SREG_N : 0) |",
+      "  (result === 0 ? SREG_Z : 0) |",
+      "  (result !== 0 ? SREG_C : 0) |",
+      "  (n !== v ? SREG_S : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/** Build BST: copy bit b of Rd into the T flag, mirroring `bst`. */
+function bstArm(name: string, guard: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const set = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1;",
+      "data[SREG_ADDR] = set ? data[SREG_ADDR]! | SREG_T : data[SREG_ADDR]! & ~SREG_T;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/** Build BLD: copy the T flag into bit b of Rd, mirroring `bld`. */
+function bldArm(name: string, guard: string): GeneratedArm {
+  return {
+    name,
+    guard,
+    body: [
+      "const d = regD5(opcode);",
+      "const mask = 1 << (opcode & 0x07);",
+      "data[d] = (data[SREG_ADDR]! & SREG_T) !== 0 ? data[d]! | mask : data[d]! & ~mask;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  };
+}
+
+/**
+ * Build a multiply arm mirroring `multiply` in src/cpu/alu.ts: 8x8 product into
+ * R1:R0, C = product bit 15, Z = result zero (other flags preserved). `signedD`/
+ * `signedR` sign-extend the operand; `fractional` shifts the product left by one.
+ */
+function mulArm(
+  name: string,
+  guard: string,
+  dDecode: string,
+  rDecode: string,
+  options: { signedD: boolean; signedR: boolean; fractional: boolean },
+): GeneratedArm {
+  const { signedD, signedR, fractional } = options;
+  const aTerm = signedD ? "(dv < 0x80 ? dv : dv - 0x100)" : "dv";
+  const bTerm = signedR ? "(rv < 0x80 ? rv : rv - 0x100)" : "rv";
+  return {
+    name,
+    guard,
+    body: [
+      `const dv = data[${dDecode}]!;`,
+      `const rv = data[${rDecode}]!;`,
+      `const product = ${aTerm} * ${bTerm};`,
+      `const result = (${fractional ? "product << 1" : "product"}) & 0xffff;`,
+      "data[0] = result & 0xff;",
+      "data[1] = (result >> 8) & 0xff;",
+      "const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);",
+      "data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;",
+      "this.pc += 1;",
+      "this.cycles += 2;",
+    ],
+  };
+}
+
 const GENERATED_ARMS: readonly GeneratedArm[] = [
   {
     name: "zero-sbiw-breq-block",
@@ -239,13 +485,14 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "(opcode & 0xf000) === 0xc000",
     body: [
       "const k = opcode & 0x0fff;",
-      "if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) continue;",
+      // 0x0fff = RJMP -1 (rjmp-self); 0x0ffc = RJMP -4 (closes an LDS/SBRC poll).
+      "if ((k === 0x0fff || k === 0x0ffc) && this.tryRunFastBlock(pc, opcode, target)) continue;",
       "this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;",
       "this.cycles += 2;",
     ],
     profiledBody: [
       "const k = opcode & 0x0fff;",
-      "if (k === 0x0fff && this.tryRunFastBlock(pc, opcode, target)) {",
+      "if ((k === 0x0fff || k === 0x0ffc) && this.tryRunFastBlock(pc, opcode, target)) {",
       "  this.profileFastBlock(listener, pc, opcode, before);",
       "  continue;",
       "}",
@@ -366,6 +613,12 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     carryUsed: false,
     writeback: false,
   }),
+  skipArm("cpse", "(opcode & 0xfc00) === 0x1000", "data[regD5(opcode)]! === data[regR5(opcode)]!"),
+  logicArm("and", "(opcode & 0xfc00) === 0x2000", "data[d]! & data[regR5(opcode)]!", "regD5(opcode)"),
+  logicArm("eor", "(opcode & 0xfc00) === 0x2400", "data[d]! ^ data[regR5(opcode)]!", "regD5(opcode)"),
+  logicArm("or", "(opcode & 0xfc00) === 0x2800", "data[d]! | data[regR5(opcode)]!", "regD5(opcode)"),
+  logicArm("ori", "(opcode & 0xf000) === 0x6000", "data[d]! | imm8(opcode)", "regD4(opcode)"),
+  logicArm("andi", "(opcode & 0xf000) === 0x7000", "data[d]! & imm8(opcode)", "regD4(opcode)"),
   {
     name: "shift-left-dec-block",
     guard: "(opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)",
@@ -442,6 +695,24 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   // Stack ops (docs/performance-plan.md). pushByte/popByte are the CPU's own primitives —
   // same call the handlers make — so SP wrap and stack-SRAM access stay identical.
   {
+    name: "in",
+    guard: "(opcode & 0xf800) === 0xb000",
+    body: [
+      "data[regD5(opcode)] = this.readIo((opcode & 0x0f) | ((opcode >> 5) & 0x30));",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  },
+  {
+    name: "out",
+    guard: "(opcode & 0xf800) === 0xb800",
+    body: [
+      "this.writeIo((opcode & 0x0f) | ((opcode >> 5) & 0x30), data[regD5(opcode)]!);",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  },
+  {
     name: "push",
     guard: "(opcode & 0xfe0f) === 0x920f",
     body: ["this.pushByte(data[regD5(opcode)]!);", "this.pc += 1;", "this.cycles += 2;"],
@@ -462,14 +733,112 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     ],
   },
   {
+    name: "jmp",
+    guard: "(opcode & 0xfe0e) === 0x940c",
+    body: [
+      "const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);",
+      "this.pc = (high << 16) | flash[pc + 1]!;",
+      "this.cycles += 3;",
+    ],
+  },
+  {
+    name: "rcall",
+    guard: "(opcode & 0xf000) === 0xd000",
+    body: [
+      "this.pushWord(pc + 1);",
+      "const k = opcode & 0x0fff;",
+      "this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;",
+      "this.cycles += 3;",
+    ],
+  },
+  {
     name: "ret",
     guard: "opcode === 0x9508",
     body: ["this.pc = this.popWord();", "this.cycles += 4;"],
   },
+  {
+    name: "reti",
+    guard: "opcode === 0x9518",
+    body: ["this.pc = this.popWord();", "data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.cycles += 4;"],
+  },
+  {
+    name: "sei",
+    guard: "opcode === 0x9478",
+    body: ["data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.pc += 1;", "this.cycles += 1;"],
+  },
+  {
+    name: "cli",
+    guard: "opcode === 0x94f8",
+    body: ["data[SREG_ADDR] = data[SREG_ADDR]! & ~SREG_I;", "this.pc += 1;", "this.cycles += 1;"],
+  },
+  {
+    name: "ijmp",
+    guard: "opcode === 0x9409",
+    body: ["this.pc = data[30]! | (data[31]! << 8);", "this.cycles += 2;"],
+  },
+  {
+    name: "icall",
+    guard: "opcode === 0x9509",
+    body: ["this.pushWord(pc + 1);", "this.pc = data[30]! | (data[31]! << 8);", "this.cycles += 3;"],
+  },
+  {
+    name: "bset",
+    guard: "(opcode & 0xff8f) === 0x9408",
+    body: [
+      "data[SREG_ADDR] = data[SREG_ADDR]! | (1 << ((opcode >> 4) & 0x07));",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  },
+  {
+    name: "bclr",
+    guard: "(opcode & 0xff8f) === 0x9488",
+    body: [
+      "data[SREG_ADDR] = data[SREG_ADDR]! & ~(1 << ((opcode >> 4) & 0x07));",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  },
+  {
+    name: "swap",
+    guard: "(opcode & 0xfe0f) === 0x9402",
+    body: [
+      "const d = regD5(opcode);",
+      "const value = data[d]!;",
+      "data[d] = ((value << 4) | (value >> 4)) & 0xff;",
+      "this.pc += 1;",
+      "this.cycles += 1;",
+    ],
+  },
+  shiftArm("lsr", "(opcode & 0xfe0f) === 0x9406", "value >> 1"),
+  shiftArm(
+    "ror",
+    "(opcode & 0xfe0f) === 0x9407",
+    "(value >> 1) | ((data[SREG_ADDR]! & SREG_C) !== 0 ? 0x80 : 0)",
+  ),
+  shiftArm("asr", "(opcode & 0xfe0f) === 0x9405", "(value >> 1) | (value & 0x80)"),
+  skipArm(
+    "sbic",
+    "(opcode & 0xff00) === 0x9900",
+    "((this.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0",
+  ),
+  skipArm(
+    "sbis",
+    "(opcode & 0xff00) === 0x9b00",
+    "((this.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1",
+  ),
+  ioBitArm("sbi", "(opcode & 0xff00) === 0x9a00", true),
+  ioBitArm("cbi", "(opcode & 0xff00) === 0x9800", false),
   // Indirect load/store group (docs/performance-plan.md). Placed late: these are colder than
   // the ALU/branch/stack arms, so hot instructions never test past them. Memory
   // access uses this.readData/this.writeData to preserve IO hooks. (Plain LD/ST via
   // Y/Z with displacement q=0 are handled by LDD/STD, not here.)
+  memDirectArm("lds", "(opcode & 0xfe0f) === 0x9000", "ld"),
+  memDirectArm("sts", "(opcode & 0xfe0f) === 0x9200", "st"),
+  memDisplacementArm("ldd-y", "(opcode & 0xd208) === 0x8008", 28, "ld"),
+  memDisplacementArm("ldd-z", "(opcode & 0xd208) === 0x8000", 30, "ld"),
+  memDisplacementArm("std-y", "(opcode & 0xd208) === 0x8208", 28, "st"),
+  memDisplacementArm("std-z", "(opcode & 0xd208) === 0x8200", 30, "st"),
   memIndirectArm("ld-x", "(opcode & 0xfe0f) === 0x900c", 26, 0, "ld"),
   memIndirectArm("ld-x-inc", "(opcode & 0xfe0f) === 0x900d", 26, 1, "ld"),
   memIndirectArm("ld-x-dec", "(opcode & 0xfe0f) === 0x900e", 26, -1, "ld"),
@@ -488,6 +857,74 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   lpmArm("lpm-r0", "opcode === 0x95c8", "0", false),
   lpmArm("lpm-z", "(opcode & 0xfe0f) === 0x9004", "regD5(opcode)", false),
   lpmArm("lpm-z-inc", "(opcode & 0xfe0f) === 0x9005", "regD5(opcode)", true),
+  skipArm(
+    "sbrc",
+    "(opcode & 0xfe08) === 0xfc00",
+    "((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0",
+  ),
+  skipArm(
+    "sbrs",
+    "(opcode & 0xfe08) === 0xfe00",
+    "((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1",
+  ),
+  // Single-register arithmetic/flag group (docs/performance-plan.md). Distinct low
+  // nibbles within the 0x94xx family keep these unambiguous with DEC/SWAP/shifts.
+  incArm("inc", "(opcode & 0xfe0f) === 0x9403"),
+  comArm("com", "(opcode & 0xfe0f) === 0x9400"),
+  negArm("neg", "(opcode & 0xfe0f) === 0x9401"),
+  // Bit copy via the T flag. These share the 0xf800 high bits with the branch
+  // arms but use a disjoint mask (bit 9 selects BLD/BST vs SBRC/SBRS).
+  bstArm("bst", "(opcode & 0xfe08) === 0xfa00"),
+  bldArm("bld", "(opcode & 0xfe08) === 0xf800"),
+  // Multiply group (docs/performance-plan.md). MUL is 0x9c00; the signed/fractional
+  // variants live in 0x02xx/0x03xx and are split by bits 7 and 3.
+  mulArm("mul", "(opcode & 0xfc00) === 0x9c00", "regD5(opcode)", "regR5(opcode)", {
+    signedD: false,
+    signedR: false,
+    fractional: false,
+  }),
+  mulArm("muls", "(opcode & 0xff00) === 0x0200", "16 + ((opcode >> 4) & 0x0f)", "16 + (opcode & 0x0f)", {
+    signedD: true,
+    signedR: true,
+    fractional: false,
+  }),
+  mulArm("mulsu", "(opcode & 0xff88) === 0x0300", "16 + ((opcode >> 4) & 0x07)", "16 + (opcode & 0x07)", {
+    signedD: true,
+    signedR: false,
+    fractional: false,
+  }),
+  mulArm("fmul", "(opcode & 0xff88) === 0x0308", "16 + ((opcode >> 4) & 0x07)", "16 + (opcode & 0x07)", {
+    signedD: false,
+    signedR: false,
+    fractional: true,
+  }),
+  mulArm("fmuls", "(opcode & 0xff88) === 0x0380", "16 + ((opcode >> 4) & 0x07)", "16 + (opcode & 0x07)", {
+    signedD: true,
+    signedR: true,
+    fractional: true,
+  }),
+  mulArm("fmulsu", "(opcode & 0xff88) === 0x0388", "16 + ((opcode >> 4) & 0x07)", "16 + (opcode & 0x07)", {
+    signedD: true,
+    signedR: false,
+    fractional: true,
+  }),
+  // System control. SLEEP defers to this.sleep() (honors SMCR.SE) exactly like the
+  // handler; WDR kicks the watchdog; BREAK is a benign NOP on this target.
+  {
+    name: "sleep",
+    guard: "opcode === 0x9588",
+    body: ["this.pc += 1;", "this.cycles += 1;", "this.sleep();"],
+  },
+  {
+    name: "wdr",
+    guard: "opcode === 0x95a8",
+    body: ["this.kickWatchdog();", "this.pc += 1;", "this.cycles += 1;"],
+  },
+  {
+    name: "break",
+    guard: "opcode === 0x9598",
+    body: ["this.pc += 1;", "this.cycles += 1;"],
+  },
 ];
 
 export function generatedFastCoreArmNames(): readonly string[] {
@@ -504,14 +941,6 @@ export function generateFastCoreSource(): string {
     ...GENERATED_ARMS.map((arm) => `  ${JSON.stringify(arm.name)},`),
     "] as const;",
     "",
-  ].join("\n");
-}
-
-export function generateUdivmodsi4CfgRegion(): string {
-  return [
-    GENERATED_UDIVMODSI4_CFG_BEGIN,
-    ...generateUdivmodsi4CfgMethodLines(),
-    GENERATED_UDIVMODSI4_CFG_END,
   ].join("\n");
 }
 
@@ -650,65 +1079,108 @@ function generateCfgSubLines(d: number, r: number, carryUsed: boolean, writeback
 type LadderVariant = "core" | "profiled";
 
 /**
- * The two single-sourced dispatch ladders. `runGeneratedFastCore` is the
- * production path (`CPU.run()`); `runFastProfiled` is the same ladder with
- * per-step profiling (used by `profile:opcodes --mode fast`). Generating both
- * from one arm list makes them impossible to drift apart — the reason this exists
- * is that the `CALL` arm once drifted into the generated copy only. (A third,
- * `runFast`, was a redundant hand-vs-generated A/B twin and has been removed.)
+ * The execution cores live in their own generated module, `src/cpu/generated/
+ * cores.ts`, instead of inline in `cpu.ts` — they are ~3,500 lines of machine
+ * output that otherwise dwarf the hand-written CPU logic. Each is emitted as a
+ * free function taking the `CPU` instance; `cpu.ts` keeps thin delegating call
+ * sites. The single-source guarantee is unchanged: every core is generated from
+ * the one `GENERATED_ARMS` list, so the production ladder
+ * (`runGeneratedFastCore`) and the profiler ladder (`runFastProfiled`) cannot
+ * drift apart.
  */
-interface LadderRegion {
-  begin: string;
-  end: string;
-  method: string;
-  variant: LadderVariant;
-}
-
-const LADDER_REGIONS: readonly LadderRegion[] = [
-  {
-    begin: GENERATED_REGION_BEGIN,
-    end: GENERATED_REGION_END,
-    method: "runGeneratedFastCore",
-    variant: "core",
-  },
-  {
-    begin: "  // BEGIN GENERATED FAST PROFILED",
-    end: "  // END GENERATED FAST PROFILED",
-    method: "runFastProfiled",
-    variant: "profiled",
-  },
+const CORES_FILE_HEADER: readonly string[] = [
+  "// This file is generated by scripts/generate-fast-core.ts.",
+  "// Do not edit by hand; run `bun run generate:fast-core` instead.",
+  "//",
+  "// The execution cores are emitted here, out of cpu.ts, as free functions taking",
+  "// the CPU instance. They are single-sourced from the generator's one arm list,",
+  "// so the fast ladder and profiled ladder cannot drift.",
+  "",
+  'import type { CPU } from "../cpu";',
+  'import { SREG_ADDR } from "../constants";',
+  "import {",
+  "  SREG_ARITH_MASK,",
+  "  SREG_C,",
+  "  SREG_H,",
+  "  SREG_I,",
+  "  SREG_N,",
+  "  SREG_S,",
+  "  SREG_T,",
+  "  SREG_V,",
+  "  SREG_WORD_MASK,",
+  "  SREG_Z,",
+  "  imm8,",
+  "  regD4,",
+  "  regD5,",
+  "  regR5,",
+  '} from "../alu";',
+  'import type { ProfileRunListener } from "../types";',
+  "",
 ];
 
-interface GeneratedCpuRegion {
-  begin: string;
-  end: string;
-  generate: () => string;
+interface CoreFunction {
+  signature: string;
+  methodLines: readonly string[];
 }
 
-const CPU_GENERATED_REGIONS: readonly GeneratedCpuRegion[] = [
-  ...LADDER_REGIONS.map((region) => ({
-    begin: region.begin,
-    end: region.end,
-    generate: () => generateRegion(region),
-  })),
-  {
-    begin: GENERATED_UDIVMODSI4_CFG_BEGIN,
-    end: GENERATED_UDIVMODSI4_CFG_END,
-    generate: generateUdivmodsi4CfgRegion,
-  },
-];
-
-export function generateFastCoreRegion(): string {
-  return generateRegion(LADDER_REGIONS[0]!);
+/** The three single-sourced execution cores, emitted as free functions. */
+function coreFunctions(): readonly CoreFunction[] {
+  return [
+    {
+      signature: "export function runGeneratedFastCore(cpu: CPU, target: number): void {",
+      methodLines: generateMethodLines("runGeneratedFastCore", "core"),
+    },
+    {
+      signature:
+        "export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunListener): void {",
+      methodLines: generateMethodLines("runFastProfiled", "profiled"),
+    },
+    {
+      signature:
+        "export function runGeneratedUdivmodsi4CfgBlock(cpu: CPU, pc: number, target: number): boolean {",
+      methodLines: generateUdivmodsi4CfgMethodLines(),
+    },
+  ];
 }
 
-/** All single-sourced CPU regions: fast ladders plus generated CFG blocks. */
-export function generateFastCoreRegions(): string[] {
-  return CPU_GENERATED_REGIONS.map((region) => region.generate());
+/**
+ * Turn a generated class-method body into a free function: swap the `private …(…)`
+ * signature for the supplied `export function` header, rewrite every `this.` to
+ * `cpu.`, and dedent one indentation level so the body reads as a top-level
+ * function. The members reached through `cpu.` are exposed on `CPU` for exactly
+ * this purpose (see the "generated-core surface" note in cpu.ts).
+ */
+function asFreeFunction(signature: string, methodLines: readonly string[]): string[] {
+  const body = methodLines.slice(1).map((line) => {
+    // Rewrite every `this` (member access `this.x` and the bare receiver passed
+    // as `executor.execute(this, …)` / `handler(this, …)`) to the `cpu` param.
+    const rewritten = line.replace(/\bthis\b/g, "cpu");
+    return rewritten.startsWith("  ") ? rewritten.slice(2) : rewritten;
+  });
+  return [signature, ...body];
 }
 
-function generateRegion(region: LadderRegion): string {
-  return [region.begin, ...generateMethodLines(region.method, region.variant), region.end].join("\n");
+/** The full contents of the generated `src/cpu/generated/cores.ts` module. */
+export function generateCoresFile(): string {
+  const blocks = coreFunctions().map((fn) => asFreeFunction(fn.signature, fn.methodLines).join("\n"));
+  return [...CORES_FILE_HEADER, blocks.join("\n\n"), ""].join("\n");
+}
+
+function generateArmChainLines(
+  arms: readonly GeneratedArm[],
+  variant: LadderVariant,
+  fallback: readonly string[],
+): string[] {
+  const lines: string[] = [];
+  arms.forEach((arm, index) => {
+    lines.push(`${index === 0 ? "if" : "else if"} (${arm.guard}) {`);
+    lines.push(...indentLines([...armBody(arm, variant)], 2));
+    lines.push("}");
+  });
+  lines.push("else {");
+  lines.push(...indentLines(fallback, 2));
+  lines.push("}");
+  return lines;
 }
 
 function generateMethodLines(method: string, variant: LadderVariant): string[] {
@@ -777,16 +1249,7 @@ function armBody(arm: GeneratedArm, variant: LadderVariant): readonly string[] {
 }
 
 function generateLadderLines(variant: LadderVariant): string[] {
-  const lines: string[] = [];
-  GENERATED_ARMS.forEach((arm, index) => {
-    lines.push(`${index === 0 ? "if" : "else if"} (${arm.guard}) {`);
-    lines.push(...indentLines([...armBody(arm, variant)], 2));
-    lines.push("}");
-  });
-  lines.push("else {");
-  lines.push(...indentLines(generateFallbackLines(variant), 2));
-  lines.push("}");
-  return lines;
+  return generateArmChainLines(GENERATED_ARMS, variant, generateFallbackLines(variant));
 }
 
 function generateFallbackLines(variant: LadderVariant): string[] {
@@ -817,46 +1280,26 @@ function indentLines(lines: readonly string[], spaces: number): string[] {
   return lines.map((line) => (line.length === 0 ? line : `${prefix}${line}`));
 }
 
-function replaceRegion(source: string, region: GeneratedCpuRegion): string {
-  const begin = source.indexOf(region.begin);
-  if (begin < 0) throw new Error(`Missing generated fast core marker: ${region.begin}`);
-  const end = source.indexOf(region.end, begin);
-  if (end < 0) throw new Error(`Missing generated fast core marker: ${region.end}`);
-  const afterEnd = end + region.end.length;
-  return `${source.slice(0, begin)}${region.generate()}${source.slice(afterEnd)}`;
-}
-
-function extractRegion(source: string, region: GeneratedCpuRegion): string {
-  const begin = source.indexOf(region.begin);
-  if (begin < 0) throw new Error(`Missing generated fast core marker: ${region.begin}`);
-  const end = source.indexOf(region.end, begin);
-  if (end < 0) throw new Error(`Missing generated fast core marker: ${region.end}`);
-  return source.slice(begin, end + region.end.length);
-}
-
 async function main(): Promise<void> {
   const check = Bun.argv.includes("--check");
   const metadataSource = generateFastCoreSource();
+  const coresSource = generateCoresFile();
   if (check) {
     const existingMetadata = await Bun.file(GENERATED_FAST_CORE_URL).text().catch(() => "");
     if (existingMetadata !== metadataSource) {
       console.error("Generated fast core metadata is stale. Run `bun run generate:fast-core`.");
       process.exit(1);
     }
-    const cpuSource = await Bun.file(CPU_SOURCE_URL).text();
-    for (const region of CPU_GENERATED_REGIONS) {
-      if (extractRegion(cpuSource, region) !== region.generate()) {
-        console.error(`Generated CPU region ${region.begin.trim()} is stale. Run \`bun run generate:fast-core\`.`);
-        process.exit(1);
-      }
+    const existingCores = await Bun.file(GENERATED_CORES_URL).text().catch(() => "");
+    if (existingCores !== coresSource) {
+      console.error("Generated cores module is stale. Run `bun run generate:fast-core`.");
+      process.exit(1);
     }
     return;
   }
 
   await Bun.write(GENERATED_FAST_CORE_URL, metadataSource);
-  let cpuSource = await Bun.file(CPU_SOURCE_URL).text();
-  for (const region of CPU_GENERATED_REGIONS) cpuSource = replaceRegion(cpuSource, region);
-  await Bun.write(CPU_SOURCE_URL, cpuSource);
+  await Bun.write(GENERATED_CORES_URL, coresSource);
 }
 
 if (import.meta.main) {

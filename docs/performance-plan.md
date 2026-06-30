@@ -1,9 +1,14 @@
-# avrts Performance & avr8js-Parity Plan (final)
+# avrts Performance & avr8js-Parity Plan (historical)
 
-This is the single, consolidated performance plan. It replaces the earlier
-iterative drafts (the old `07`–`10` docs) and records the **end state**, the
-measured results, the honest conclusion, and the forward path — not the
-step-by-step history of how we got here.
+> **Superseded:** the active roadmap is
+> [`real-code-performance-plan.md`](real-code-performance-plan.md). This file is
+> retained as historical context for the pre-/monolithic-core performance arc and
+> should not be used as the next-step plan.
+
+This was the consolidated performance plan for the earlier arc. It records the
+measured results and reasoning from that work, but later isolated benchmarks and
+the removed monolithic-core experiment changed the diagnosis. Use the real-code
+plan for current priorities, gates, and root-cause framing.
 
 ## TL;DR
 
@@ -13,8 +18,12 @@ step-by-step history of how we got here.
 - **Real Arduino fixtures still trail avr8js**: sensor-format **0.69x**,
   float-math **0.55x**, bitbang-crc **0.35x**. That is enough for a production
   simulator readiness check, but not a "faster than avr8js" claim.
-- The current measured slice is green. The remaining gap is **architectural**
-  (instruction dispatch), not one more small helper block.
+- The current measured slice is green. The monolithic-core prototype
+  (2026-06-29) then **eliminated** indirect handler dispatch and proved — by
+  experiment — that the remaining real-code gap is the **linear decode ladder**
+  inside overloaded opcode buckets, **not** framework overhead, accessors, or
+  handler fallback (all measured, all ruled out). See "Monolithic core: built and
+  root-caused" below.
 
 ## How the fast path works
 
@@ -93,9 +102,12 @@ step-by-step history of how we got here.
 - [x] **Commit/checkpoint the current arc** — landed the dirty work as logical
   commits so the measured baseline is stable before opening another performance
   project.
-- [ ] **Next real performance project: full monolithic generated core prototype**
-  — generate a decode-tree/inlined-core prototype for all opcodes, starting behind
-  measurement gates.
+- [x] **Full monolithic generated core prototype** (2026-06-29) — built side by
+  side with the current fast core behind `CPU.executionCore = "monolithic"`.
+  Every implemented opcode is now inlined; zero hot fallback is measured on all
+  fixtures. It **improves** real handler-bound code but does **not** reach avr8js
+  parity. Root-caused to decode-ladder depth (see below). Execution checklist:
+  [`monolithic-generated-core-plan.md`](monolithic-generated-core-plan.md).
 - [ ] **Later: translate-once block JIT** — only if the product goal is to beat
   avr8js on real compiled Arduino programs, not merely match it.
 - [ ] **Later: external references and fidelity checks** — simavr-WASM speed
@@ -147,16 +159,111 @@ dispatching one instruction:
   dispatch shape. The per-shape FastBlocks (`__udivmodsi4`, `umulhisi3`, …) claw
   some of it back, but real code has endless shapes; you can't block them all.
 
+## Monolithic core: built and root-caused (2026-06-29)
+
+The monolithic generated core (the prototype proposed above) was built end to end
+behind `CPU.executionCore = "monolithic"`: a `switch(opcode >>> 12)` decode tree
+that inlines **every** implemented opcode (arithmetic/flag, logic/shift, skip,
+memory direct/indirect/displacement, IO, stack/call/return, control/status,
+multiply, and system) from avrts's own `@Op` semantics. Fallback is instrumented
+with a `monolithicFallbacks` counter and **measured to be zero** on every fixture;
+the only remaining fallback is the explicitly-unsupported opcode set
+(`SPM`/`ELPM`/`EICALL`/...). Full checklist + per-slice evidence:
+[`monolithic-generated-core-plan.md`](monolithic-generated-core-plan.md).
+
+### Benchmark gate (`bench:compare -- --repeats 5`, best-of-5, avrts/avr8js ratio)
+
+| workload       | fast | monolithic | note |
+| -------------- | ---- | ---------- | ---- |
+| tight-loop     | 1.87x | 1.97x | synthetic win preserved |
+| delay-blink    | 2.30x | 2.16x | still ≫1.0x |
+| serial-print   | 1.20x | 1.19x | flat |
+| analog-write   | 1.11x | 1.16x | flat |
+| peripheral-mix | 1.43x | 1.43x | flat |
+| sensor-format  | 0.71x | 0.73x | + |
+| float-math     | 0.49x | 0.53x | + |
+| bitbang-crc    | 0.35x | 0.37x | + |
+| isr-heavy      | 0.23x | **0.37x** | **+56%** |
+| string-heavy   | 0.20x | **0.25x** | **+24%** |
+| dsp-fixed      | 0.20x | **0.25x** | **+27%** |
+
+Correctness held throughout: `bench:result --core monolithic` matches avr8js on
+all four result fixtures; `bun test` stays green (per-opcode parity in
+`test/phase4.test.ts`, zero-fallback guard in `test/generated-fast-core.test.ts`
+and `test/phase5.test.ts`).
+
+**Verdict:** the monolithic core removed the cost it was designed to remove
+(indirect dispatch) and clearly helps real handler-bound code, but the heaviest
+real fixtures stay at ~0.25x. It does **not** reach the ~1.0x parity this plan
+predicted, so it stays **experimental/opt-in**, not default.
+
+### Why it still loses — measured, not assumed
+
+A sequence of controlled experiments on `dsp-fixed`/`string-heavy` isolated the
+remaining cost. Each was applied to the monolithic core and reverted:
+
+| experiment | change | effect | conclusion |
+| ---------- | ------ | ------ | ---------- |
+| E1 | skip `notifyCycles` per instruction | none | not the cost |
+| E2 | strip `serviceInterrupts` + per-iteration debug guard | none | not the cost |
+| E3 | inline stack ops (drop `SP` accessor) | ~noise | marginal |
+| E4a | arms use `_cycles` (accessor gone), clock events skipped | +55% | **artifact** — broke peripheral updates; poll loop spun on cheaper instrs |
+| E4b | same, but clock events preserved (avr8js-style accounting) | neutral | the `cycles` accessor is **not** the cost |
+| E5 | hoist `LDS` to the front of the bucket-9 ladder | **~10%** | **largest single real lever found** |
+
+The decisive finding is **E5 / decode-ladder depth**. The monolithic core decodes
+with `switch(opcode >>> 12)` then a **linear `if/else if` chain** inside each
+case. Bucket `0x9` is pathologically overloaded (~45 opcodes), and `LDS` — the #1
+opcode in `dsp-fixed` at **18% of cycles** — sits **26th** in that chain, so every
+execution walks ~25 mask-compares first. Hoisting just that one opcode bought
+~10%. The losing fixtures (dsp/string/isr) are precisely the ones dense in
+bucket-9/bucket-8 memory and stack opcodes (`LDS`/`LD`/`ST`/`STS`/`LDD`/`STD`/
+`CALL`/`RET`) buried deep in the longest ladder.
+
+avr8js avoids this by decoding more directly (sub-switches on lower opcode bits →
+near-O(1) to the body) instead of a long linear scan. **The gap is decode
+*structure*, not dispatch, not the cycle/interrupt framework, and not accessors.**
+That reframes the remaining work: it is a denser-decode problem, addressed by the
+new phases below.
+
 ## Forward path (ranked)
 
-- [ ] **Generate the full monolithic core → MATCH avr8js on real code.** Cover *all*
-   ~130 opcodes in one generated decode-tree function so the megamorphic
-   `handler(...)` fallback disappears and the linear ladder becomes a tree. Take
-   the *structure* (decode tree, one inlined function) as **inspiration from
-   avr8js (MIT)** but generate it from avrts's **own** tested `@Op` handlers — do
-   not copy avr8js code (you'd re-derive logic you already have and adapt it to a
-   different object model). Expectation: this **matches** avr8js (~1.0x on real
-   code); it does not beat it, because it still dispatches once per instruction.
+- [x] **Generate the full monolithic core** (2026-06-29) — done. All implemented
+   opcodes are inlined in one `switch(opcode >>> 12)` function; the megamorphic
+   `handler(...)` fallback is gone (measured zero on every fixture). Generated
+   from avrts's **own** `@Op` semantics, not copied from avr8js. **Outcome did not
+   match the ~1.0x prediction:** it improves real code but the heaviest fixtures
+   stay ~0.25x. Root cause was *not* dispatch (removed) but the linear decode
+   ladder — see "Monolithic core: built and root-caused" above. This makes the
+   denser-decode phase below the next real lever.
+- [ ] **Phase 8 — denser secondary decode → reclaim the decode-ladder cost.**
+   Replace the linear per-bucket `if/else if` chain with a **second-level decode**
+   for the overloaded buckets (start with `0x9`, then `0x8`), the way avr8js does:
+   switch on more opcode bits (e.g. low nibble / `(opcode >> 8) & 0xf`) so a hot
+   opcode like `LDS` is reached in O(1) instead of ~25 mask-compares. This is a
+   single change in [`scripts/generate-fast-core.ts`](../scripts/generate-fast-core.ts)
+   (emit a sub-switch for buckets above an arm-count threshold), re-run through the
+   existing parity / `check:fast-core` / zero-fallback / `bench:result` /
+   `bench:compare -- --repeats 5` gates. Because every bucket-9/bucket-8 memory and
+   stack op benefits at once, expect it to move dsp/string/isr together rather than
+   ~10% one opcode at a time. Keep only if the real fixtures improve and the
+   FastBlock-heavy synthetic wins (`tight-loop`, `delay-blink`) do not regress.
+   - First measurement to confirm the lever: hoisting `LDS` alone bought ~10% on
+     `dsp-fixed` (E5); a full sub-switch should compound that across the bucket.
+   - Ordering fallback: if a full sub-switch is too invasive for the generator,
+     an interim step is to **order each bucket's arms by measured hotness** (hot
+     opcodes first) from `profile:opcodes`, capturing most of the win with less
+     structural change.
+- [ ] **Phase 9 — promotion decision.** If Phase 8 brings real-code ratios
+   meaningfully up without regressing the synthetic wins, promote the monolithic
+   core from experimental to opt-in public beta, then consider default. If it only
+   helps some fixtures, keep it experimental. If it ever loses like the earlier
+   bucketed/linear variants, revert and keep the current fast core. (Detail in
+   [`monolithic-generated-core-plan.md`](monolithic-generated-core-plan.md) Phase 7.)
+- [ ] **(superseded) MATCH avr8js via the monolithic core alone.** The original
+   expectation was that one inlined decode function would reach ~1.0x on real code.
+   Measurement disproved it: dispatch was not the dominant cost. Parity now depends
+   on Phase 8 (decode structure) and, beyond that, the translate-once JIT below.
    - Already rejected: direct-handler-table fallback, more inline bodies in the
      existing linear ladder, and a cold high-nibble switch tail.
    - [x] Rejected separate bucketed whole-core generated-dispatch prototype
@@ -170,7 +277,9 @@ dispatching one instruction:
      (`74,324,244/s` -> `83,442,643/s`). Code reverted; result recorded here.
    - No incremental generated-dispatch variant remains recommended. A true
      all-opcode semantic generator would be a larger rewrite, not the next
-     narrow slice.
+     narrow slice. Use
+     [`monolithic-generated-core-plan.md`](monolithic-generated-core-plan.md) for
+     the side-by-side prototype checklist.
 - [ ] **Translate-once block JIT → BEAT avr8js on real code.** Compile hot basic
    blocks (branches included) into one JS function via `new Function`, cached by
    block-start PC, so a hot region pays dispatch *zero* times after the first
@@ -367,12 +476,23 @@ landed as logical commits:
 - [x] promoted semantic-direct `__udivmodsi4` as the default after A/B
   benchmarks showed the best real-fixture win
 
-The next implementation step is **not another narrow dispatch/JIT micro-prototype**.
-If real compiled Arduino throughput is still the goal, profile the current
-semantic-direct baseline and only take the next isolated helper/block if it is
-large enough to move a real fixture. Do not add more incremental arms,
-generated-dispatch variants, or generic translated-block layers unless a fresh
-profile shows a large, isolated win.
+The next implementation step is now identified by fresh measurement. The
+monolithic-core arc (2026-06-29) added:
+
+- [x] full monolithic generated core behind `CPU.executionCore = "monolithic"`,
+  inlining every implemented opcode (Phases 4–6 of the side-by-side plan)
+- [x] zero-hot-fallback instrumentation + parity guards
+  (`monolithicFallbacks`, `test/phase4.test.ts`, `test/phase5.test.ts`)
+- [x] three-way benchmark gate (fast vs monolithic vs avr8js) recorded above
+- [x] root-cause experiments E1–E5 isolating decode-ladder depth as the dominant
+  remaining real-code cost
+
+Per this plan's own "large, isolated win" rule, that fresh evidence **justifies**
+the next slice: **Phase 8 — denser secondary decode** (sub-switch the overloaded
+`0x9`/`0x8` buckets). It is a single generator change gated by the existing
+parity/freshness/zero-fallback/benchmark checks, and it targets exactly the cost
+the experiments measured. Do **not** add more incremental linear arms or generic
+translated-block layers; the lever is decode *structure*, not more inline bodies.
 
 ## Open decision
 

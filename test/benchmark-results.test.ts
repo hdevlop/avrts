@@ -55,4 +55,5 @@ describe("result benchmark comparisons", () => {
     expect(result.avrts.completed).toBe(true);
     expect(result.avr8js.completed).toBe(true);
   });
+
 });

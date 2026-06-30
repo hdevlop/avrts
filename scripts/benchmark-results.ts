@@ -5,7 +5,7 @@
  * same host-provided ADC/GPIO/I2C environment. The pass condition is identical
  * observable result state, not cycles/second.
  */
-import { AVR } from "../src";
+import { AVR, CPU } from "../src";
 import { loadHex } from "../src/loader";
 import {
   ADCH,

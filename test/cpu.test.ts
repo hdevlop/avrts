@@ -851,6 +851,129 @@ describe("fast-path opcode parity", () => {
     expect(elapsed).toEqual([2, 2, 2]);
   });
 
+  // --- poll-wait fast block: `LDS rd,addr; SBRC/SBRS rd,b; RJMP -4` ---------
+  const POLL_ADDR = 0x100; // plain SRAM byte (no read hook in a bare CPU)
+  const lds = (d: number) => 0x9000 | ((d & 0x1f) << 4); // LDS rd, <next word>
+  const sbrc = (d: number, b: number) => 0xfc00 | ((d & 0x1f) << 4) | (b & 0x07);
+  const sbrs = (d: number, b: number) => 0xfe00 | ((d & 0x1f) << 4) | (b & 0x07);
+  const rjmpBack4 = () => 0xc000 | ((-4 & 0x0fff) >>> 0); // 0xcffc
+
+  function createPollLoop(opts: {
+    sbrs?: boolean;
+    bit?: number;
+    value?: number;
+  }): CPU {
+    const bit = opts.bit ?? 6;
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    // loop top at pc 0: LDS r24,POLL_ADDR (2 words); SBRC/SBRS r24,bit; RJMP -4
+    cpu.flash[0] = lds(24);
+    cpu.flash[1] = POLL_ADDR;
+    cpu.flash[2] = opts.sbrs ? sbrs(24, bit) : sbrc(24, bit);
+    cpu.flash[3] = rjmpBack4();
+    cpu.flash[4] = ldiR16(0x5a); // landing instruction once the loop exits
+    cpu.data[POLL_ADDR] = opts.value ?? 1 << bit; // SBRC default: bit set -> spins
+    cpu.data[SREG_ADDR] = 0xa5;
+    return cpu;
+  }
+
+  test("poll-wait block matches tick() when a clock event clears the polled bit", () => {
+    const slow = createPollLoop({});
+    const fast = createPollLoop({});
+    slow.onTrace(() => {}); // disable the fast path -> per-instruction reference
+    slow.addClockEvent(() => (slow.data[POLL_ADDR] = 0), 137);
+    fast.addClockEvent(() => (fast.data[POLL_ADDR] = 0), 137);
+
+    slow.run(400);
+    fast.run(400);
+
+    expectSameCoreState(fast, slow, [16, 24, POLL_ADDR, SREG_ADDR]);
+    expect(fast.pc).toBeGreaterThan(3); // the loop actually exited
+  });
+
+  test("poll-wait block (SBRS variant) matches tick() when the event sets the bit", () => {
+    const slow = createPollLoop({ sbrs: true, value: 0 }); // SBRS spins while bit clear
+    const fast = createPollLoop({ sbrs: true, value: 0 });
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => (slow.data[POLL_ADDR] = 1 << 6), 211);
+    fast.addClockEvent(() => (fast.data[POLL_ADDR] = 1 << 6), 211);
+
+    slow.run(500);
+    fast.run(500);
+
+    expectSameCoreState(fast, slow, [16, 24, POLL_ADDR, SREG_ADDR]);
+    expect(fast.pc).toBeGreaterThan(3);
+  });
+
+  test("poll-wait block does not skip over a clock event that leaves the bit set", () => {
+    const slow = createPollLoop({});
+    const fast = createPollLoop({});
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 64);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 64);
+
+    slow.run(200);
+    fast.run(200);
+
+    expect(fastEvents).toEqual(slowEvents); // event observed at the same cycle
+    expect(fastEvents.length).toBe(1);
+    expectSameCoreState(fast, slow, [16, 24, POLL_ADDR, SREG_ADDR]);
+  });
+
+  test("poll-wait block declines when the polled byte already satisfies the exit", () => {
+    // Bit already clear: the very next LDS reload exits the SBRC loop. The block
+    // must decline (not fast-forward to the next event) so timing matches tick().
+    const slow = createPollLoop({ value: 0 });
+    const fast = createPollLoop({ value: 0 });
+    slow.onTrace(() => {});
+    // A far-away event must NOT be reached: the loop exits within a few cycles.
+    slow.addClockEvent(() => (slow.data[POLL_ADDR] = 1 << 6), 9000);
+    fast.addClockEvent(() => (fast.data[POLL_ADDR] = 1 << 6), 9000);
+
+    slow.run(50);
+    fast.run(50);
+
+    expectSameCoreState(fast, slow, [16, 24, POLL_ADDR, SREG_ADDR]);
+    expect(fast.pc).toBeGreaterThan(3); // exited immediately, did not skip to 9000
+  });
+
+  test("poll-wait block preserves per-instruction cycle listeners (declines)", () => {
+    const cpu = createPollLoop({});
+    const elapsed: number[] = [];
+    cpu.onCycles((cycles) => elapsed.push(cycles));
+
+    cpu.run(5); // LDS(2), SBRC no-skip(1), RJMP(2)
+
+    expect(elapsed).toEqual([2, 1, 2]);
+  });
+
+  test("poll-wait block declines under cycle-exact timing", () => {
+    const slow = createPollLoop({});
+    const fast = createPollLoop({});
+    slow.onTrace(() => {});
+    fast.timing = "cycle-exact";
+    slow.timing = "cycle-exact";
+    fast.addClockEvent(() => (fast.data[POLL_ADDR] = 0), 80);
+    slow.addClockEvent(() => (slow.data[POLL_ADDR] = 0), 80);
+
+    slow.run(300);
+    fast.run(300);
+
+    expectSameCoreState(fast, slow, [16, 24, POLL_ADDR, SREG_ADDR]);
+  });
+
+  test("profileRun reports the poll-wait block", () => {
+    const cpu = createPollLoop({});
+    cpu.addClockEvent(() => (cpu.data[POLL_ADDR] = 0), 200);
+    let sawBlock = false;
+    cpu.profileRun(150, (event) => {
+      if (event.blockKind === "poll-wait") sawBlock = true;
+    });
+    expect(sawBlock).toBe(true);
+  });
+
   test("zero-SBIW/BREQ idle loop bulk path matches the handler path", () => {
     const slow = createZeroSbiwBreqLoop(28);
     const fast = createZeroSbiwBreqLoop(28);

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { GENERATED_FAST_CORE_ARM_NAMES } from "../src/cpu/generated/fast-core";
 import {
-  CPU_FAST_CORE_PATH,
+  GENERATED_CORES_PATH,
   GENERATED_FAST_CORE_PATH,
-  generateFastCoreRegion,
-  generateFastCoreRegions,
+  generateCoresFile,
   generateFastCoreSource,
   generatedFastCoreArmNames,
 } from "../scripts/generate-fast-core";
@@ -44,11 +43,11 @@ describe("generated fast core", () => {
   test("committed output is fresh", async () => {
     const generated = await Bun.file(GENERATED_FAST_CORE_PATH).text();
     expect(generated).toBe(generateFastCoreSource());
-    const cpuSource = await Bun.file(CPU_FAST_CORE_PATH).text();
-    // Both single-sourced ladders (core + profiled) must be present verbatim —
-    // this is what makes them impossible to drift apart.
-    for (const region of generateFastCoreRegions()) expect(cpuSource).toContain(region);
-    expect(cpuSource).toContain(generateFastCoreRegion());
+    // The generated cores module (fast ladder, profiled ladder, and the
+    // __udivmodsi4 CFG block) must match the generator verbatim — this is what
+    // makes the single-sourced cores impossible to drift apart.
+    const coresSource = await Bun.file(GENERATED_CORES_PATH).text();
+    expect(coresSource).toBe(generateCoresFile());
   });
 
   test("exports the generated inline arm inventory", () => {
