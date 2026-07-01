@@ -852,6 +852,31 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
+  function createFpSplitACommon(options: {
+    r24?: number;
+    r25?: number;
+    sreg?: number;
+    returnPc?: number;
+  } = {}): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      add(24, 24),
+      0xfb97, // BST r25,7
+      adc(25, 25),
+      0xf061, // BREQ +12
+      cpi(25, 0xff),
+      0xf079, // BREQ +15
+      ror(24),
+      0x9508, // RET
+    ]);
+    cpu.data[24] = options.r24 ?? 0x12;
+    cpu.data[25] = options.r25 ?? 0x34;
+    cpu.data[SREG_ADDR] = options.sreg ?? 0x21;
+    cpu.pushWord(options.returnPc ?? 0x0123);
+    return cpu;
+  }
+
   function createArduinoMicrosBody(): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -1446,6 +1471,95 @@ describe("fast-path opcode parity", () => {
     let sawBlock = false;
     cpu.profileRun(15, (event) => {
       if (event.blockKind === "softfloat-right-inc") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("softfloat __fp_splitA common block matches the handler path", () => {
+    const variants = [
+      { r24: 0x12, r25: 0x34, sreg: 0x21 },
+      { r24: 0xff, r25: 0x01, sreg: 0xe0 },
+      { r24: 0x00, r25: 0xfe, sreg: 0x40 },
+    ];
+    for (const variant of variants) {
+      const slow = createFpSplitACommon(variant);
+      const fast = createFpSplitACommon(variant);
+      slow.onTrace(() => {});
+
+      slow.run(11);
+      fast.run(11);
+
+      expectSameCoreState(fast, slow, [24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+    }
+  });
+
+  test("softfloat __fp_splitA common block declines for rare branches", () => {
+    const variants = [
+      { r24: 0x00, r25: 0x80 }, // ADC result zero -> first BREQ taken
+      { r24: 0x80, r25: 0x7f }, // ADC result 0xff -> second BREQ taken
+    ];
+    for (const variant of variants) {
+      const slow = createFpSplitACommon(variant);
+      const fast = createFpSplitACommon(variant);
+      slow.onTrace(() => {});
+
+      slow.run(8);
+      fast.run(8);
+
+      expectSameCoreState(fast, slow, [24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+    }
+  });
+
+  test("softfloat __fp_splitA common block does not skip when target lands inside the block", () => {
+    const slow = createFpSplitACommon();
+    const fast = createFpSplitACommon();
+    slow.onTrace(() => {});
+
+    slow.run(6);
+    fast.run(6);
+
+    expectSameCoreState(fast, slow, [24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("softfloat __fp_splitA common block does not skip over clock events", () => {
+    const slow = createFpSplitACommon();
+    const fast = createFpSplitACommon();
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 5);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 5);
+
+    slow.run(11);
+    fast.run(11);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([5]);
+    expectSameCoreState(fast, slow, [24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("softfloat __fp_splitA common block preserves per-instruction cycle listeners", () => {
+    const slow = createFpSplitACommon();
+    const fast = createFpSplitACommon();
+    const slowCycles: number[] = [];
+    const fastCycles: number[] = [];
+    slow.onTrace(() => {});
+    slow.onCycles((cycles) => slowCycles.push(cycles));
+    fast.onCycles((cycles) => fastCycles.push(cycles));
+
+    slow.run(11);
+    fast.run(11);
+
+    expect(fastCycles).toEqual(slowCycles);
+    expectSameCoreState(fast, slow, [24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("profileRun reports the softfloat __fp_splitA common block", () => {
+    const cpu = createFpSplitACommon();
+    let sawBlock = false;
+    cpu.profileRun(11, (event) => {
+      if (event.blockKind === "fp-splitA-common") sawBlock = true;
     });
 
     expect(sawBlock).toBe(true);

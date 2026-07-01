@@ -21,14 +21,14 @@ no per-instruction peripheral fan-out.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **1.93-2.92x (win)** |
-| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 1.02-1.34x |
-| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.72x** |
+| synthetic / idle-dominated | tight-loop, delay-blink | **1.88-2.75x (win)** |
+| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 1.01-1.36x |
+| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.73x** |
 
 Real-code throughput still trails avr8js: most real fixtures are ~1.35-1.6x
 slower, while `bitbang-crc` is the worst case at ~2.4x slower. The recorded
 best-of-5 table is faster than realtime on every fixture, but the weakest margin
-is `bitbang-crc` at ~1.13x, so realtime headroom is fixture-specific. 477 tests
+is `bitbang-crc` at ~1.10x, so realtime headroom is fixture-specific. 483 tests
 green; result oracles match avr8js for the four `bench:result` fixtures.
 
 ## What we learned (the important part)
@@ -63,6 +63,8 @@ green; result oracles match avr8js for the four `bench:result` fixtures.
   `ADD;ADC;ADC;CP;BRCS;SUB;INC;SUBI;BRNE` bit loop is also recognized exactly.
   Float-math's avr-libc `__addsf3x` right-normalize
   `LSR;ROR;ROR;ROR;SBCI;INC;BRNE` loop is batched as `softfloat-right-inc`.
+  Its hot `__fp_splitA` no-branch exit is batched as `fp-splitA-common` while
+  the rare branch exits still fall back to handlers.
   Profiles confirm these blocks remove hot rows; benchmark samples are noisy, so
   treat this as a profile-backed cleanup, not a new table-changing win yet.
 

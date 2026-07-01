@@ -84,6 +84,7 @@ const FAST_BLOCK_STRCPY_ZX = 11;
 const FAST_BLOCK_SBIW_DEC = 12;
 const FAST_BLOCK_UTOA_COMMON_LOOP = 13;
 const FAST_BLOCK_SOFTFLOAT_RIGHT_INC = 14;
+const FAST_BLOCK_FP_SPLITA_COMMON = 15;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -114,6 +115,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "sbiw-dec",
   "utoa-common-loop",
   "softfloat-right-inc",
+  "fp-splitA-common",
 ];
 
 /**
@@ -684,6 +686,8 @@ export class CPU {
         return this.runUtoaCommonLoopBlock(pc, target);
       case FAST_BLOCK_SOFTFLOAT_RIGHT_INC:
         return this.runSoftFloatRightIncLoopBlock(pc, target);
+      case FAST_BLOCK_FP_SPLITA_COMMON:
+        return this.runFpSplitACommonBlock(pc, target);
       default:
         return false;
     }
@@ -703,6 +707,7 @@ export class CPU {
     }
     if ((opcode & 0xfc00) === 0x0c00) {
       if (opcode === 0x0f88 && this.isUtoaCommonLoop(pc)) return FAST_BLOCK_UTOA_COMMON_LOOP;
+      if (opcode === 0x0f88 && this.isFpSplitACommonBlock(pc)) return FAST_BLOCK_FP_SPLITA_COMMON;
       return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
     }
     if ((opcode & 0xfe0f) === 0x9406) {
@@ -870,6 +875,55 @@ export class CPU {
 
     this._cycles += elapsed;
     this.pc = pc + 9;
+    return true;
+  }
+
+  /**
+   * Common no-branch exit from avr-libc `__fp_splitA`:
+   *   ADD r24,r24; BST r25,7; ADC r25,r25; BREQ rare; CPI r25,0xff;
+   *   BREQ rare; ROR r24; RET
+   */
+  private isFpSplitACommonBlock(pc: number): boolean {
+    const flash = this.flash;
+    const exact = [
+      0x0f88, // ADD r24,r24
+      0xfb97, // BST r25,7
+      0x1f99, // ADC r25,r25
+      0xf061, // BREQ +12
+      0x3f9f, // CPI r25,0xff
+      0xf079, // BREQ +15
+      0x9587, // ROR r24
+      0x9508, // RET
+    ];
+    for (let offset = 0; offset < exact.length; offset += 1) {
+      if (flash[pc + offset] !== exact[offset]) return false;
+    }
+    return true;
+  }
+
+  private runFpSplitACommonBlock(pc: number, target: number): boolean {
+    const data = this.data;
+    const r24 = data[24]!;
+    const r25 = data[25]!;
+    const addSum = r24 + r24;
+    const adcSum = r25 + r25 + (addSum > 0xff ? 1 : 0);
+    const adcResult = adcSum & 0xff;
+    if (adcResult === 0 || adcResult === 0xff) return false;
+
+    const blockCycles = 11;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    data[24] = add8(this, r24, r24, 0);
+    data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_T) | ((r25 & 0x80) !== 0 ? SREG_T : 0);
+    data[25] = add8(this, r25, r25, (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0);
+    sub8(this, data[25]!, 0xff, 0, false);
+    data[24] = shiftFlags(
+      this,
+      (data[24]! >> 1) | ((data[SREG_ADDR]! & SREG_C) !== 0 ? 0x80 : 0),
+      (data[24]! & 1) !== 0,
+    );
+    this._cycles += blockCycles;
+    this.pc = this.popWord();
     return true;
   }
 

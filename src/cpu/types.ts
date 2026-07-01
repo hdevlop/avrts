@@ -37,7 +37,8 @@ export type FastBlockProfileKind =
   | "strcpy-zx"
   | "sbiw-dec"
   | "utoa-common-loop"
-  | "softfloat-right-inc";
+  | "softfloat-right-inc"
+  | "fp-splitA-common";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {
