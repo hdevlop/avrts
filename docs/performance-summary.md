@@ -21,14 +21,14 @@ no per-instruction peripheral fan-out.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **1.88-2.74x (win)** |
-| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 1.00-1.36x |
-| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.75x** |
+| synthetic / idle-dominated | tight-loop, delay-blink | **1.93-2.92x (win)** |
+| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 1.02-1.34x |
+| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.72x** |
 
 Real-code throughput still trails avr8js: most real fixtures are ~1.35-1.6x
 slower, while `bitbang-crc` is the worst case at ~2.4x slower. The recorded
 best-of-5 table is faster than realtime on every fixture, but the weakest margin
-is `bitbang-crc` at ~1.13x, so realtime headroom is fixture-specific. 472 tests
+is `bitbang-crc` at ~1.13x, so realtime headroom is fixture-specific. 477 tests
 green; result oracles match avr8js for the four `bench:result` fixtures.
 
 ## What we learned (the important part)
@@ -60,20 +60,19 @@ green; result oracles match avr8js for the four `bench:result` fixtures.
   `SBIW ...,1;BRNE` delay/countdown loop is batched under the same event/listener
   guards; and the generated ladder has a narrow guarded entry for SRAM
   `LD Z+; ST X+; AND; BRNE` string copies. The avr-libc `__utoa_common`
-  `ADD;ADC;ADC;CP;BRCS;SUB;INC;SUBI;BRNE` bit loop is also recognized exactly;
-  in `string-heavy` it now appears as a `utoa-common-loop` FastBlock instead of
-  nine hot instruction rows. Profiles confirm these blocks remove hot rows;
-  benchmark samples are noisy, so treat this as a profile-backed cleanup, not a
-  new table-changing win yet.
+  `ADD;ADC;ADC;CP;BRCS;SUB;INC;SUBI;BRNE` bit loop is also recognized exactly.
+  Float-math's avr-libc `__addsf3x` right-normalize
+  `LSR;ROR;ROR;ROR;SBCI;INC;BRNE` loop is batched as `softfloat-right-inc`.
+  Profiles confirm these blocks remove hot rows; benchmark samples are noisy, so
+  treat this as a profile-backed cleanup, not a new table-changing win yet.
 
 ## What remains (ranked by payoff)
 
 1. **Small, low-risk — more FastBlocks.** Continue only from fresh
    `profile:opcodes --mode fast` evidence. Current candidates are helper-loop
-   shapes that still rank in the real-code profiles, especially float-math's
-   **shift-normalize** softfloat kernel, `__udivmodsi4` residual CFG rows, and
-   repeated branch-shaped helper loops that survive after the counted-loop
-   cleanup. A few % each,
+   shapes that still rank in the real-code profiles, especially residual
+   softfloat helper kernels, `__udivmodsi4` CFG rows, and repeated branch-shaped
+   helper loops that survive after the counted-loop cleanup. A few % each,
    fixture-specific. Same machinery as the poll-wait block.
 2. **Big, the only real path to BEAT avr8js — a translate-once region JIT.**
    Everything else is interpretation; the only way to do *less work per executed

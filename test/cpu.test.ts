@@ -821,6 +821,37 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
+  function createSoftFloatRightIncLoop(options: {
+    counter?: number;
+    r20?: number;
+    r19?: number;
+    r18?: number;
+    r26?: number;
+    r31?: number;
+    sreg?: number;
+  } = {}): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      lsr(20),
+      ror(19),
+      ror(18),
+      ror(26),
+      sbci(31, 0),
+      inc(21),
+      brne(-7),
+      0x0000,
+    ]);
+    cpu.data[20] = options.r20 ?? 0xe1;
+    cpu.data[19] = options.r19 ?? 0x78;
+    cpu.data[18] = options.r18 ?? 0x9a;
+    cpu.data[26] = options.r26 ?? 0xc3;
+    cpu.data[31] = options.r31 ?? 0x00;
+    cpu.data[21] = options.counter ?? 0xfe;
+    cpu.data[SREG_ADDR] = options.sreg ?? 0xe1;
+    return cpu;
+  }
+
   function createArduinoMicrosBody(): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -1343,6 +1374,78 @@ describe("fast-path opcode parity", () => {
     let sawBlock = false;
     cpu.profileRun(34, (event) => {
       if (event.blockKind === "shift-right-dec") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("softfloat right-normalize loop bulk path matches the handler path", () => {
+    const variants = [
+      { counter: 0xff, target: 7, r20: 0x01, r19: 0x02, r18: 0x03, r26: 0x04, r31: 0x00, sreg: 0xe1 },
+      { counter: 0xfe, target: 15, r20: 0xe1, r19: 0x78, r18: 0x9a, r26: 0xc3, r31: 0x80, sreg: 0x00 },
+      { counter: 0x00, target: 2047, r20: 0xff, r19: 0xff, r18: 0xff, r26: 0xff, r31: 0xff, sreg: 0x22 },
+    ];
+    for (const variant of variants) {
+      const slow = createSoftFloatRightIncLoop(variant);
+      const fast = createSoftFloatRightIncLoop(variant);
+      slow.onTrace(() => {});
+
+      slow.run(variant.target);
+      fast.run(variant.target);
+
+      expectSameCoreState(fast, slow, [18, 19, 20, 21, 26, 31, SREG_ADDR]);
+    }
+  });
+
+  test("softfloat right-normalize loop does not skip when run target lands inside the block", () => {
+    const slow = createSoftFloatRightIncLoop({ counter: 0xfe });
+    const fast = createSoftFloatRightIncLoop({ counter: 0xfe });
+    slow.onTrace(() => {});
+
+    slow.run(8);
+    fast.run(8);
+
+    expectSameCoreState(fast, slow, [18, 19, 20, 21, 26, 31, SREG_ADDR]);
+  });
+
+  test("softfloat right-normalize loop does not skip over clock events", () => {
+    const slow = createSoftFloatRightIncLoop({ counter: 0xfe });
+    const fast = createSoftFloatRightIncLoop({ counter: 0xfe });
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 8);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 8);
+
+    slow.run(15);
+    fast.run(15);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([8]);
+    expectSameCoreState(fast, slow, [18, 19, 20, 21, 26, 31, SREG_ADDR]);
+  });
+
+  test("softfloat right-normalize loop preserves per-instruction cycle listeners", () => {
+    const slow = createSoftFloatRightIncLoop({ counter: 0xfe });
+    const fast = createSoftFloatRightIncLoop({ counter: 0xfe });
+    const slowCycles: number[] = [];
+    const fastCycles: number[] = [];
+    slow.onTrace(() => {});
+    slow.onCycles((cycles) => slowCycles.push(cycles));
+    fast.onCycles((cycles) => fastCycles.push(cycles));
+
+    slow.run(15);
+    fast.run(15);
+
+    expect(fastCycles).toEqual(slowCycles);
+    expectSameCoreState(fast, slow, [18, 19, 20, 21, 26, 31, SREG_ADDR]);
+  });
+
+  test("profileRun reports the softfloat right-normalize loop block", () => {
+    const cpu = createSoftFloatRightIncLoop({ counter: 0xfe });
+    let sawBlock = false;
+    cpu.profileRun(15, (event) => {
+      if (event.blockKind === "softfloat-right-inc") sawBlock = true;
     });
 
     expect(sawBlock).toBe(true);

@@ -625,7 +625,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     body: ["continue;"],
   },
   {
-    name: "shift-right-dec-block",
+    name: "lsr-fast-block",
     guard: "(opcode & 0xfe0f) === 0x9406 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },

@@ -27,7 +27,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "ori",
   "andi",
   "add-fast-block",
-  "shift-right-dec-block",
+  "lsr-fast-block",
   "dec",
   "udivmodsi4-loop-block",
   "umulhisi3-block",

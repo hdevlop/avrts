@@ -42,6 +42,7 @@ import {
   regD4,
   regD5,
   regR5,
+  shiftFlags,
   sub8,
 } from "./alu";
 // The execution cores (~3,500 generated lines) live in their own module to keep
@@ -82,6 +83,7 @@ const FAST_BLOCK_POLL_WAIT = 10;
 const FAST_BLOCK_STRCPY_ZX = 11;
 const FAST_BLOCK_SBIW_DEC = 12;
 const FAST_BLOCK_UTOA_COMMON_LOOP = 13;
+const FAST_BLOCK_SOFTFLOAT_RIGHT_INC = 14;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -111,6 +113,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "strcpy-zx",
   "sbiw-dec",
   "utoa-common-loop",
+  "softfloat-right-inc",
 ];
 
 /**
@@ -679,6 +682,8 @@ export class CPU {
         return this.runStrcpyZxBlock(pc, opcode, target);
       case FAST_BLOCK_UTOA_COMMON_LOOP:
         return this.runUtoaCommonLoopBlock(pc, target);
+      case FAST_BLOCK_SOFTFLOAT_RIGHT_INC:
+        return this.runSoftFloatRightIncLoopBlock(pc, target);
       default:
         return false;
     }
@@ -701,6 +706,9 @@ export class CPU {
       return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
     }
     if ((opcode & 0xfe0f) === 0x9406) {
+      if (opcode === 0x9546 && this.isSoftFloatRightIncLoop(pc)) {
+        return FAST_BLOCK_SOFTFLOAT_RIGHT_INC;
+      }
       return this.isShiftRightDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_RIGHT_DEC : FAST_BLOCK_NONE;
     }
     if (opcode === 0xb73f) {
@@ -1461,6 +1469,74 @@ export class CPU {
     data[SREG_ADDR] = (data[SREG_ADDR]! & (SREG_H | SREG_T | SREG_I)) | SREG_Z | (carry !== 0 ? SREG_C : 0);
     this._cycles += blockCycles;
     this.pc = pc + 6;
+    return true;
+  }
+
+  /**
+   * avr-libc softfloat right-normalize loop from `__addsf3x`:
+   *   LSR r20; ROR r19; ROR r18; ROR r26; SBCI r31,0; INC r21; BRNE loop
+   */
+  private isSoftFloatRightIncLoop(pc: number): boolean {
+    const flash = this.flash;
+    const exact = [
+      0x9546, // LSR r20
+      0x9537, // ROR r19
+      0x9527, // ROR r18
+      0x95a7, // ROR r26
+      0x40f0, // SBCI r31,0
+      0x9553, // INC r21
+      0xf7c9, // BRNE -7
+    ];
+    for (let offset = 0; offset < exact.length; offset += 1) {
+      if (flash[pc + offset] !== exact[offset]) return false;
+    }
+    return true;
+  }
+
+  private runSoftFloatRightIncLoopBlock(pc: number, target: number): boolean {
+    const data = this.data;
+    const loops = data[21] === 0 ? 256 : 256 - data[21]!;
+    const blockCycles = loops * 8 - 1;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    for (let iteration = 0; iteration < loops; iteration += 1) {
+      let value = data[20]!;
+      data[20] = shiftFlags(this, value >> 1, (value & 1) !== 0);
+      value = data[19]!;
+      data[19] = shiftFlags(
+        this,
+        (value >> 1) | ((data[SREG_ADDR]! & SREG_C) !== 0 ? 0x80 : 0),
+        (value & 1) !== 0,
+      );
+      value = data[18]!;
+      data[18] = shiftFlags(
+        this,
+        (value >> 1) | ((data[SREG_ADDR]! & SREG_C) !== 0 ? 0x80 : 0),
+        (value & 1) !== 0,
+      );
+      value = data[26]!;
+      data[26] = shiftFlags(
+        this,
+        (value >> 1) | ((data[SREG_ADDR]! & SREG_C) !== 0 ? 0x80 : 0),
+        (value & 1) !== 0,
+      );
+
+      data[31] = sub8(this, data[31]!, 0, (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0, true);
+
+      const result = (data[21]! + 1) & 0xff;
+      data[21] = result;
+      const v = result === 0x80;
+      const n = (result & 0x80) !== 0;
+      const flags =
+        (v ? SREG_V : 0) |
+        (n ? SREG_N : 0) |
+        (result === 0 ? SREG_Z : 0) |
+        (n !== v ? SREG_S : 0);
+      data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
+    }
+
+    this._cycles += blockCycles;
+    this.pc = pc + 7;
     return true;
   }
 
