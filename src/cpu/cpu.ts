@@ -6,6 +6,7 @@ import {
   SE,
   SMCR,
   SPH_ADDR,
+  SRAM_START,
   SPL_ADDR,
   SREG_ADDR,
 } from "./constants";
@@ -36,6 +37,7 @@ import {
   SREG_V,
   SREG_WORD_MASK,
   SREG_Z,
+  add8,
   imm8,
   regD4,
   regD5,
@@ -77,6 +79,9 @@ const FAST_BLOCK_SUBCMP_RUN = 7;
 const FAST_BLOCK_UDIVMODSI4_LOOP = 8;
 const FAST_BLOCK_UMULHISI3 = 9;
 const FAST_BLOCK_POLL_WAIT = 10;
+const FAST_BLOCK_STRCPY_ZX = 11;
+const FAST_BLOCK_SBIW_DEC = 12;
+const FAST_BLOCK_UTOA_COMMON_LOOP = 13;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -103,6 +108,9 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "udivmodsi4-loop",
   "umulhisi3",
   "poll-wait",
+  "strcpy-zx",
+  "sbiw-dec",
+  "utoa-common-loop",
 ];
 
 /**
@@ -645,6 +653,8 @@ export class CPU {
         return this.runRjmpSelfLoopBlock(pc, target);
       case FAST_BLOCK_ZERO_SBIW_BREQ:
         return this.runZeroSbiwBreqLoopBlock(pc, opcode, target);
+      case FAST_BLOCK_SBIW_DEC:
+        return this.runSbiwDecLoopBlock(pc, opcode, target);
       case FAST_BLOCK_SHIFT_LEFT_DEC:
         return this.runShiftLeftDecLoopBlock(pc, opcode, target);
       case FAST_BLOCK_SHIFT_RIGHT_DEC:
@@ -665,6 +675,10 @@ export class CPU {
         return this.runUmulhisi3Block(pc, target);
       case FAST_BLOCK_POLL_WAIT:
         return this.runPollWaitBlock(pc, target);
+      case FAST_BLOCK_STRCPY_ZX:
+        return this.runStrcpyZxBlock(pc, opcode, target);
+      case FAST_BLOCK_UTOA_COMMON_LOOP:
+        return this.runUtoaCommonLoopBlock(pc, target);
       default:
         return false;
     }
@@ -678,10 +692,12 @@ export class CPU {
     if ((opcode & 0xf000) === 0xc000) {
       return this.isPollWaitLoop(pc, opcode) ? FAST_BLOCK_POLL_WAIT : FAST_BLOCK_NONE;
     }
-    if ((opcode & 0xffcf) === 0x9700) {
-      return this.flash[pc + 1] === 0xf3f1 ? FAST_BLOCK_ZERO_SBIW_BREQ : FAST_BLOCK_NONE;
+    if ((opcode & 0xff00) === 0x9700) {
+      if (this.flash[pc + 1] === 0xf3f1) return FAST_BLOCK_ZERO_SBIW_BREQ;
+      return this.isSbiwDecLoop(pc, opcode) ? FAST_BLOCK_SBIW_DEC : FAST_BLOCK_NONE;
     }
     if ((opcode & 0xfc00) === 0x0c00) {
+      if (opcode === 0x0f88 && this.isUtoaCommonLoop(pc)) return FAST_BLOCK_UTOA_COMMON_LOOP;
       return this.isShiftLeftDecLoop(pc, opcode) ? FAST_BLOCK_SHIFT_LEFT_DEC : FAST_BLOCK_NONE;
     }
     if ((opcode & 0xfe0f) === 0x9406) {
@@ -699,7 +715,154 @@ export class CPU {
     if (opcode === 0x9fa2) {
       return this.isUmulhisi3Block(pc) ? FAST_BLOCK_UMULHISI3 : FAST_BLOCK_NONE;
     }
+    if ((opcode & 0xfe0f) === 0x9001) {
+      return this.isStrcpyZxBlock(pc, opcode) ? FAST_BLOCK_STRCPY_ZX : FAST_BLOCK_NONE;
+    }
     return FAST_BLOCK_NONE;
+  }
+
+  /**
+   * avr-libc/string copy loop shape:
+   *   LD rN,Z+; ST X+,rN; AND rN,rN; BRNE loop
+   *
+   * This only batches SRAM-to-SRAM copies with no hooks on the touched bytes, so
+   * no read/write side effects or IO/register aliasing are skipped.
+   */
+  private isStrcpyZxBlock(pc: number, opcode: number): boolean {
+    const register = regD5(opcode);
+    const store = this.flash[pc + 1]!;
+    const test = this.flash[pc + 2]!;
+    const branch = this.flash[pc + 3]!;
+    return (
+      (store & 0xfe0f) === 0x920d &&
+      regD5(store) === register &&
+      (test & 0xfc00) === 0x2000 &&
+      regD5(test) === register &&
+      regR5(test) === register &&
+      (branch & 0xfc07) === 0xf401 &&
+      ((branch >> 3) & 0x7f) === 0x7c
+    );
+  }
+
+  private runStrcpyZxBlock(pc: number, opcode: number, target: number): boolean {
+    const register = regD5(opcode);
+    const data = this.data;
+    const x0 = data[26]! | (data[27]! << 8);
+    const z0 = data[30]! | (data[31]! << 8);
+    const copied: number[] = [];
+    const pendingWrites = new Map<number, number>();
+
+    for (let offset = 0; offset <= DATA_SIZE; offset += 1) {
+      const src = (z0 + offset) & 0xffff;
+      const dest = (x0 + offset) & 0xffff;
+      if (
+        src < SRAM_START ||
+        dest < SRAM_START ||
+        src >= DATA_SIZE ||
+        dest >= DATA_SIZE ||
+        this.readHooks[src] !== undefined ||
+        this.writeHooks[dest] !== undefined
+      ) {
+        return false;
+      }
+
+      const value = pendingWrites.get(src) ?? data[src]!;
+      copied.push(value);
+      pendingWrites.set(dest, value);
+      if (value === 0) break;
+    }
+
+    if (copied.length <= 1 || copied[copied.length - 1] !== 0) return false;
+    const blockCycles = copied.length * 7 - 1;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    for (let offset = 0; offset < copied.length; offset += 1) {
+      data[(x0 + offset) & 0xffff] = copied[offset]!;
+    }
+    const x = (x0 + copied.length) & 0xffff;
+    const z = (z0 + copied.length) & 0xffff;
+    data[26] = x & 0xff;
+    data[27] = x >> 8;
+    data[30] = z & 0xff;
+    data[31] = z >> 8;
+    data[register] = 0;
+    data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | SREG_Z;
+    this._cycles += blockCycles;
+    this.pc = pc + 4;
+    return true;
+  }
+
+  /**
+   * avr-libc's unsigned-to-ASCII helper inner loop:
+   *   ADD r24,r24; ADC r25,r25; ADC r26,r26; CP r26,r20; BRCS skip
+   *   SUB r26,r20; INC r24; SUBI r21,0x10; BRNE loop
+   */
+  private isUtoaCommonLoop(pc: number): boolean {
+    const flash = this.flash;
+    const exact = [
+      0x0f88, // ADD r24,r24
+      0x1f99, // ADC r25,r25
+      0x1faa, // ADC r26,r26
+      0x17a4, // CP r26,r20
+      0xf010, // BRCS +2
+      0x1ba4, // SUB r26,r20
+      0x9583, // INC r24
+      0x5150, // SUBI r21,0x10
+      0xf7b9, // BRNE -9
+    ];
+    for (let offset = 0; offset < exact.length; offset += 1) {
+      if (flash[pc + offset] !== exact[offset]) return false;
+    }
+    return true;
+  }
+
+  private runUtoaCommonLoopBlock(pc: number, target: number): boolean {
+    const data = this.data;
+    const counter = data[21]!;
+    if ((counter & 0x0f) !== 0) return false;
+
+    const loops = counter === 0 ? 16 : counter >> 4;
+    const maxCycles = loops * 10 - 1;
+    if (!this.canRunFastBlock(target, maxCycles)) return false;
+
+    let elapsed = 0;
+    for (let iteration = 0; iteration < loops; iteration += 1) {
+      data[24] = add8(this, data[24]!, data[24]!, 0);
+      elapsed += 1;
+      data[25] = add8(this, data[25]!, data[25]!, (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0);
+      elapsed += 1;
+      data[26] = add8(this, data[26]!, data[26]!, (data[SREG_ADDR]! & SREG_C) !== 0 ? 1 : 0);
+      elapsed += 1;
+
+      sub8(this, data[26]!, data[20]!, 0, false);
+      elapsed += 1;
+      if ((data[SREG_ADDR]! & SREG_C) !== 0) {
+        elapsed += 2; // BRCS taken over SUB/INC.
+      } else {
+        elapsed += 1; // BRCS not taken.
+        data[26] = sub8(this, data[26]!, data[20]!, 0, false);
+        elapsed += 1;
+        const result = (data[24]! + 1) & 0xff;
+        data[24] = result;
+        const v = result === 0x80;
+        const n = (result & 0x80) !== 0;
+        const flags =
+          (v ? SREG_V : 0) |
+          (n ? SREG_N : 0) |
+          (result === 0 ? SREG_Z : 0) |
+          (n !== v ? SREG_S : 0);
+        data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
+        elapsed += 1;
+      }
+
+      data[21] = sub8(this, data[21]!, 0x10, 0, false);
+      elapsed += 1;
+      elapsed += data[21] === 0 ? 1 : 2;
+    }
+
+    this._cycles += elapsed;
+    this.pc = pc + 9;
+    return true;
   }
 
   /**
@@ -1045,6 +1208,27 @@ export class CPU {
     return true;
   }
 
+  private isSbiwDecLoop(pc: number, opcode: number): boolean {
+    const k = (opcode & 0x0f) | ((opcode >> 2) & 0x30);
+    const branch = this.flash[pc + 1]!;
+    return k === 1 && (branch & 0xfc07) === 0xf401 && ((branch >> 3) & 0x7f) === 0x7e;
+  }
+
+  private runSbiwDecLoopBlock(pc: number, opcode: number, target: number): boolean {
+    const d = 24 + (((opcode >> 4) & 0x03) * 2);
+    const before = this.data[d]! | (this.data[d + 1]! << 8);
+    const iterations = before === 0 ? 0x10000 : before;
+    const blockCycles = iterations * 4 - 1;
+    if (!this.canRunFastBlock(target, blockCycles)) return false;
+
+    this.data[d] = 0;
+    this.data[d + 1] = 0;
+    this.data[SREG_ADDR] = (this.data[SREG_ADDR]! & ~SREG_WORD_MASK) | SREG_Z;
+    this._cycles += blockCycles;
+    this.pc = pc + 2;
+    return true;
+  }
+
   /** Bulk-skip `RJMP -1` when nothing observable can happen before the target/event. */
   private runRjmpSelfLoopBlock(pc: number, target: number): boolean {
     const iterations = this.bulkIdleLoopIterations(target, 2);
@@ -1130,8 +1314,8 @@ export class CPU {
   }
 
   /**
-   * Fast block for the Arduino `delay()` helper's 32-bit left-shift loop:
-   *   ADD rN,rN; ADC rN+1,rN+1; ADC rN+2,rN+2; ADC rN+3,rN+3; DEC rC; BRNE loop
+   * Fast block for compiler-emitted counted left-shift loops:
+   *   ADD rN,rN; ADC rN+1,rN+1; [ADC rN+2,rN+2; ADC rN+3,rN+3;] DEC rC; BRNE loop
    *
    * It is intentionally shape-checked at runtime and only runs the whole counted
    * loop when no event/interrupt/listener can observe the skipped instructions.
@@ -1142,45 +1326,68 @@ export class CPU {
 
     const flash = this.flash;
     const op1 = flash[pc + 1]!;
-    const op2 = flash[pc + 2]!;
-    const op3 = flash[pc + 3]!;
-    const dec = flash[pc + 4]!;
-    const branch = flash[pc + 5]!;
-    if (
-      !this.isAdcSelf(op1, firstReg + 1) ||
-      !this.isAdcSelf(op2, firstReg + 2) ||
-      !this.isAdcSelf(op3, firstReg + 3) ||
-      (dec & 0xfe0f) !== 0x940a ||
-      (branch & 0xfc07) !== 0xf401 ||
-      ((branch >> 3) & 0x7f) !== 0x7a
-    ) {
+    if (!this.isAdcSelf(op1, firstReg + 1)) return false;
+
+    const width = this.shiftLeftDecLoopWidth(pc, firstReg);
+    if (width === 0) {
       return false;
     }
 
-    const counterReg = regD5(dec);
-    if (counterReg >= firstReg && counterReg <= firstReg + 3) return false;
+    const counterReg = regD5(flash[pc + width]!);
+    if (counterReg >= firstReg && counterReg < firstReg + width) return false;
     return true;
+  }
+
+  private shiftLeftDecLoopWidth(pc: number, firstReg: number): number {
+    const flash = this.flash;
+    const dec2 = flash[pc + 2]!;
+    const branch2 = flash[pc + 3]!;
+    if (
+      (dec2 & 0xfe0f) === 0x940a &&
+      (branch2 & 0xfc07) === 0xf401 &&
+      ((branch2 >> 3) & 0x7f) === 0x7c
+    ) {
+      return 2;
+    }
+
+    const op2 = flash[pc + 2]!;
+    const op3 = flash[pc + 3]!;
+    const dec4 = flash[pc + 4]!;
+    const branch4 = flash[pc + 5]!;
+    if (
+      this.isAdcSelf(op2, firstReg + 2) &&
+      this.isAdcSelf(op3, firstReg + 3) &&
+      (dec4 & 0xfe0f) === 0x940a &&
+      (branch4 & 0xfc07) === 0xf401 &&
+      ((branch4 >> 3) & 0x7f) === 0x7a
+    ) {
+      return 4;
+    }
+
+    return 0;
   }
 
   private runShiftLeftDecLoopBlock(pc: number, opcode: number, target: number): boolean {
     const firstReg = regD5(opcode);
-    const counterReg = regD5(this.flash[pc + 4]!);
+    const width = this.shiftLeftDecLoopWidth(pc, firstReg);
+    if (width === 0) return false;
+    const counterReg = regD5(this.flash[pc + width]!);
     const loops = this.data[counterReg] === 0 ? 256 : this.data[counterReg]!;
-    const blockCycles = loops * 7 - 1;
+    const blockCycles = loops * (width + 3) - 1;
     if (!this.canRunFastBlock(target, blockCycles)) return false;
 
     const data = this.data;
     let carry = 0;
     let halfCarry = 0;
     for (let iteration = 0; iteration < loops; iteration += 1) {
-      for (let offset = 0; offset < 4; offset += 1) {
+      for (let offset = 0; offset < width; offset += 1) {
         const addr = firstReg + offset;
         const before = data[addr]!;
         const carryIn = offset === 0 ? 0 : carry;
         const sum = before + before + carryIn;
         data[addr] = sum & 0xff;
         carry = sum > 0xff ? 1 : 0;
-        if (offset === 3) {
+        if (offset === width - 1) {
           halfCarry = (before & 0x0f) + (before & 0x0f) + carryIn > 0x0f ? 1 : 0;
         }
       }
@@ -1193,7 +1400,7 @@ export class CPU {
       (carry !== 0 ? SREG_C : 0) |
       (halfCarry !== 0 ? SREG_H : 0);
     this._cycles += blockCycles;
-    this.pc = pc + 6;
+    this.pc = pc + width + 2;
     return true;
   }
 

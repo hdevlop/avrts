@@ -275,6 +275,7 @@ describe("fast-path opcode parity", () => {
     0x1c00 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
   const lsr = (d: number) => 0x9406 | ((d & 0x1f) << 4);
   const ror = (d: number) => 0x9407 | ((d & 0x1f) << 4);
+  const inc = (d: number) => 0x9403 | ((d & 0x1f) << 4);
   const dec = (d: number) => 0x940a | ((d & 0x1f) << 4);
   const brne = (k: number) => 0xf401 | ((k & 0x7f) << 3);
   // SBIW Rd+1:Rd,K where Rd is one of r24,r26,r28,r30.
@@ -735,6 +736,15 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
+  function createSbiwDecLoop(value: number, pairLow: 24 | 26 | 28 | 30 = 24): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([sbiw(pairLow, 1), brne(-2), 0x0000]);
+    setWord(cpu, pairLow, value);
+    cpu.data[SREG_ADDR] = 0xe0;
+    return cpu;
+  }
+
   function createRjmpSelfLoop(): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -743,24 +753,50 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
-  function createShiftLeftDecLoop(count: number, counterReg = 20): CPU {
+  function createShiftLeftDecLoop(count: number, counterReg = 20, width: 2 | 4 = 4): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
-    cpu.flash.set([
-      add(22, 22),
-      adc(23, 23),
-      adc(24, 24),
-      adc(25, 25),
-      dec(counterReg),
-      brne(-6),
-      0x0000,
-    ]);
+    const body = width === 2
+      ? [add(22, 22), adc(23, 23), dec(counterReg), brne(-4), 0x0000]
+      : [add(22, 22), adc(23, 23), adc(24, 24), adc(25, 25), dec(counterReg), brne(-6), 0x0000];
+    cpu.flash.set(body);
     cpu.data[22] = 0xe1;
     cpu.data[23] = 0x78;
     cpu.data[24] = 0x9a;
     cpu.data[25] = 0xc3;
     cpu.data[counterReg] = count & 0xff;
     cpu.data[SREG_ADDR] = 0xe0;
+    return cpu;
+  }
+
+  function createUtoaCommonLoop(options: {
+    counter?: number;
+    divisor?: number;
+    r24?: number;
+    r25?: number;
+    r26?: number;
+    sreg?: number;
+  } = {}): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      add(24, 24),
+      adc(25, 25),
+      adc(26, 26),
+      cp(26, 20),
+      0xf010, // BRCS +2
+      sub(26, 20),
+      inc(24),
+      subi(21, 0x10),
+      brne(-9),
+      0x0000,
+    ]);
+    cpu.data[20] = options.divisor ?? 10;
+    cpu.data[21] = options.counter ?? 0;
+    cpu.data[24] = options.r24 ?? 0x12;
+    cpu.data[25] = options.r25 ?? 0x34;
+    cpu.data[26] = options.r26 ?? 0x00;
+    cpu.data[SREG_ADDR] = options.sreg ?? 0xe0;
     return cpu;
   }
 
@@ -1012,15 +1048,170 @@ describe("fast-path opcode parity", () => {
     expect(elapsed).toEqual([2, 2, 2, 2, 2, 2]);
   });
 
-  test("shift-left counted loop bulk path matches the handler path", () => {
-    const slow = createShiftLeftDecLoop(3);
-    const fast = createShiftLeftDecLoop(3);
+  test("SBIW/BRNE decrement loop bulk path matches the handler path", () => {
+    const variants = [
+      { value: 1, target: 3 },
+      { value: 3, target: 11 },
+      { value: 0, target: 262143 },
+    ];
+    for (const variant of variants) {
+      const slow = createSbiwDecLoop(variant.value);
+      const fast = createSbiwDecLoop(variant.value);
+      slow.onTrace(() => {});
+
+      slow.run(variant.target);
+      fast.run(variant.target);
+
+      expectSameCoreState(fast, slow, [24, 25, SREG_ADDR]);
+    }
+  });
+
+  test("SBIW/BRNE decrement loop does not skip when run target lands inside the block", () => {
+    const slow = createSbiwDecLoop(3);
+    const fast = createSbiwDecLoop(3);
+    slow.onTrace(() => {});
+
+    slow.run(6);
+    fast.run(6);
+
+    expectSameCoreState(fast, slow, [24, 25, SREG_ADDR]);
+  });
+
+  test("SBIW/BRNE decrement loop does not skip over clock events", () => {
+    const slow = createSbiwDecLoop(3);
+    const fast = createSbiwDecLoop(3);
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 6);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 6);
+
+    slow.run(11);
+    fast.run(11);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([6]);
+    expectSameCoreState(fast, slow, [24, 25, SREG_ADDR]);
+  });
+
+  test("SBIW/BRNE decrement loop preserves per-instruction cycle listeners", () => {
+    const cpu = createSbiwDecLoop(2);
+    const elapsed: number[] = [];
+    cpu.onCycles((cycles) => elapsed.push(cycles));
+
+    cpu.run(7);
+
+    expect(elapsed).toEqual([2, 2, 2, 1]);
+  });
+
+  test("profileRun reports the SBIW decrement loop block", () => {
+    const cpu = createSbiwDecLoop(3);
+    let sawBlock = false;
+    cpu.profileRun(11, (event) => {
+      if (event.blockKind === "sbiw-dec") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("avr-libc __utoa_common loop block matches the handler path", () => {
+    const variants = [
+      { counter: 0, divisor: 10, r24: 0x12, r25: 0x34, r26: 0x00, sreg: 0xe0 },
+      { counter: 0x10, divisor: 0x80, r24: 0xff, r25: 0xff, r26: 0xff, sreg: 0x01 },
+      { counter: 0x40, divisor: 0x01, r24: 0x80, r25: 0x00, r26: 0x7f, sreg: 0x20 },
+    ];
+    for (const variant of variants) {
+      const slow = createUtoaCommonLoop(variant);
+      const fast = createUtoaCommonLoop(variant);
+      slow.onTrace(() => {});
+
+      slow.run(200);
+      fast.run(200);
+
+      expectSameCoreState(fast, slow, [20, 21, 24, 25, 26, SREG_ADDR]);
+    }
+  });
+
+  test("avr-libc __utoa_common loop declines for non-terminating counters", () => {
+    const slow = createUtoaCommonLoop({ counter: 0x01 });
+    const fast = createUtoaCommonLoop({ counter: 0x01 });
+    slow.onTrace(() => {});
+
+    slow.run(40);
+    fast.run(40);
+
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, 26, SREG_ADDR]);
+  });
+
+  test("avr-libc __utoa_common loop does not skip when run target lands inside the block", () => {
+    const slow = createUtoaCommonLoop();
+    const fast = createUtoaCommonLoop();
     slow.onTrace(() => {});
 
     slow.run(20);
     fast.run(20);
 
-    expectSameCoreState(fast, slow, [20, 22, 23, 24, 25, SREG_ADDR]);
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, 26, SREG_ADDR]);
+  });
+
+  test("avr-libc __utoa_common loop does not skip over clock events", () => {
+    const slow = createUtoaCommonLoop();
+    const fast = createUtoaCommonLoop();
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 20);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 20);
+
+    slow.run(200);
+    fast.run(200);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([20]);
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, 26, SREG_ADDR]);
+  });
+
+  test("avr-libc __utoa_common loop preserves per-instruction cycle listeners", () => {
+    const slow = createUtoaCommonLoop({ counter: 0x20 });
+    const fast = createUtoaCommonLoop({ counter: 0x20 });
+    const slowCycles: number[] = [];
+    const fastCycles: number[] = [];
+    slow.onTrace(() => {});
+    slow.onCycles((cycles) => slowCycles.push(cycles));
+    fast.onCycles((cycles) => fastCycles.push(cycles));
+
+    slow.run(40);
+    fast.run(40);
+
+    expect(fastCycles).toEqual(slowCycles);
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, 26, SREG_ADDR]);
+  });
+
+  test("profileRun reports the avr-libc __utoa_common loop block", () => {
+    const cpu = createUtoaCommonLoop();
+    let sawBlock = false;
+    cpu.profileRun(200, (event) => {
+      if (event.blockKind === "utoa-common-loop") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("shift-left counted loop bulk path matches the handler path", () => {
+    const variants: Array<{ width: 2 | 4; target: number; regs: number[] }> = [
+      { width: 2, target: 14, regs: [20, 22, 23, SREG_ADDR] },
+      { width: 4, target: 20, regs: [20, 22, 23, 24, 25, SREG_ADDR] },
+    ];
+    for (const variant of variants) {
+      const slow = createShiftLeftDecLoop(3, 20, variant.width);
+      const fast = createShiftLeftDecLoop(3, 20, variant.width);
+      slow.onTrace(() => {});
+
+      slow.run(variant.target);
+      fast.run(variant.target);
+
+      expectSameCoreState(fast, slow, variant.regs);
+    }
   });
 
   test("shift-left counted loop refuses overlapping counter registers", () => {
@@ -1544,6 +1735,100 @@ describe("subcmp-run fast block (Step 4)", () => {
     expectSame(fast, slow);
     // With a listener the block declines, so cycles are reported per instruction.
     expect(fastCycles).toEqual(slowCycles);
+  });
+});
+
+describe("strcpy Z-to-X fast block", () => {
+  const copyLoop = [
+    0x9121, // LD r18,Z+
+    0x932d, // ST X+,r18
+    0x2322, // AND r18,r18
+    0xf7e1, // BRNE -4
+    0x0000, // NOP after loop
+  ];
+
+  function loadCopyLoop(cpu: CPU): void {
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set(copyLoop);
+    cpu.data[26] = 0x00;
+    cpu.data[27] = 0x03; // X = 0x0300
+    cpu.data[30] = 0x00;
+    cpu.data[31] = 0x02; // Z = 0x0200
+    cpu.data[0x200] = 0x41;
+    cpu.data[0x201] = 0x42;
+    cpu.data[0x202] = 0x00;
+    cpu.data[SREG_ADDR] = 0xa5;
+  }
+
+  function tickUntilAfterLoop(cpu: CPU): void {
+    while (cpu.pc !== 4) cpu.tick();
+  }
+
+  function expectSame(fast: CPU, slow: CPU): void {
+    expect(fast.pc).toBe(slow.pc);
+    expect(fast.cycles).toBe(slow.cycles);
+    expect(fast.sreg.value).toBe(slow.sreg.value);
+    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+  }
+
+  test("block path matches the handler for a null-terminated SRAM copy", () => {
+    const fast = new CPU();
+    loadCopyLoop(fast);
+    const slow = new CPU();
+    loadCopyLoop(slow);
+
+    fast.run(20);
+    tickUntilAfterLoop(slow);
+
+    expectSame(fast, slow);
+    expect(Array.from(fast.data.slice(0x300, 0x303))).toEqual([0x41, 0x42, 0x00]);
+  });
+
+  test("profileRun reports the string copy block", () => {
+    const cpu = new CPU();
+    loadCopyLoop(cpu);
+    let sawBlock = false;
+
+    cpu.profileRun(20, (event) => {
+      if (event.blockKind === "strcpy-zx") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("block refuses to cross a scheduled clock event", () => {
+    const bump = (cpu: CPU) => () => {
+      cpu.data[0x400] = (cpu.data[0x400]! + 1) & 0xff;
+    };
+    const fast = new CPU();
+    loadCopyLoop(fast);
+    const slow = new CPU();
+    loadCopyLoop(slow);
+    fast.addClockEvent(bump(fast), 7);
+    slow.addClockEvent(bump(slow), 7);
+
+    fast.run(20);
+    tickUntilAfterLoop(slow);
+
+    expectSame(fast, slow);
+    expect(fast.data[0x400]).toBe(1);
+  });
+
+  test("block declines when the destination has a write hook", () => {
+    const fast = new CPU();
+    loadCopyLoop(fast);
+    const slow = new CPU();
+    loadCopyLoop(slow);
+    const fastWrites: number[] = [];
+    const slowWrites: number[] = [];
+    fast.installWriteHook(0x300, (_cpu, _addr, value) => fastWrites.push(value));
+    slow.installWriteHook(0x300, (_cpu, _addr, value) => slowWrites.push(value));
+
+    fast.run(20);
+    tickUntilAfterLoop(slow);
+
+    expectSame(fast, slow);
+    expect(fastWrites).toEqual(slowWrites);
   });
 });
 

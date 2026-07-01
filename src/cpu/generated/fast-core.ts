@@ -3,7 +3,7 @@
 
 export const GENERATED_FAST_CORE_METHOD_NAME = "runGeneratedFastCore";
 export const GENERATED_FAST_CORE_ARM_NAMES = [
-  "zero-sbiw-breq-block",
+  "sbiw-loop-block",
   "nop",
   "rjmp",
   "branch-if-set",
@@ -26,7 +26,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "or",
   "ori",
   "andi",
-  "shift-left-dec-block",
+  "add-fast-block",
   "shift-right-dec-block",
   "dec",
   "udivmodsi4-loop-block",
@@ -64,6 +64,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "ldd-z",
   "std-y",
   "std-z",
+  "strcpy-zx-block",
   "ld-x",
   "ld-x-inc",
   "ld-x-dec",

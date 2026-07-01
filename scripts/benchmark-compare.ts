@@ -67,7 +67,7 @@ interface CompareOptions {
    * so each fixture's hot methods stay monomorphic. The default single-process
    * mode co-runs all 11 firmwares, which megamorphically deoptimizes avrts's
    * shared hot path ~3x (avr8js is nearly immune) and under-reports real-code
-   * throughput. See docs/monolithic-generated-core-plan.md.
+   * throughput. See docs/performance-summary.md.
    */
   isolate: boolean;
   /** Suppress the run header (used for isolate child processes). */

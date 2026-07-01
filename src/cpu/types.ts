@@ -33,7 +33,10 @@ export type FastBlockProfileKind =
   | "subcmp-run"
   | "udivmodsi4-loop"
   | "umulhisi3"
-  | "poll-wait";
+  | "poll-wait"
+  | "strcpy-zx"
+  | "sbiw-dec"
+  | "utoa-common-loop";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {

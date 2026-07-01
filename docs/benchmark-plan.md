@@ -1,8 +1,8 @@
 # Benchmark Plan (internal workloads + external simulators)
 
-Companion to [`performance-plan.md`](performance-plan.md). That doc says *what* to
-optimize and why; this doc says *what to measure it against* — both the internal
-workload fixtures avrts runs and the external simulators to compare with.
+Companion to [`performance-summary.md`](performance-summary.md). That doc says
+*what* to optimize and why; this doc says *what to measure it against* — both the
+internal workload fixtures avrts runs and the external simulators to compare with.
 
 ## Why this exists
 
@@ -15,12 +15,17 @@ reveals something the others can't), and add external references so "fast" and
 
 ## Current state
 
-- Fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)): `tight-loop`,
-  `delay-blink`, `serial-print`, `serial-print-listener`, `analog-write` (all
-  synthetic), plus `sensor-format`, `float-math`, and `bitbang-crc` (real).
-- Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js),
-  `bun run profile:opcodes` (hot opcode / fast-block profile).
+- Fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)) — 11 total:
+  synthetic `tight-loop`, `delay-blink`, `serial-print` (+ `serial-print-listener`),
+  `analog-write`; and real compiled sketches `sensor-format`, `float-math`,
+  `bitbang-crc`, `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`.
+- Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js — pass
+  `--isolate` for any real-code claim, see Methodology), `bun run bench:result`
+  (final-state oracle vs avr8js for `peripheral-mix`/`isr-heavy`/`string-heavy`/
+  `dsp-fixed`), `bun run profile:opcodes` (hot opcode / fast-block profile).
 - Only external comparison today: **avr8js**.
+- Latest measured results are in [Recorded fixture evidence](#recorded-fixture-evidence)
+  below; the strategy behind them is in [`performance-summary.md`](performance-summary.md).
 
 ---
 
@@ -28,22 +33,24 @@ reveals something the others can't), and add external references so "fast" and
 
 Each fixture must target a **distinct** instruction mix, or it adds noise, not
 signal. Add a fixture only with a one-line note on what it stresses that the
-others don't. (Adding one is cheap: drop a compiled `.ino.hex` in `examples/`, add
-an entry to `createBenchmarkCases()`; it flows into `bench`, `bench:compare`, and
-`profile:opcodes` automatically — same as `sensor-format`.)
+others don't. Adding one means: drop a compiled `.ino.hex` in `examples/`, add an
+entry to `createBenchmarkCases()` for `bench` and `profile:opcodes`, add a matching
+entry to `scripts/benchmark-compare.ts`'s `WORKLOADS` for avr8js comparison, and
+wire `bench:result` only when the fixture has a useful final-state oracle.
 
 Priority order (highest signal first):
 
 - [x] **`float-math`** — `float` ops (`sin`/`cos`/`sqrt`/`*`/`/`).
   - Stresses: avr-libc **soft-float** routines (AVR has no FPU) — large, branchy
-    helper loops, the single biggest un-measured real-world cost.
-  - Reveals: likely the **worst** avr8js gap; the strongest evidence for/against
-    the full-monolithic-core investment.
+    helper loops.
+  - Measured **0.61x**: cycles are spread thin across many soft-float kernels with
+    no single dominant loop, so it is the fixture **least improvable** by FastBlock
+    work — the clearest case that only the translate-once JIT could move it.
 - [x] **`bitbang-crc`** — software SPI/I2C bit-banging + CRC8/CRC16 over a buffer.
-  - Stresses: **logic ops (`AND`/`OR`/`EOR`)** — *not inlined yet* — plus shifts
-    and `IN`/`OUT` port toggling.
-  - Reveals: directly measures the megamorphic `handler()` fallback cost on
-    common ops the generated core doesn't yet cover.
+  - Stresses: logic ops (`AND`/`OR`/`EOR`), shifts, and `IN`/`OUT` port toggling.
+  - Measured **0.43x** (the worst real fixture): it is **structurally GPIO-hook-
+    bound** — every bit-bang goes through the `readData`/`writeData` hook path — so
+    it is hook-limited by nature and will not reach parity by dispatch/FastBlock work.
 - [x] **`isr-heavy`** — software PWM / frequency counter / servo timing with
   frequent timer or pin-change interrupts.
   - Stresses: ISR prologue/epilogue (`PUSH`/`POP`/`RETI`), frequent interrupt
@@ -99,7 +106,7 @@ The valuable external references are native simulators used as *ceilings* and
   addition: it answers the one question avr8js can't — **how far is interpreted
   JS from native logic running in the same environment?** That gap is the upside
   ceiling for the JIT/WASM path and directly informs the
-  "full monolithic core (match) vs JIT (beat)" decision in `performance-plan.md`.
+  translate-once JIT (the "beat avr8js on real code") decision in `performance-summary.md`.
   - Integration: build a WASM module from simavr, feed it the same `.hex`, run N
     cycles, read back cycles/sec. Wrap behind a `bench:compare --target=simavr-wasm`
     flag alongside the avr8js path.
@@ -115,6 +122,13 @@ The valuable external references are native simulators used as *ceilings* and
 
 ## Part C — Methodology (keep the numbers honest)
 
+- **`--isolate` is mandatory for real-code claims.** `bench:compare --isolate` runs
+  one firmware per subprocess (fresh heap), which is how the simulator is used in
+  production and keeps each fixture's hot methods monomorphic. The single-process
+  default co-runs all 11 firmwares and **megamorphically deoptimizes avrts's shared
+  hot path ~3x** (avr8js is nearly immune), so it under-reports real-code throughput
+  badly. Use the default only for the synthetic/IO-bound fixtures, which are
+  insensitive to the artifact. Every real-code ratio below is `--isolate`.
 - **Steady-state, not setup.** Use cycle budgets large enough that fixture
   construction/startup is a small fraction (the compare harness already uses
   longer budgets and prints the budget per row). Report the budget.
@@ -135,9 +149,9 @@ The valuable external references are native simulators used as *ceilings* and
 
 ## Part D — Recommended phasing
 
-1. **Add `float-math` + `bitbang-crc`** (Part A top two). Between them they cover
-   the two biggest un-measured real costs — soft-float helpers and un-inlined
-   logic ops — and they decide whether the full monolithic core is worth it.
+1. **Add `float-math` + `bitbang-crc`** (Part A top two). *Done* — between them they
+   cover two big real costs (soft-float helpers, bit-banged GPIO) and confirmed the
+   remaining gap is not dispatch/decode but soft-float volume and IO-hook cost.
 2. **Add the simavr-WASM speed ceiling** (Part B). Gives the native-vs-JS gap that
    sizes the JIT/WASM upside.
 3. **Add the simavr-native accuracy oracle** + a fidelity check across all
@@ -163,36 +177,35 @@ The valuable external references are native simulators used as *ceilings* and
 
 ## Recorded fixture evidence
 
-Captured locally on 2026-06-25 with `semantic-direct` `__udivmodsi4`.
+`bench:compare --repeats 5 --isolate`, best-of-5, 16 MHz, 2026-07-01 — **after**
+Lever A (dispatch) + Lever B (poll-wait FastBlock); see `performance-summary.md`.
+A confirming second sample agreed within run-to-run noise (~4%). These supersede
+the 2026-06-25 numbers, which were measured in the single-process regime and
+under-reported real code ~3x (see Methodology).
 
-- `float-math`: `profile:opcodes -- --case float-math --mode fast --top 12`
-  sampled 5,000,001 cycles and showed soft-float helper loops dominated by
-  branch/shift/return rows (`BRNE`, `ROR`, `SBCI`, `LSR`, `RET`). `bench:compare
-  -- --repeats 5`: avrts **22,339,989/s**, avr8js **38,425,625/s**, ratio
-  **0.58x**.
-- `bitbang-crc`: `profile:opcodes -- --case bitbang-crc --mode fast --top 12`
-  sampled 5,000,000 cycles and showed direct port/CRC loop rows (`CBI`, `SBI`,
-  `SBIW`, `SBIC`, `BRNE`, `AND`). `bench:compare -- --repeats 5`: avrts
-  **15,166,797/s**, avr8js **39,977,453/s**, ratio **0.38x**.
-- `isr-heavy`: `bench:result -- --case isr-heavy --analog 512 --d2 high`
-  matched avr8js result SRAM, empty I2C transcript, and register summary.
-  `profile:opcodes -- --case isr-heavy --mode fast --top 12` sampled
-  5,000,001 cycles and showed interrupt/delay-loop pressure (`LDS`, `SBRC`,
-  `RJMP`, `SBIW`, `BRNE`, `RETI`, `PUSH`). `bench:compare -- --case isr-heavy
-  --repeats 3`: avrts **19,600,487/s**, avr8js **41,494,912/s**, ratio
-  **0.47x**.
-- `string-heavy`: `bench:result -- --case string-heavy --analog 512 --d2 high`
-  matched avr8js result SRAM, serial output, empty I2C transcript, and register
-  summary after the baud-timed avr8js serial buffer drained. `profile:opcodes
-  -- --case string-heavy --mode fast --top 12` sampled 5,000,000 cycles and
-  showed string/Serial wait and formatting rows (`LDS`, `SBRC`, `RJMP`, `SBIW`,
-  `BRNE`, `ADC`, `DEC`, `ADD`). `bench:compare -- --case string-heavy
-  --repeats 3`: avrts **17,428,040/s**, avr8js **50,343,240/s**, ratio
-  **0.35x**.
-- `dsp-fixed`: `bench:result -- --case dsp-fixed --analog 512 --d2 high`
-  matched avr8js result SRAM, serial output, empty I2C transcript, and register
-  summary. `profile:opcodes -- --case dsp-fixed --mode fast --top 12` sampled
-  5,000,000 cycles and showed fixed-point DSP rows (`LDS`, `SBRC`, `RJMP`,
-  `CALL`, `JMP`, `MUL` via `umulhisi3`, `LPM`). `bench:compare -- --case
-  dsp-fixed --repeats 3`: avrts **14,990,782/s**, avr8js **52,060,882/s**,
-  ratio **0.29x**.
+| fixture         | avrts (cyc/s) | avr8js (cyc/s) | ratio | class |
+| --------------- | ------------- | -------------- | ----- | ----- |
+| tight-loop      | 178,413,087   | 92,641,143     | 1.93x | synthetic — FastBlock idle-skip |
+| delay-blink     | 144,437,579   | 49,200,768     | 2.94x | synthetic — micros/subcmp blocks |
+| serial-print    | 83,300,707    | 76,850,601     | 1.08x | IO-bound near-parity |
+| analog-write    | 83,434,846    | 79,690,292     | 1.05x | IO-bound near-parity |
+| peripheral-mix  | 84,914,873    | 58,924,811     | 1.44x | IO + poll-wait block |
+| sensor-format   | 37,801,810    | 52,817,887     | 0.72x | real — Print/format + helper loops |
+| dsp-fixed       | 39,300,421    | 54,653,231     | 0.72x | real — FIR/MAC; poll-wait + umulhisi3 |
+| isr-heavy       | 35,382,199    | 47,639,918     | 0.74x | real — ISR churn + poll-wait |
+| string-heavy    | 32,485,948    | 52,795,523     | 0.62x | real — String/format |
+| float-math      | 25,744,346    | 41,988,509     | 0.61x | real — soft-float kernels |
+| bitbang-crc     | 18,528,751    | 43,123,746     | 0.43x | real — bit-banged GPIO (hook-bound) |
+
+Reading it: synthetic/IO fixtures win or hold parity (FastBlocks bulk-skip the idle
+loops avr8js simulates); real compiled code trails at ~0.43-0.74x. Most real
+fixtures are ~1.35-1.6x slower than avr8js, while `bitbang-crc` is the worst case
+at ~2.3x slower. The current levers narrowed the gap, but they did not close it.
+`float-math` (no dominant loop, pure soft-float) and `bitbang-crc` (structurally
+GPIO-hook-bound) are the least improvable by dispatch/FastBlock work; the
+arithmetic-bound fixtures would need the translate-once JIT to cross 1.0x.
+
+Correctness: `bench:result` matches avr8js (result SRAM, serial output, I2C
+transcript, register summary) for `peripheral-mix`, `isr-heavy`, `string-heavy`,
+and `dsp-fixed`; the generated fast core matches the `tick()`/handler interpreter on
+every fixture (457 tests green).

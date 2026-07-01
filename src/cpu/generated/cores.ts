@@ -39,7 +39,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
     } else {
       const pc = cpu.pc;
       const opcode = flash[pc]!;
-      if ((opcode & 0xffcf) === 0x9700 && cpu.tryRunFastBlock(pc, opcode, target)) {
+      if ((opcode & 0xff00) === 0x9700 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
       }
       else if (opcode === 0x0000) {
@@ -627,6 +627,9 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.pc += 1;
         cpu.cycles += 2;
       }
+      else if ((opcode & 0xfe0f) === 0x9001 && (flash[pc + 1]! & 0xfe0f) === 0x920d && cpu.tryRunFastBlock(pc, opcode, target)) {
+        continue;
+      }
       else if ((opcode & 0xfe0f) === 0x900c) {
         const d = regD5(opcode);
         const addr = data[26]! | (data[27]! << 8);
@@ -1001,7 +1004,7 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       const pc = cpu.pc;
       const opcode = flash[pc]!;
       const before = cpu._cycles;
-      if ((opcode & 0xffcf) === 0x9700 && cpu.tryRunFastBlock(pc, opcode, target)) {
+      if ((opcode & 0xff00) === 0x9700 && cpu.tryRunFastBlock(pc, opcode, target)) {
         cpu.profileFastBlock(listener, pc, opcode, before);
         continue;
       }
@@ -1598,6 +1601,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.writeData(addr, data[regD5(opcode)]!);
         cpu.pc += 1;
         cpu.cycles += 2;
+      }
+      else if ((opcode & 0xfe0f) === 0x9001 && (flash[pc + 1]! & 0xfe0f) === 0x920d && cpu.tryRunFastBlock(pc, opcode, target)) {
+        cpu.profileFastBlock(listener, pc, opcode, before);
+        continue;
       }
       else if ((opcode & 0xfe0f) === 0x900c) {
         const d = regD5(opcode);

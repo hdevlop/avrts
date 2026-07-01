@@ -67,7 +67,7 @@ const UDIVMODSI4_CFG_BLOCKS: readonly CfgBasicBlock[] = [
  * Build an inline subtract/compare arm that mirrors `sub8` in src/cpu/alu.ts
  * byte-for-byte (H/V/N/Z/C/S, plus the multi-byte Z rule when `carryUsed`).
  * Flag math is emitted inline — no helper call on the hot path — per the
- * generated-core rule in docs/performance-plan.md. Compare arms (`writeback: false`) leave the
+ * generated-core rule in docs/performance-summary.md. Compare arms (`writeback: false`) leave the
  * destination register untouched.
  */
 function subtractArm(
@@ -205,7 +205,7 @@ function shiftArm(name: string, guard: string, resultExpression: string): Genera
 }
 
 /**
- * Build an inline LD/ST indirect arm (docs/performance-plan.md) mirroring
+ * Build an inline LD/ST indirect arm (docs/performance-summary.md) mirroring
  * `loadIndirect`/`storeIndirect` in src/cpu/instructions.ts. Pointer registers
  * (X=26, Y=28, Z=30) are the plain register file, read/written via `data[...]`,
  * but the memory access itself goes through `this.readData`/`this.writeData` so
@@ -471,8 +471,8 @@ function mulArm(
 
 const GENERATED_ARMS: readonly GeneratedArm[] = [
   {
-    name: "zero-sbiw-breq-block",
-    guard: "(opcode & 0xffcf) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)",
+    name: "sbiw-loop-block",
+    guard: "(opcode & 0xff00) === 0x9700 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
   {
@@ -561,7 +561,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "(opcode & 0xfc00) === 0x2c00",
     body: ["data[regD5(opcode)] = data[regR5(opcode)]!;", "this.pc += 1;", "this.cycles += 1;"],
   },
-  // MOVW Rd+1:Rd, Rr+1:Rr (docs/performance-plan.md) — register-only word copy.
+  // MOVW Rd+1:Rd, Rr+1:Rr (docs/performance-summary.md) — register-only word copy.
   {
     name: "movw",
     guard: "(opcode & 0xff00) === 0x0100",
@@ -574,7 +574,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
       "this.cycles += 1;",
     ],
   },
-  // Subtract/compare group (docs/performance-plan.md). Register/immediate decode mirrors
+  // Subtract/compare group (docs/performance-summary.md). Register/immediate decode mirrors
   // the handlers exactly: SUB/SBC/CP/CPC use regD5/regR5 (r0..r31); SUBI/SBCI/CPI
   // use regD4 (r16..r31) + imm8. Compare arms do not write the destination.
   // Step 4 straight-line block: a run of subtract/compare ops executed in one
@@ -620,7 +620,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   logicArm("ori", "(opcode & 0xf000) === 0x6000", "data[d]! | imm8(opcode)", "regD4(opcode)"),
   logicArm("andi", "(opcode & 0xf000) === 0x7000", "data[d]! & imm8(opcode)", "regD4(opcode)"),
   {
-    name: "shift-left-dec-block",
+    name: "add-fast-block",
     guard: "(opcode & 0xfc00) === 0x0c00 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
@@ -658,8 +658,8 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "opcode === 0x9fa2 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
-  // Add/word-arithmetic group (docs/performance-plan.md). ADD shares the 0x0c00 mask with the
-  // shift-left-dec FastBlock above, so it MUST stay after it: the block gets first
+  // Add/word-arithmetic group (docs/performance-summary.md). ADD shares the 0x0c00 mask with
+  // ADD-starting FastBlocks above, so they MUST stay before it: blocks get first
   // crack and only general ADDs fall through here.
   addArm("add", "(opcode & 0xfc00) === 0x0c00", "regD5(opcode)", "data[regR5(opcode)]!", false),
   addArm("adc", "(opcode & 0xfc00) === 0x1c00", "regD5(opcode)", "data[regR5(opcode)]!", true),
@@ -692,7 +692,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "opcode === 0xb73f && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
-  // Stack ops (docs/performance-plan.md). pushByte/popByte are the CPU's own primitives —
+  // Stack ops (docs/performance-summary.md). pushByte/popByte are the CPU's own primitives —
   // same call the handlers make — so SP wrap and stack-SRAM access stay identical.
   {
     name: "in",
@@ -829,7 +829,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   ),
   ioBitArm("sbi", "(opcode & 0xff00) === 0x9a00", true),
   ioBitArm("cbi", "(opcode & 0xff00) === 0x9800", false),
-  // Indirect load/store group (docs/performance-plan.md). Placed late: these are colder than
+  // Indirect load/store group (docs/performance-summary.md). Placed late: these are colder than
   // the ALU/branch/stack arms, so hot instructions never test past them. Memory
   // access uses this.readData/this.writeData to preserve IO hooks. (Plain LD/ST via
   // Y/Z with displacement q=0 are handled by LDD/STD, not here.)
@@ -839,6 +839,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   memDisplacementArm("ldd-z", "(opcode & 0xd208) === 0x8000", 30, "ld"),
   memDisplacementArm("std-y", "(opcode & 0xd208) === 0x8208", 28, "st"),
   memDisplacementArm("std-z", "(opcode & 0xd208) === 0x8200", 30, "st"),
+  {
+    name: "strcpy-zx-block",
+    guard: "(opcode & 0xfe0f) === 0x9001 && (flash[pc + 1]! & 0xfe0f) === 0x920d && this.tryRunFastBlock(pc, opcode, target)",
+    body: ["continue;"],
+  },
   memIndirectArm("ld-x", "(opcode & 0xfe0f) === 0x900c", 26, 0, "ld"),
   memIndirectArm("ld-x-inc", "(opcode & 0xfe0f) === 0x900d", 26, 1, "ld"),
   memIndirectArm("ld-x-dec", "(opcode & 0xfe0f) === 0x900e", 26, -1, "ld"),
@@ -867,7 +872,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     "(opcode & 0xfe08) === 0xfe00",
     "((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1",
   ),
-  // Single-register arithmetic/flag group (docs/performance-plan.md). Distinct low
+  // Single-register arithmetic/flag group (docs/performance-summary.md). Distinct low
   // nibbles within the 0x94xx family keep these unambiguous with DEC/SWAP/shifts.
   incArm("inc", "(opcode & 0xfe0f) === 0x9403"),
   comArm("com", "(opcode & 0xfe0f) === 0x9400"),
@@ -876,7 +881,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   // arms but use a disjoint mask (bit 9 selects BLD/BST vs SBRC/SBRS).
   bstArm("bst", "(opcode & 0xfe08) === 0xfa00"),
   bldArm("bld", "(opcode & 0xfe08) === 0xf800"),
-  // Multiply group (docs/performance-plan.md). MUL is 0x9c00; the signed/fractional
+  // Multiply group (docs/performance-summary.md). MUL is 0x9c00; the signed/fractional
   // variants live in 0x02xx/0x03xx and are split by bits 7 and 3.
   mulArm("mul", "(opcode & 0xfc00) === 0x9c00", "regD5(opcode)", "regR5(opcode)", {
     signedD: false,
