@@ -82,6 +82,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "lpm-r0",
   "lpm-z",
   "lpm-z-inc",
+  "fp-split3-common-block",
   "sbrc",
   "sbrs",
   "inc",

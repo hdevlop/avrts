@@ -6,6 +6,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { CompileError } from "./errors";
 
@@ -23,9 +24,34 @@ export function resolveAvrTool(name: string, avrGccBin?: string): string {
   return name;
 }
 
-/** Resolve the arduino-cli executable: explicit override, `$ARDUINO_CLI`, then PATH. */
+/**
+ * Resolve the arduino-cli executable: explicit override, `$ARDUINO_CLI`, common
+ * Arduino IDE bundled locations, then PATH.
+ */
 export function resolveArduinoCli(override?: string): string {
-  return override ?? process.env.ARDUINO_CLI ?? "arduino-cli";
+  if (override) return override;
+  if (process.env.ARDUINO_CLI) return process.env.ARDUINO_CLI;
+
+  const bundledPath = join("resources", "app", "lib", "backend", "resources", "arduino-cli.exe");
+  const candidates =
+    process.platform === "win32"
+      ? [
+          join(homedir(), "Downloads", "arduino-ide", bundledPath),
+          process.env.LOCALAPPDATA
+            ? join(process.env.LOCALAPPDATA, "Programs", "Arduino IDE", bundledPath)
+            : undefined,
+          process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Arduino IDE", bundledPath) : undefined,
+          process.env["PROGRAMFILES(X86)"]
+            ? join(process.env["PROGRAMFILES(X86)"], "Arduino IDE", bundledPath)
+            : undefined,
+        ]
+      : [];
+
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+
+  return "arduino-cli";
 }
 
 /**

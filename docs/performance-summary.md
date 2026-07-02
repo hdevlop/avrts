@@ -21,15 +21,18 @@ no per-instruction peripheral fan-out.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **1.88-2.75x (win)** |
-| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 1.01-1.36x |
-| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.73x** |
+| synthetic / idle-dominated | tight-loop, delay-blink | **1.98-2.81x (win)** |
+| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 0.96-1.37x |
+| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.71x** |
 
-Real-code throughput still trails avr8js: most real fixtures are ~1.35-1.6x
-slower, while `bitbang-crc` is the worst case at ~2.4x slower. The recorded
+Real-code throughput still trails avr8js: most real fixtures are ~1.4-2.4x
+slower, with `sensor-format` and `bitbang-crc` now the weakest ratios at ~0.42x.
+The recorded
 best-of-5 table is faster than realtime on every fixture, but the weakest margin
-is `bitbang-crc` at ~1.10x, so realtime headroom is fixture-specific. 483 tests
-green; result oracles match avr8js for the four `bench:result` fixtures.
+is `bitbang-crc` at ~1.11x, so realtime headroom is fixture-specific. 489 tests
+green; result oracles match avr8js for the four `bench:result` fixtures, and
+`oracle:simavr:result` now cross-checks the same matrix against native simavr with
+the documented `peripheral-mix` PORTD PWM-latch normalization.
 
 ## What we learned (the important part)
 
@@ -63,8 +66,11 @@ green; result oracles match avr8js for the four `bench:result` fixtures.
   `ADD;ADC;ADC;CP;BRCS;SUB;INC;SUBI;BRNE` bit loop is also recognized exactly.
   Float-math's avr-libc `__addsf3x` right-normalize
   `LSR;ROR;ROR;ROR;SBCI;INC;BRNE` loop is batched as `softfloat-right-inc`.
-  Its hot `__fp_splitA` no-branch exit is batched as `fp-splitA-common` while
-  the rare branch exits still fall back to handlers.
+  Its hot `__fp_split3`/`__fp_splitA` no-branch exits are batched as
+  `fp-split3-common` and `fp-splitA-common` while the rare branch exits still
+  fall back to handlers. The fresh `float-math` profile shows
+  `fp-split3-common` at 30,380 hits / 577,220 simulated cycles (11.5% of the
+  sample), with the old split-helper instruction rows removed from the top table.
   Profiles confirm these blocks remove hot rows; benchmark samples are noisy, so
   treat this as a profile-backed cleanup, not a new table-changing win yet.
 
@@ -76,6 +82,11 @@ green; result oracles match avr8js for the four `bench:result` fixtures.
    softfloat helper kernels, `__udivmodsi4` CFG rows, and repeated branch-shaped
    helper loops that survive after the counted-loop cleanup. A few % each,
    fixture-specific. Same machinery as the poll-wait block.
+   Picked next slice from the 2026-07-02 profile: the non-canonical
+   `__udivmodsi4` helper entry in `sensor-format` around `0x051b..0x052d`.
+   `BRNE` at `0x052d` leads the profile row (160,479 hits / 316,175 cycles,
+   6.3% of the sample). This needs a careful follow-up because the current
+   semantic-direct block only covers the canonical 33-iteration entry.
 2. **Big, the only real path to BEAT avr8js — a translate-once region JIT.**
    Everything else is interpretation; the only way to do *less work per executed
    instruction* than avr8js on real code is to stop interpreting hot regions. See

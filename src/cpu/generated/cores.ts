@@ -785,6 +785,9 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.pc += 1;
         cpu.cycles += 3;
       }
+      else if (opcode === 0xfd57 && cpu.tryRunFastBlock(pc, opcode, target)) {
+        continue;
+      }
       else if ((opcode & 0xfe08) === 0xfc00) {
         cpu.pc += 1;
         cpu.cycles += 1;
@@ -1760,6 +1763,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         data[31] = (next >> 8) & 0xff;
         cpu.pc += 1;
         cpu.cycles += 3;
+      }
+      else if (opcode === 0xfd57 && cpu.tryRunFastBlock(pc, opcode, target)) {
+        cpu.profileFastBlock(listener, pc, opcode, before);
+        continue;
       }
       else if ((opcode & 0xfe08) === 0xfc00) {
         cpu.pc += 1;

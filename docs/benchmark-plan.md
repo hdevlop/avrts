@@ -21,9 +21,24 @@ reveals something the others can't), and add external references so "fast" and
   `bitbang-crc`, `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`.
 - Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js — pass
   `--isolate` for any real-code claim, see Methodology), `bun run bench:result`
-  (final-state oracle vs avr8js for `peripheral-mix`/`isr-heavy`/`string-heavy`/
-  `dsp-fixed`), `bun run profile:opcodes` (hot opcode / fast-block profile).
-- Only external comparison today: **avr8js**.
+  (defaults to all final-state oracle scenarios vs avr8js:
+  `peripheral-mix`/`isr-heavy`/`string-heavy`/`dsp-fixed`; use `--case` for one),
+  `bun run profile:opcodes` (hot opcode / fast-block profile).
+- Local fixture toolchains verified on 2026-07-01: vendored `./avr-gcc/bin`
+  (`avr-gcc` 15.2.0) and Arduino IDE bundled `arduino-cli` 1.5.1 with
+  `arduino:avr` 1.8.8.
+- Native simavr installed locally on 2026-07-02 and exposed through
+  `bun run oracle:simavr`, which compiles/runs a tiny state-dump helper against
+  the local simavr library. `bun run oracle:simavr:compare` performs a normalized
+  avrts comparison for a simple firmware path (cycles, PC, SP, R0-R31, and SREG
+  with the interrupt-enable bit masked by default). `bun run oracle:simavr:result`
+  runs the four result fixtures against native simavr and avrts. The result oracle
+  compares result SRAM, selected registers, serial output, and TWI transcripts;
+  `peripheral-mix` normalizes the PORTD PWM latch byte because simavr keeps
+  timer-driven OC0B state separate from the PORTD latch while avrts/avr8js expose
+  that bit in the latch.
+- Only external speed comparison today: **avr8js**. Native simavr is wired as a
+  local accuracy oracle, not a speed peer.
 - Latest measured results are in [Recorded fixture evidence](#recorded-fixture-evidence)
   below; the strategy behind them is in [`performance-summary.md`](performance-summary.md).
 
@@ -43,9 +58,11 @@ Priority order (highest signal first):
 - [x] **`float-math`** — `float` ops (`sin`/`cos`/`sqrt`/`*`/`/`).
   - Stresses: avr-libc **soft-float** routines (AVR has no FPU) — large, branchy
     helper loops.
-  - Measured **0.61x**: cycles are spread thin across many soft-float kernels with
-    no single dominant loop, so it is the fixture **least improvable** by FastBlock
-    work — the clearest case that only the translate-once JIT could move it.
+  - Measured **0.61x** before the latest split-helper cleanup: cycles are spread
+    across many soft-float kernels, so FastBlocks can remove specific hot rows but
+    should still be treated as profile-backed cleanup rather than a guaranteed
+    table-changing win. The latest `fp-split3-common` profile row is 30,380 hits /
+    577,220 simulated cycles (11.5% of the sample).
 - [x] **`bitbang-crc`** — software SPI/I2C bit-banging + CRC8/CRC16 over a buffer.
   - Stresses: logic ops (`AND`/`OR`/`EOR`), shifts, and `IN`/`OUT` port toggling.
   - Measured **0.43x** (the worst real fixture): it is **structurally GPIO-hook-
@@ -81,9 +98,11 @@ ratio. If two fixtures profile nearly identically, drop one.
   ADC input, Timer1 compare interrupt, PWM on D3/D5, GPIO input, and TWI/I2C
   master write/read. `bun run bench:result` compares avrts against avr8js by
   result SRAM, I2C transcript, and register summary.
-- [ ] **Startup / construction cost** — isolate `Decoder` build + fixture-setup
+- [x] **Startup / construction cost** — isolate `Decoder` build + fixture-setup
   time, so it stops contaminating short-run throughput numbers (the repeated
-  short-run noise seen during optimization).
+  short-run noise seen during optimization). `bun run bench:startup` now reports
+  per-fixture construction best/average times; a 20-repeat sample on 2026-07-01
+  showed best construction times around 56-62 ms across the current fixture set.
 
 ---
 
@@ -110,11 +129,22 @@ The valuable external references are native simulators used as *ceilings* and
   - Integration: build a WASM module from simavr, feed it the same `.hex`, run N
     cycles, read back cycles/sec. Wrap behind a `bench:compare --target=simavr-wasm`
     flag alongside the avr8js path.
-- [ ] **simavr (native) as an accuracy oracle.** Run the same `.hex` for the same
+  - Current decision: out of scope while the translate-once JIT / WASM speed-ceiling
+    path is explicitly not being pursued.
+- [x] **simavr (native) installed + state-dump harness.** `bun run oracle:simavr`
+  builds a small helper against the local simavr library, runs a HEX for a fixed
+  cycle budget, and dumps registers/RAM slices as JSON. This proves the native
+  oracle surface is usable without making CI depend on MSYS2.
+- [x] **simavr normalized avrts smoke comparison.** `bun run oracle:simavr:compare`
+  compares a simple firmware run against avrts for normalized core state. Raw
+  peripheral I/O byte comparison remains opt-in (`--compare-dump`) because simavr
+  and avrts intentionally differ in some input-latch/default-peripheral details.
+- [x] **simavr (native) as a full accuracy oracle.** Run the same `.hex` for the same
   cycle budget and diff final RAM / register file / serial output against avrts.
   This is a *correctness* gate, not a speed one — it catches fidelity bugs the
-  speed benchmarks are blind to. Integration: shell out to a native `simavr` build
-  in a separate (non-CI-blocking) script, or a one-off comparison harness.
+  speed benchmarks are blind to. `bun run oracle:simavr:result` now covers
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, and `dsp-fixed` via the native
+  helper, with the documented `peripheral-mix` PORTD PWM-latch normalization.
 - [ ] **simulavr / qemu-system-avr** — only if a third reference is ever needed to
   settle an accuracy dispute. High setup, low marginal value. Not recommended now.
 
@@ -152,8 +182,8 @@ The valuable external references are native simulators used as *ceilings* and
 1. **Add `float-math` + `bitbang-crc`** (Part A top two). *Done* — between them they
    cover two big real costs (soft-float helpers, bit-banged GPIO) and confirmed the
    remaining gap is not dispatch/decode but soft-float volume and IO-hook cost.
-2. **Add the simavr-WASM speed ceiling** (Part B). Gives the native-vs-JS gap that
-   sizes the JIT/WASM upside.
+2. **Skip the simavr-WASM speed ceiling unless the JIT/WASM path is re-opened**
+   (Part B). It mainly sizes the native-vs-JS upside for the excluded big path.
 3. **Add the simavr-native accuracy oracle** + a fidelity check across all
    fixtures. Locks correctness independent of speed.
 4. **Add the remaining workload fixtures** (`isr-heavy`, `dsp-fixed`,
@@ -172,40 +202,100 @@ The valuable external references are native simulators used as *ceilings* and
   benchmark/profile harnesses, and `bench:compare`.
 - [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
-- [ ] Decide whether the simavr-WASM ceiling is worth the one-time integration —
-  it is iff "faster on real Arduino programs" is a real product goal.
+- [x] Make `bench:result` run every covered result-oracle scenario by default
+  (`peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`) while keeping
+  `--case` for focused checks.
+- [x] Install/build native simavr locally and add `oracle:simavr` smoke/state-dump
+  harness.
+- [x] Add `oracle:simavr:compare` normalized smoke comparison against avrts.
+- [x] Add `oracle:simavr:result` native simavr result-oracle matrix for
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, and `dsp-fixed`.
+- [x] Decide whether the simavr-WASM ceiling is worth the one-time integration —
+  not for the current non-JIT track; re-open only if "faster on real Arduino
+  programs" becomes an explicit product goal.
 
 ## Recorded fixture evidence
 
-`bench:compare --repeats 5 --isolate`, best-of-5, 16 MHz, 2026-07-01 — **after**
-Lever A (dispatch) + Lever B (poll-wait FastBlock); see `performance-summary.md`.
-A confirming second sample agreed within run-to-run noise (~4%). These supersede
-the 2026-06-25 numbers, which were measured in the single-process regime and
-under-reported real code ~3x (see Methodology).
+Active sample:
+
+`bench:compare --repeats 5 --isolate`, best-of-5, 16 MHz, 2026-07-02 - after
+Lever A (dispatch), Lever B (poll-wait FastBlock), and the current Lever C
+FastBlock cleanup through `fp-split3-common`; see `performance-summary.md`.
 
 | fixture         | avrts (cyc/s) | avr8js (cyc/s) | ratio | class |
 | --------------- | ------------- | -------------- | ----- | ----- |
-| tight-loop      | 178,413,087   | 92,641,143     | 1.93x | synthetic — FastBlock idle-skip |
-| delay-blink     | 144,437,579   | 49,200,768     | 2.94x | synthetic — micros/subcmp blocks |
-| serial-print    | 83,300,707    | 76,850,601     | 1.08x | IO-bound near-parity |
-| analog-write    | 83,434,846    | 79,690,292     | 1.05x | IO-bound near-parity |
-| peripheral-mix  | 84,914,873    | 58,924,811     | 1.44x | IO + poll-wait block |
-| sensor-format   | 37,801,810    | 52,817,887     | 0.72x | real — Print/format + helper loops |
-| dsp-fixed       | 39,300,421    | 54,653,231     | 0.72x | real — FIR/MAC; poll-wait + umulhisi3 |
-| isr-heavy       | 35,382,199    | 47,639,918     | 0.74x | real — ISR churn + poll-wait |
-| string-heavy    | 32,485,948    | 52,795,523     | 0.62x | real — String/format |
-| float-math      | 25,744,346    | 41,988,509     | 0.61x | real — soft-float kernels |
-| bitbang-crc     | 18,528,751    | 43,123,746     | 0.43x | real — bit-banged GPIO (hook-bound) |
+| tight-loop      | 179,510,976   | 90,435,783     | 1.98x | synthetic - FastBlock idle-skip |
+| delay-blink     | 140,963,162   | 50,143,380     | 2.81x | synthetic - micros/subcmp blocks |
+| serial-print    | 82,954,508    | 75,545,819     | 1.10x | IO-bound near-parity |
+| analog-write    | 78,026,979    | 81,030,185     | 0.96x | IO-bound near-parity |
+| peripheral-mix  | 80,596,024    | 58,655,705     | 1.37x | IO + poll-wait block |
+| sensor-format   | 21,500,697    | 50,694,515     | 0.42x | real - Print/format + helper loops |
+| dsp-fixed       | 38,897,732    | 54,412,470     | 0.71x | real - FIR/MAC; poll-wait + umulhisi3 |
+| isr-heavy       | 31,793,247    | 45,703,547     | 0.70x | real - ISR churn + poll-wait |
+| string-heavy    | 29,806,277    | 52,596,422     | 0.57x | real - String/format |
+| float-math      | 27,696,872    | 41,940,820     | 0.66x | real - soft-float kernels |
+| bitbang-crc     | 17,795,311    | 42,589,293     | 0.42x | real - bit-banged GPIO (hook-bound) |
+
+Reading the active sample: synthetic/IO fixtures win or hold parity; real compiled
+code trails at ~0.42-0.71x. Most real fixtures are ~1.4-2.4x slower than avr8js,
+with `sensor-format` and `bitbang-crc` now the weakest ratios at ~0.42x.
+
+Next small slice picked from fresh profile evidence: `sensor-format` has a hot
+non-canonical `__udivmodsi4` helper entry that still executes as individual
+instructions in fast mode. `profile:opcodes -- --mode pc --case sensor-format
+--top 25 --window 18` shows the loop around `0x051b..0x052d`, led by
+`BRNE` at `0x052d` (160,479 hits / 316,175 cycles, 6.3% of the sample) and the
+adjacent `ADC`/`CP`/`CPC`/`BRCS` rows. The existing semantic-direct
+`udivmodsi4-loop` block only covers the canonical 33-iteration entry, so this
+candidate should be a careful follow-up, not a rushed patch.
+
+Previous sample:
+
+`bench:compare --repeats 5 --isolate`, best-of-5, 16 MHz, 2026-07-01 — **after**
+Lever A (dispatch), Lever B (poll-wait FastBlock), and the current Lever C
+FastBlock cleanup through `fp-split3-common`; see `performance-summary.md`.
+These supersede the 2026-06-25 numbers, which were measured in the single-process
+regime and under-reported real code ~3x (see Methodology).
+
+| fixture         | avrts (cyc/s) | avr8js (cyc/s) | ratio | class |
+| --------------- | ------------- | -------------- | ----- | ----- |
+| tight-loop      | 156,007,944   | 90,058,205     | 1.73x | synthetic — FastBlock idle-skip |
+| delay-blink     | 142,325,294   | 51,228,206     | 2.78x | synthetic — micros/subcmp blocks |
+| serial-print    | 82,362,011    | 77,456,094     | 1.06x | IO-bound near-parity |
+| analog-write    | 76,503,836    | 80,070,334     | 0.96x | IO-bound near-parity |
+| peripheral-mix  | 78,954,391    | 59,787,301     | 1.32x | IO + poll-wait block |
+| sensor-format   | 37,467,553    | 53,152,699     | 0.70x | real — Print/format + helper loops |
+| dsp-fixed       | 37,952,709    | 55,141,322     | 0.69x | real — FIR/MAC; poll-wait + umulhisi3 |
+| isr-heavy       | 34,108,343    | 47,582,160     | 0.72x | real — ISR churn + poll-wait |
+| string-heavy    | 27,782,254    | 52,143,570     | 0.53x | real — String/format |
+| float-math      | 27,971,167    | 42,654,801     | 0.66x | real — soft-float kernels |
+| bitbang-crc     | 17,463,052    | 42,627,854     | 0.41x | real — bit-banged GPIO (hook-bound) |
 
 Reading it: synthetic/IO fixtures win or hold parity (FastBlocks bulk-skip the idle
-loops avr8js simulates); real compiled code trails at ~0.43-0.74x. Most real
-fixtures are ~1.35-1.6x slower than avr8js, while `bitbang-crc` is the worst case
-at ~2.3x slower. The current levers narrowed the gap, but they did not close it.
-`float-math` (no dominant loop, pure soft-float) and `bitbang-crc` (structurally
-GPIO-hook-bound) are the least improvable by dispatch/FastBlock work; the
-arithmetic-bound fixtures would need the translate-once JIT to cross 1.0x.
+loops avr8js simulates); real compiled code trails at ~0.41-0.72x. Most real
+fixtures are ~1.4-1.9x slower than avr8js, while `bitbang-crc` is the worst case
+at ~2.4x slower. The current levers narrowed the gap, but they did not close it.
+`float-math` can still absorb small helper-specific FastBlocks, but its work is
+spread across many soft-float kernels; `bitbang-crc` is structurally
+GPIO-hook-bound. The arithmetic-bound fixtures would need the translate-once JIT
+to cross 1.0x.
 
-Correctness: `bench:result` matches avr8js (result SRAM, serial output, I2C
-transcript, register summary) for `peripheral-mix`, `isr-heavy`, `string-heavy`,
-and `dsp-fixed`; the generated fast core matches the `tick()`/handler interpreter on
-every fixture (457 tests green).
+Correctness, verified 2026-07-02:
+
+- `bun run bench:result` matches avr8js (result SRAM, serial output, I2C
+  transcript, register summary) for `peripheral-mix`, `isr-heavy`, `string-heavy`,
+  and `dsp-fixed`.
+- `bun run oracle:simavr:result` matches native simavr against avrts for the same
+  four fixtures. The `peripheral-mix` check passes with the documented PORTD PWM
+  latch normalization; simavr keeps timer-driven OC0B separate from the PORTD
+  latch while avrts/avr8js expose that bit in the latch.
+
+  | fixture | simavr cycles | avrts cycles | simavr result SRAM | avrts result SRAM | serial | TWI | status |
+  | --- | ---: | ---: | --- | --- | ---: | --- | --- |
+  | `peripheral-mix` | 49,232 | 40,001 | `a7 0c 00 18 01 01 01 70 bd 47 8f 70 00 21 23 4b f8 00 02 01 5c` | `a7 0c 00 18 01 01 01 70 bd 47 8f 70 20 21 23 4b f8 00 02 01 5c` | 0 bytes | starts=24 writes=48 reads=12 stops=12 | PASS with PORTD byte normalized |
+  | `isr-heavy` | 28,045 | 50,001 | `a7 10 00 20 01 01 01 0f e3 17 07 ee 11 10 01 03 02 00 02 01 5c` | `a7 10 00 20 01 01 01 0f e3 17 07 ee 11 10 01 03 02 00 02 01 5c` | 0 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
+  | `string-heavy` | 766,331 | 640,005 | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | 232 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
+  | `dsp-fixed` | 58,052 | 100,007 | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | 0 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
+- `bun run oracle:simavr:compare` passes the normalized native-state smoke check.
+- `bun run check:fast-core`, `bun run typecheck`, and `bun test` pass; the latest
+  full test run is 489 pass / 0 fail.

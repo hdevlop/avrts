@@ -877,6 +877,43 @@ describe("fast-path opcode parity", () => {
     return cpu;
   }
 
+  function createFpSplit3Common(options: {
+    r20?: number;
+    r21?: number;
+    r24?: number;
+    r25?: number;
+    sreg?: number;
+    returnPc?: number;
+  } = {}): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      0xfd57, // SBRC r21,7
+      subi(25, 0x80),
+      add(20, 20),
+      adc(21, 21),
+      0xf059, // BREQ +11
+      cpi(21, 0xff),
+      0xf071, // BREQ +14
+      ror(20),
+      add(24, 24),
+      0xfb97, // BST r25,7
+      adc(25, 25),
+      0xf061, // BREQ +12
+      cpi(25, 0xff),
+      0xf079, // BREQ +15
+      ror(24),
+      0x9508, // RET
+    ]);
+    cpu.data[20] = options.r20 ?? 0x12;
+    cpu.data[21] = options.r21 ?? 0x34;
+    cpu.data[24] = options.r24 ?? 0x56;
+    cpu.data[25] = options.r25 ?? 0x21;
+    cpu.data[SREG_ADDR] = options.sreg ?? 0x21;
+    cpu.pushWord(options.returnPc ?? 0x0123);
+    return cpu;
+  }
+
   function createArduinoMicrosBody(): CPU {
     const cpu = new CPU();
     cpu.setExecutor(new Decoder());
@@ -1560,6 +1597,95 @@ describe("fast-path opcode parity", () => {
     let sawBlock = false;
     cpu.profileRun(11, (event) => {
       if (event.blockKind === "fp-splitA-common") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("softfloat __fp_split3 common block matches the handler path", () => {
+    const variants = [
+      { r20: 0x12, r21: 0x34, r24: 0x56, r25: 0x21, sreg: 0x21 },
+      { r20: 0xf0, r21: 0xa1, r24: 0x11, r25: 0x34, sreg: 0xe0 },
+      { r20: 0x7f, r21: 0x08, r24: 0x80, r25: 0x40, sreg: 0x00 },
+    ];
+    for (const variant of variants) {
+      const slow = createFpSplit3Common(variant);
+      const fast = createFpSplit3Common(variant);
+      slow.onTrace(() => {});
+
+      slow.run(19);
+      fast.run(19);
+
+      expectSameCoreState(fast, slow, [20, 21, 24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+    }
+  });
+
+  test("softfloat __fp_split3 common block declines for rare prefix branches", () => {
+    const variants = [
+      { r20: 0x00, r21: 0x80, target: 5 }, // ADC r21,r21 result zero -> first BREQ taken
+      { r20: 0x80, r21: 0x7f, target: 7 }, // ADC r21,r21 result 0xff -> second BREQ taken
+    ];
+    for (const variant of variants) {
+      const slow = createFpSplit3Common(variant);
+      const fast = createFpSplit3Common(variant);
+      slow.onTrace(() => {});
+
+      slow.run(variant.target);
+      fast.run(variant.target);
+
+      expectSameCoreState(fast, slow, [20, 21, 24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+    }
+  });
+
+  test("softfloat __fp_split3 common block does not skip when target lands inside the block", () => {
+    const slow = createFpSplit3Common();
+    const fast = createFpSplit3Common();
+    slow.onTrace(() => {});
+
+    slow.run(10);
+    fast.run(10);
+
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("softfloat __fp_split3 common block does not skip over clock events", () => {
+    const slow = createFpSplit3Common();
+    const fast = createFpSplit3Common();
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 9);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 9);
+
+    slow.run(19);
+    fast.run(19);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([9]);
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("softfloat __fp_split3 common block preserves per-instruction cycle listeners", () => {
+    const slow = createFpSplit3Common();
+    const fast = createFpSplit3Common();
+    const slowCycles: number[] = [];
+    const fastCycles: number[] = [];
+    slow.onTrace(() => {});
+    slow.onCycles((cycles) => slowCycles.push(cycles));
+    fast.onCycles((cycles) => fastCycles.push(cycles));
+
+    slow.run(19);
+    fast.run(19);
+
+    expect(fastCycles).toEqual(slowCycles);
+    expectSameCoreState(fast, slow, [20, 21, 24, 25, SPL_ADDR, SPH_ADDR, RAMEND, RAMEND - 1, SREG_ADDR]);
+  });
+
+  test("profileRun reports the softfloat __fp_split3 common block", () => {
+    const cpu = createFpSplit3Common();
+    let sawBlock = false;
+    cpu.profileRun(19, (event) => {
+      if (event.blockKind === "fp-split3-common") sawBlock = true;
     });
 
     expect(sawBlock).toBe(true);

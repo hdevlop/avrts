@@ -1,9 +1,9 @@
 /**
  * Result/fidelity benchmark, not a speed benchmark.
  *
- * Runs a mixed-peripheral compiled Arduino sketch in avrts and avr8js with the
- * same host-provided ADC/GPIO/I2C environment. The pass condition is identical
- * observable result state, not cycles/second.
+ * Runs compiled Arduino sketches in avrts and avr8js with the same host-provided
+ * ADC/GPIO/I2C environment. The pass condition is identical observable result
+ * state, not cycles/second.
  */
 import { AVR, CPU } from "../src";
 import { loadHex } from "../src/loader";
@@ -66,12 +66,22 @@ const STRING_HEAVY_SERIAL_FLUSH_CYCLES = 500_000;
 const DEFAULT_MAX_CYCLES = 5_000_000;
 const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
-const DEFAULT_SCENARIO: ResultScenario = "peripheral-mix";
+const DEFAULT_CASE: ResultCase = "all";
 
 type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy" | "dsp-fixed";
+type ResultCase = ResultScenario | "all";
+
+const RESULT_SCENARIOS: readonly ResultScenario[] = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed"];
 
 interface ResultOptions {
   scenario: ResultScenario;
+  maxCycles: number;
+  analogRaw: number;
+  d2High: boolean;
+}
+
+interface CliOptions {
+  scenario: ResultCase;
   maxCycles: number;
   analogRaw: number;
   d2High: boolean;
@@ -333,9 +343,9 @@ export function compareDspFixed(options: Partial<ResultOptions> = {}): CompareRe
   return compareScenario("dsp-fixed", options);
 }
 
-function parseArgs(args: string[]): ResultOptions {
-  const options: ResultOptions = {
-    scenario: DEFAULT_SCENARIO,
+function parseArgs(args: string[]): CliOptions {
+  const options: CliOptions = {
+    scenario: DEFAULT_CASE,
     maxCycles: DEFAULT_MAX_CYCLES,
     analogRaw: DEFAULT_ANALOG_RAW,
     d2High: DEFAULT_D2_HIGH,
@@ -374,9 +384,10 @@ function parseAnalog(value: string | undefined): number {
   return parsed;
 }
 
-function parseScenario(value: string | undefined): ResultScenario {
+function parseScenario(value: string | undefined): ResultCase {
+  if (value === "all") return value;
   if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
-  throw new Error(`--case expects peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
+  throw new Error(`--case expects all, peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
 }
 
 function parseBoolean(value: string | undefined, flag: string): boolean {
@@ -398,16 +409,28 @@ function printOutcome(outcome: ScenarioOutcome): void {
 if (import.meta.main) {
   try {
     const options = parseArgs(Bun.argv.slice(2));
-    const result = compareScenario(options.scenario, options);
-    console.log(`avrts result benchmark: ${options.scenario} vs avr8js`);
-    printOutcome(result.avrts);
-    printOutcome(result.avr8js);
-    if (!result.pass) {
-      console.error("\nFAILED");
-      for (const difference of result.differences) console.error(`\n${difference}`);
-      process.exit(1);
+    const scenarios = options.scenario === "all" ? RESULT_SCENARIOS : [options.scenario];
+    const runOptions = {
+      maxCycles: options.maxCycles,
+      analogRaw: options.analogRaw,
+      d2High: options.d2High,
+    };
+    let failed = false;
+    for (const scenario of scenarios) {
+      const result = compareScenario(scenario, runOptions);
+      console.log(`avrts result benchmark: ${scenario} vs avr8js`);
+      printOutcome(result.avrts);
+      printOutcome(result.avr8js);
+      if (!result.pass) {
+        failed = true;
+        console.error("\nFAILED");
+        for (const difference of result.differences) console.error(`\n${difference}`);
+      } else {
+        console.log("\nPASS: result block, serial output, I2C transcript, and register summary match.");
+      }
+      if (scenarios.length > 1) console.log("");
     }
-    console.log("\nPASS: result block, serial output, I2C transcript, and register summary match.");
+    if (failed) process.exit(1);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

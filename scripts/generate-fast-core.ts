@@ -862,6 +862,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   lpmArm("lpm-r0", "opcode === 0x95c8", "0", false),
   lpmArm("lpm-z", "(opcode & 0xfe0f) === 0x9004", "regD5(opcode)", false),
   lpmArm("lpm-z-inc", "(opcode & 0xfe0f) === 0x9005", "regD5(opcode)", true),
+  {
+    name: "fp-split3-common-block",
+    guard: "opcode === 0xfd57 && this.tryRunFastBlock(pc, opcode, target)",
+    body: ["continue;"],
+  },
   skipArm(
     "sbrc",
     "(opcode & 0xfe08) === 0xfc00",
