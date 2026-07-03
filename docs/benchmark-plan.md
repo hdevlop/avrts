@@ -34,9 +34,12 @@ reveals something the others can't), and add external references so "fast" and
   with the interrupt-enable bit masked by default). `bun run oracle:simavr:result`
   runs the four result fixtures against native simavr and avrts. The result oracle
   compares result SRAM, selected registers, serial output, and TWI transcripts;
-  `peripheral-mix` normalizes the PORTD PWM latch byte because simavr keeps
-  timer-driven OC0B state separate from the PORTD latch while avrts/avr8js expose
-  that bit in the latch.
+  `peripheral-mix` normalizes its old timer-threshold byte because timed TWI
+  makes that threshold engine-dependent, and normalizes the PORTD PWM latch byte
+  because simavr keeps timer-driven OC0B state separate from the PORTD latch
+  while avrts/avr8js expose that bit in the latch. `bun run oracle:simavr:timing`
+  covers USART/SPI/TWI polling timing and calibrates the AVR-visible USART TXC0
+  and TWI START/STOP delays.
 - Only external speed comparison today: **avr8js**. Native simavr is wired as a
   local accuracy oracle, not a speed peer.
 - Latest measured results are in [Recorded fixture evidence](#recorded-fixture-evidence)
@@ -144,7 +147,12 @@ The valuable external references are native simulators used as *ceilings* and
   This is a *correctness* gate, not a speed one — it catches fidelity bugs the
   speed benchmarks are blind to. `bun run oracle:simavr:result` now covers
   `peripheral-mix`, `isr-heavy`, `string-heavy`, and `dsp-fixed` via the native
-  helper, with the documented `peripheral-mix` PORTD PWM-latch normalization.
+  helper, with the documented `peripheral-mix` timer-threshold and PORTD
+  PWM-latch normalizations.
+- [x] **simavr native peripheral-timing oracle.** `bun run oracle:simavr:timing`
+  runs a small avr-libc fixture that polls USART `TXC0`, SPI `SPIF`, and TWI
+  `TWINT`/`TWSTO`, then compares calibrated timing bytes, serial output, and the
+  TWI transcript against avrts.
 - [ ] **simulavr / qemu-system-avr** — only if a third reference is ever needed to
   settle an accuracy dispute. High setup, low marginal value. Not recommended now.
 
@@ -218,36 +226,34 @@ The valuable external references are native simulators used as *ceilings* and
 
 Active sample:
 
-`bench:compare --repeats 5 --isolate`, best-of-5, 16 MHz, 2026-07-02 - after
-Lever A (dispatch), Lever B (poll-wait FastBlock), and the current Lever C
-FastBlock cleanup through `fp-split3-common`; see `performance-summary.md`.
+`bench:compare --repeats 3 --isolate`, best-of-3, 16 MHz, 2026-07-03 - after
+real peripheral timing and the `serial-buffer-wait` FastBlock; see
+`performance-summary.md`.
 
 | fixture         | avrts (cyc/s) | avr8js (cyc/s) | ratio | class |
 | --------------- | ------------- | -------------- | ----- | ----- |
-| tight-loop      | 179,510,976   | 90,435,783     | 1.98x | synthetic - FastBlock idle-skip |
-| delay-blink     | 140,963,162   | 50,143,380     | 2.81x | synthetic - micros/subcmp blocks |
-| serial-print    | 82,954,508    | 75,545,819     | 1.10x | IO-bound near-parity |
-| analog-write    | 78,026,979    | 81,030,185     | 0.96x | IO-bound near-parity |
-| peripheral-mix  | 80,596,024    | 58,655,705     | 1.37x | IO + poll-wait block |
-| sensor-format   | 21,500,697    | 50,694,515     | 0.42x | real - Print/format + helper loops |
-| dsp-fixed       | 38,897,732    | 54,412,470     | 0.71x | real - FIR/MAC; poll-wait + umulhisi3 |
-| isr-heavy       | 31,793,247    | 45,703,547     | 0.70x | real - ISR churn + poll-wait |
-| string-heavy    | 29,806,277    | 52,596,422     | 0.57x | real - String/format |
-| float-math      | 27,696,872    | 41,940,820     | 0.66x | real - soft-float kernels |
-| bitbang-crc     | 17,795,311    | 42,589,293     | 0.42x | real - bit-banged GPIO (hook-bound) |
+| tight-loop      | 132,970,590   | 89,863,569     | 1.48x | synthetic - FastBlock idle-skip |
+| delay-blink     | 131,780,085   | 49,691,821     | 2.65x | synthetic - micros/subcmp blocks |
+| serial-print    | 67,381,540    | 71,903,856     | 0.94x | IO-bound near-parity |
+| analog-write    | 64,248,606    | 77,375,905     | 0.83x | IO-bound near-parity |
+| peripheral-mix  | 54,907,947    | 59,463,992     | 0.92x | IO + timed peripherals |
+| sensor-format   | 52,251,409    | 52,159,508     | 1.00x | real - Serial buffer wait now batched |
+| float-math      | 21,687,655    | 41,953,700     | 0.52x | real - soft-float kernels |
+| bitbang-crc     | 18,010,055    | 43,054,270     | 0.42x | real - bit-banged GPIO (hook-bound) |
+| isr-heavy       | 29,066,726    | 45,867,899     | 0.63x | real - ISR churn + poll-wait |
+| string-heavy    | 32,979,899    | 53,302,517     | 0.62x | real - String/format |
+| dsp-fixed       | 36,405,629    | 53,764,192     | 0.68x | real - FIR/MAC; poll-wait + umulhisi3 |
 
-Reading the active sample: synthetic/IO fixtures win or hold parity; real compiled
-code trails at ~0.42-0.71x. Most real fixtures are ~1.4-2.4x slower than avr8js,
-with `sensor-format` and `bitbang-crc` now the weakest ratios at ~0.42x.
+Reading the active sample: synthetic fixtures still win; IO-bound fixtures are
+near parity after realistic peripheral timing; `sensor-format` recovered to
+parity because the timed-serial ring-buffer wait is now batched; arithmetic,
+string, ISR, and bit-banged GPIO fixtures still trail at ~0.42-0.68x.
 
-Next small slice picked from fresh profile evidence: `sensor-format` has a hot
-non-canonical `__udivmodsi4` helper entry that still executes as individual
-instructions in fast mode. `profile:opcodes -- --mode pc --case sensor-format
---top 25 --window 18` shows the loop around `0x051b..0x052d`, led by
-`BRNE` at `0x052d` (160,479 hits / 316,175 cycles, 6.3% of the sample) and the
-adjacent `ADC`/`CP`/`CPC`/`BRCS` rows. The existing semantic-direct
-`udivmodsi4-loop` block only covers the canonical 33-iteration entry, so this
-candidate should be a careful follow-up, not a rushed patch.
+Latest small slice: real USART timing made Arduino `HardwareSerial::write`'s
+TX ring-buffer wait (`0x0249..0x024e` in `sensor-format`) dominate the PC
+profile. The new `serial-buffer-wait` FastBlock removes that row from the fast
+profile; the old non-canonical `__udivmodsi4` candidate is now only tail noise
+in the fresh fast profile and should be re-evaluated before any patch.
 
 Previous sample:
 
@@ -280,22 +286,23 @@ spread across many soft-float kernels; `bitbang-crc` is structurally
 GPIO-hook-bound. The arithmetic-bound fixtures would need the translate-once JIT
 to cross 1.0x.
 
-Correctness, verified 2026-07-02:
+Correctness, verified 2026-07-03:
 
 - `bun run bench:result` matches avr8js (result SRAM, serial output, I2C
   transcript, register summary) for `peripheral-mix`, `isr-heavy`, `string-heavy`,
   and `dsp-fixed`.
 - `bun run oracle:simavr:result` matches native simavr against avrts for the same
-  four fixtures. The `peripheral-mix` check passes with the documented PORTD PWM
-  latch normalization; simavr keeps timer-driven OC0B separate from the PORTD
-  latch while avrts/avr8js expose that bit in the latch.
+  four fixtures. The `peripheral-mix` check passes with the documented
+  timer-threshold and PORTD PWM latch normalizations; timed TWI makes the old
+  `timerTicks <= 120` byte engine-dependent, and simavr keeps timer-driven OC0B
+  separate from the PORTD latch while avrts/avr8js expose that bit in the latch.
 
   | fixture | simavr cycles | avrts cycles | simavr result SRAM | avrts result SRAM | serial | TWI | status |
   | --- | ---: | ---: | --- | --- | ---: | --- | --- |
-  | `peripheral-mix` | 49,232 | 40,001 | `a7 0c 00 18 01 01 01 70 bd 47 8f 70 00 21 23 4b f8 00 02 01 5c` | `a7 0c 00 18 01 01 01 70 bd 47 8f 70 20 21 23 4b f8 00 02 01 5c` | 0 bytes | starts=24 writes=48 reads=12 stops=12 | PASS with PORTD byte normalized |
+  | `peripheral-mix` | 49,232 | 70,004 | `a7 0c 00 18 01 01 01 70 bd 47 8f 70 00 21 23 4b f8 00 02 01 5c` | `a7 0c 00 18 01 01 00 70 bd 47 8f 70 20 21 23 4b f8 00 02 01 5c` | 0 bytes | starts=24 writes=48 reads=12 stops=12 | PASS with timer-threshold + PORTD bytes normalized |
   | `isr-heavy` | 28,045 | 50,001 | `a7 10 00 20 01 01 01 0f e3 17 07 ee 11 10 01 03 02 00 02 01 5c` | `a7 10 00 20 01 01 01 0f e3 17 07 ee 11 10 01 03 02 00 02 01 5c` | 0 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
-  | `string-heavy` | 766,331 | 640,005 | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | 232 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
+  | `string-heavy` | 766,331 | 770,012 | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | 232 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
   | `dsp-fixed` | 58,052 | 100,007 | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | 0 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
 - `bun run oracle:simavr:compare` passes the normalized native-state smoke check.
 - `bun run check:fast-core`, `bun run typecheck`, and `bun test` pass; the latest
-  full test run is 489 pass / 0 fail.
+  full test run is 513 pass / 0 fail.

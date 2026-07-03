@@ -485,14 +485,15 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "(opcode & 0xf000) === 0xc000",
     body: [
       "const k = opcode & 0x0fff;",
-      // 0x0fff = RJMP -1 (rjmp-self); 0x0ffc = RJMP -4 (closes an LDS/SBRC poll).
-      "if ((k === 0x0fff || k === 0x0ffc) && this.tryRunFastBlock(pc, opcode, target)) continue;",
+      // 0x0fff = RJMP -1 (rjmp-self); 0x0ffc = RJMP -4 (LDS/SBRC poll);
+      // 0x0ffa = RJMP -6 (Arduino HardwareSerial ring-buffer wait).
+      "if ((k === 0x0fff || k === 0x0ffc || k === 0x0ffa) && this.tryRunFastBlock(pc, opcode, target)) continue;",
       "this.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;",
       "this.cycles += 2;",
     ],
     profiledBody: [
       "const k = opcode & 0x0fff;",
-      "if ((k === 0x0fff || k === 0x0ffc) && this.tryRunFastBlock(pc, opcode, target)) {",
+      "if ((k === 0x0fff || k === 0x0ffc || k === 0x0ffa) && this.tryRunFastBlock(pc, opcode, target)) {",
       "  this.profileFastBlock(listener, pc, opcode, before);",
       "  continue;",
       "}",

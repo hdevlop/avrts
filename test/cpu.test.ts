@@ -148,6 +148,29 @@ describe("CPU shell", () => {
     expect(firedAt).toEqual([10]);
   });
 
+  test("clockEventRemainingCycles reports the pending callback delay", () => {
+    const cpu = new CPU();
+    const firedAt: number[] = [];
+    const callback = () => firedAt.push(cpu.cycles);
+
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(0);
+
+    cpu.addClockEvent(callback, 5.8);
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(5);
+
+    cpu.cycles += 2;
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(3);
+
+    cpu.cycles += 3;
+    expect(firedAt).toEqual([5]);
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(0);
+
+    cpu.addClockEvent(callback, 0);
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(1);
+    cpu.clearClockEvent(callback);
+    expect(cpu.clockEventRemainingCycles(callback)).toBe(0);
+  });
+
   test("clock events in cycle-exact mode fire on the exact cycle before cycle listeners", () => {
     const cpu = new CPU();
     cpu.timing = "cycle-exact";
@@ -171,6 +194,24 @@ describe("CPU shell", () => {
     cpu.cycles += 3;
 
     expect(seen).toEqual(["listener:3:3", "event:3"]);
+  });
+
+  test("udivmodsi4 region mode is copied per CPU instance", () => {
+    const previousMode = CPU.udivmodsi4RegionMode;
+    try {
+      CPU.udivmodsi4RegionMode = "handwritten";
+      const handwritten = new CPU();
+      CPU.udivmodsi4RegionMode = "generated-cfg";
+      const generated = new CPU();
+
+      expect(handwritten.udivmodsi4RegionMode).toBe("handwritten");
+      expect(generated.udivmodsi4RegionMode).toBe("generated-cfg");
+
+      handwritten.udivmodsi4RegionMode = "semantic-direct";
+      expect(generated.udivmodsi4RegionMode).toBe("generated-cfg");
+    } finally {
+      CPU.udivmodsi4RegionMode = previousMode;
+    }
   });
 
   test("pending interrupts are deduped and serviced by vector priority", () => {
@@ -985,7 +1026,15 @@ describe("fast-path opcode parity", () => {
   const lds = (d: number) => 0x9000 | ((d & 0x1f) << 4); // LDS rd, <next word>
   const sbrc = (d: number, b: number) => 0xfc00 | ((d & 0x1f) << 4) | (b & 0x07);
   const sbrs = (d: number, b: number) => 0xfe00 | ((d & 0x1f) << 4) | (b & 0x07);
-  const rjmpBack4 = () => 0xc000 | ((-4 & 0x0fff) >>> 0); // 0xcffc
+  const rjmp = (k: number) => 0xc000 | ((k & 0x0fff) >>> 0);
+  const rjmpBack4 = () => rjmp(-4); // 0xcffc
+  const rjmpBack6 = () => rjmp(-6); // 0xcffa
+  const cpse = (d: number, r: number) =>
+    0x1000 | ((r & 0x10) << 5) | ((d & 0x1f) << 4) | (r & 0x0f);
+  const inIo = (d: number, a: number) =>
+    0xb000 | ((a & 0x30) << 5) | ((d & 0x1f) << 4) | (a & 0x0f);
+  const lddY = (d: number, q: number) =>
+    0x8008 | ((d & 0x1f) << 4) | (q & 0x07) | ((q & 0x18) << 7) | ((q & 0x20) << 8);
 
   function createPollLoop(opts: {
     sbrs?: boolean;
@@ -1076,6 +1125,99 @@ describe("fast-path opcode parity", () => {
     cpu.run(5); // LDS(2), SBRC no-skip(1), RJMP(2)
 
     expect(elapsed).toEqual([2, 1, 2]);
+  });
+
+  // --- Arduino HardwareSerial TX ring-buffer wait fast block ----------------
+  const SERIAL_BASE = 0x0200;
+  const SERIAL_TAIL_OFFSET = 28;
+  const SERIAL_TAIL_ADDR = SERIAL_BASE + SERIAL_TAIL_OFFSET;
+
+  function createSerialBufferWaitLoop(opts: {
+    tail?: number;
+    nextHead?: number;
+    sreg?: number;
+  } = {}): CPU {
+    const cpu = new CPU();
+    cpu.setExecutor(new Decoder());
+    // HardwareSerial::write wait loop:
+    // LDD r24,Y+28; CPSE r24,r14; RJMP exit; IN r0,SREG; SBRC r0,7; RJMP loop
+    cpu.flash[0] = lddY(24, SERIAL_TAIL_OFFSET);
+    cpu.flash[1] = cpse(24, 14);
+    cpu.flash[2] = rjmp(12);
+    cpu.flash[3] = inIo(0, 0x3f);
+    cpu.flash[4] = sbrc(0, 7);
+    cpu.flash[5] = rjmpBack6();
+    cpu.flash[15] = ldiR16(0x5a);
+    setWord(cpu, 28, SERIAL_BASE);
+    cpu.data[14] = opts.nextHead ?? 7;
+    cpu.data[SERIAL_TAIL_ADDR] = opts.tail ?? 7;
+    cpu.data[SREG_ADDR] = opts.sreg ?? 0x80;
+    return cpu;
+  }
+
+  test("serial buffer wait block matches tick() when a clock event frees space", () => {
+    expect(lddY(24, 28)).toBe(0x8d8c);
+    const slow = createSerialBufferWaitLoop();
+    const fast = createSerialBufferWaitLoop();
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => (slow.data[SERIAL_TAIL_ADDR] = 8), 137);
+    fast.addClockEvent(() => (fast.data[SERIAL_TAIL_ADDR] = 8), 137);
+
+    slow.run(400);
+    fast.run(400);
+
+    expectSameCoreState(fast, slow, [0, 14, 16, 24, 28, 29, SERIAL_TAIL_ADDR, SREG_ADDR]);
+    expect(fast.data[16]).toBe(0x5a);
+  });
+
+  test("serial buffer wait block does not skip over a clock event that leaves the buffer full", () => {
+    const slow = createSerialBufferWaitLoop();
+    const fast = createSerialBufferWaitLoop();
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 64);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 64);
+
+    slow.run(200);
+    fast.run(200);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([64]);
+    expectSameCoreState(fast, slow, [0, 14, 24, 28, 29, SERIAL_TAIL_ADDR, SREG_ADDR]);
+  });
+
+  test("serial buffer wait block declines when the buffer already has space", () => {
+    const slow = createSerialBufferWaitLoop({ tail: 8, nextHead: 7 });
+    const fast = createSerialBufferWaitLoop({ tail: 8, nextHead: 7 });
+    slow.onTrace(() => {});
+
+    slow.run(40);
+    fast.run(40);
+
+    expectSameCoreState(fast, slow, [0, 14, 16, 24, 28, 29, SERIAL_TAIL_ADDR, SREG_ADDR]);
+    expect(fast.data[16]).toBe(0x5a);
+  });
+
+  test("serial buffer wait block preserves per-instruction cycle listeners (declines)", () => {
+    const cpu = createSerialBufferWaitLoop();
+    const elapsed: number[] = [];
+    cpu.onCycles((cycles) => elapsed.push(cycles));
+
+    cpu.run(8);
+
+    expect(elapsed).toEqual([2, 1, 1, 1, 1, 2]);
+  });
+
+  test("profileRun reports the serial buffer wait block", () => {
+    const cpu = createSerialBufferWaitLoop();
+    let sawBlock = false;
+
+    cpu.profileRun(120, (event) => {
+      if (event.blockKind === "serial-buffer-wait") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
   });
 
   test("poll-wait block declines under cycle-exact timing", () => {
@@ -1918,27 +2060,22 @@ describe("fast-path opcode parity", () => {
 
     for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
       for (const variant of cases) {
-        const previousMode = CPU.udivmodsi4RegionMode;
-        CPU.udivmodsi4RegionMode = mode;
-        try {
-          const slow = new CPU();
-          const fast = new CPU();
-          loadUdivmodsi4Loop(slow);
-          loadUdivmodsi4Loop(fast);
-          slow.onTrace(() => {});
-          seedUdivmodsi4State(slow, variant);
-          seedUdivmodsi4State(fast, variant);
-          const target = UDIVMOD_MAX_CYCLES(variant.counter);
+        const slow = new CPU();
+        const fast = new CPU();
+        fast.udivmodsi4RegionMode = mode;
+        loadUdivmodsi4Loop(slow);
+        loadUdivmodsi4Loop(fast);
+        slow.onTrace(() => {});
+        seedUdivmodsi4State(slow, variant);
+        seedUdivmodsi4State(fast, variant);
+        const target = UDIVMOD_MAX_CYCLES(variant.counter);
 
-          slow.run(target);
-          fast.run(target);
+        slow.run(target);
+        fast.run(target);
 
-          expect(fast.pc).toBe(slow.pc);
-          expect(fast.cycles).toBe(slow.cycles);
-          expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
-        } finally {
-          CPU.udivmodsi4RegionMode = previousMode;
-        }
+        expect(fast.pc).toBe(slow.pc);
+        expect(fast.cycles).toBe(slow.cycles);
+        expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
       }
     }
   });
@@ -1962,35 +2099,30 @@ describe("fast-path opcode parity", () => {
 
   test("avr-libc __udivmodsi4 loop block refuses to cross a clock event", () => {
     for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
-      const previousMode = CPU.udivmodsi4RegionMode;
-      CPU.udivmodsi4RegionMode = mode;
-      try {
-        const slow = new CPU();
-        const fast = new CPU();
-        loadUdivmodsi4Loop(slow);
-        loadUdivmodsi4Loop(fast);
-        slow.onTrace(() => {});
-        const variant = { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0 };
-        seedUdivmodsi4State(slow, variant);
-        seedUdivmodsi4State(fast, variant);
-        slow.addClockEvent(() => {
-          slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
-        }, 3);
-        fast.addClockEvent(() => {
-          fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
-        }, 3);
+      const slow = new CPU();
+      const fast = new CPU();
+      fast.udivmodsi4RegionMode = mode;
+      loadUdivmodsi4Loop(slow);
+      loadUdivmodsi4Loop(fast);
+      slow.onTrace(() => {});
+      const variant = { counter: 33, dividend: 0x12345678, divisor: 10, remainder: 0, sreg: 0 };
+      seedUdivmodsi4State(slow, variant);
+      seedUdivmodsi4State(fast, variant);
+      slow.addClockEvent(() => {
+        slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
+      }, 3);
+      fast.addClockEvent(() => {
+        fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
+      }, 3);
 
-        const target = UDIVMOD_MAX_CYCLES(33);
-        slow.run(target);
-        fast.run(target);
+      const target = UDIVMOD_MAX_CYCLES(33);
+      slow.run(target);
+      fast.run(target);
 
-        expect(fast.pc).toBe(slow.pc);
-        expect(fast.cycles).toBe(slow.cycles);
-        expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
-        expect(fast.data[0x100]).toBe(1);
-      } finally {
-        CPU.udivmodsi4RegionMode = previousMode;
-      }
+      expect(fast.pc).toBe(slow.pc);
+      expect(fast.cycles).toBe(slow.cycles);
+      expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+      expect(fast.data[0x100]).toBe(1);
     }
   });
 

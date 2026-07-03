@@ -21,18 +21,19 @@ no per-instruction peripheral fan-out.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **1.98-2.81x (win)** |
-| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 0.96-1.37x |
-| real compiled code | dsp, isr, sensor, string, float, bitbang | **0.42-0.71x** |
+| synthetic / idle-dominated | tight-loop, delay-blink | **1.48-2.65x (win)** |
+| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 0.83-0.94x |
+| real compiled code | sensor, dsp, isr, string, float, bitbang | **0.42-1.00x** |
 
-Real-code throughput still trails avr8js: most real fixtures are ~1.4-2.4x
-slower, with `sensor-format` and `bitbang-crc` now the weakest ratios at ~0.42x.
-The recorded
-best-of-5 table is faster than realtime on every fixture, but the weakest margin
-is `bitbang-crc` at ~1.11x, so realtime headroom is fixture-specific. 489 tests
-green; result oracles match avr8js for the four `bench:result` fixtures, and
-`oracle:simavr:result` now cross-checks the same matrix against native simavr with
-the documented `peripheral-mix` PORTD PWM-latch normalization.
+Real-code throughput mostly still trails avr8js: arithmetic/string/ISR fixtures
+sit around 0.42-0.68x, while `sensor-format` recovered to ~1.00x in the latest
+isolated sample after the serial-buffer wait FastBlock. The recorded table is
+faster than realtime on every fixture, but the weakest margin is `bitbang-crc`,
+so realtime headroom is fixture-specific. 513 tests green; result oracles match
+avr8js for the four `bench:result` fixtures, and `oracle:simavr:result` now
+cross-checks the same matrix against native simavr with the documented
+`peripheral-mix` timer-threshold and PORTD PWM-latch normalizations.
+`oracle:simavr:timing` also covers calibrated USART/SPI/TWI polling delays.
 
 ## What we learned (the important part)
 
@@ -71,6 +72,10 @@ the documented `peripheral-mix` PORTD PWM-latch normalization.
   fall back to handlers. The fresh `float-math` profile shows
   `fp-split3-common` at 30,380 hits / 577,220 simulated cycles (11.5% of the
   sample), with the old split-helper instruction rows removed from the top table.
+  After real USART timing exposed Arduino's `HardwareSerial::write` ring-buffer
+  wait as the new `sensor-format` hotspot, `serial-buffer-wait` batches the exact
+  `LDD Y+28; CPSE; RJMP; IN SREG; SBRC; RJMP -6` shape while preserving the same
+  event/listener guards as the poll-wait block.
   Profiles confirm these blocks remove hot rows; benchmark samples are noisy, so
   treat this as a profile-backed cleanup, not a new table-changing win yet.
 
@@ -82,11 +87,10 @@ the documented `peripheral-mix` PORTD PWM-latch normalization.
    softfloat helper kernels, `__udivmodsi4` CFG rows, and repeated branch-shaped
    helper loops that survive after the counted-loop cleanup. A few % each,
    fixture-specific. Same machinery as the poll-wait block.
-   Picked next slice from the 2026-07-02 profile: the non-canonical
-   `__udivmodsi4` helper entry in `sensor-format` around `0x051b..0x052d`.
-   `BRNE` at `0x052d` leads the profile row (160,479 hits / 316,175 cycles,
-   6.3% of the sample). This needs a careful follow-up because the current
-   semantic-direct block only covers the canonical 33-iteration entry.
+   The old 2026-07-02 `sensor-format` non-canonical `__udivmodsi4` candidate is
+   no longer the obvious next patch after `serial-buffer-wait`; the fresh fast
+   profile leaves its `BRNE` at `0x052d` in the small tail (2,674 hits / 5,379
+   cycles in a 5M-cycle sample). Re-profile before choosing the next block.
 2. **Big, the only real path to BEAT avr8js — a translate-once region JIT.**
    Everything else is interpretation; the only way to do *less work per executed
    instruction* than avr8js on real code is to stop interpreting hot regions. See

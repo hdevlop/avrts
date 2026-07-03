@@ -48,7 +48,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       }
       else if ((opcode & 0xf000) === 0xc000) {
         const k = opcode & 0x0fff;
-        if ((k === 0x0fff || k === 0x0ffc) && cpu.tryRunFastBlock(pc, opcode, target)) continue;
+        if ((k === 0x0fff || k === 0x0ffc || k === 0x0ffa) && cpu.tryRunFastBlock(pc, opcode, target)) continue;
         cpu.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
         cpu.cycles += 2;
       }
@@ -1017,7 +1017,7 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       }
       else if ((opcode & 0xf000) === 0xc000) {
         const k = opcode & 0x0fff;
-        if ((k === 0x0fff || k === 0x0ffc) && cpu.tryRunFastBlock(pc, opcode, target)) {
+        if ((k === 0x0fff || k === 0x0ffc || k === 0x0ffa) && cpu.tryRunFastBlock(pc, opcode, target)) {
           cpu.profileFastBlock(listener, pc, opcode, before);
           continue;
         }
