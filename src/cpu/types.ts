@@ -39,7 +39,8 @@ export type FastBlockProfileKind =
   | "utoa-common-loop"
   | "softfloat-right-inc"
   | "fp-splitA-common"
-  | "fp-split3-common";
+  | "fp-split3-common"
+  | "serial-buffer-wait";
 
 /** Execution-profile record emitted by the fast-run profiler. */
 export interface ProfileRunState {

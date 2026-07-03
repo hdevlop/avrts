@@ -1,4 +1,4 @@
-import { AVR, CPU, type Udivmodsi4RegionMode } from "../src";
+import { AVR, type Udivmodsi4RegionMode } from "../src";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
 import serialPrintHex from "../examples/arduino-serial-print/arduino-serial-print.ino.hex" with { type: "text" };
 import analogWriteHex from "../examples/arduino-analog-write/arduino-analog-write.ino.hex" with { type: "text" };
@@ -128,15 +128,10 @@ export function runBenchmarkCase(
   udivmodsi4Region: Udivmodsi4RegionMode = "semantic-direct",
 ): BenchmarkResult {
   const start = nowMs();
-  const previousRegion = CPU.udivmodsi4RegionMode;
-  CPU.udivmodsi4RegionMode = udivmodsi4Region;
-  try {
-    for (let i = 0; i < repeats; i += 1) {
-      const avr = testCase.create();
-      avr.runCycles(testCase.cycles);
-    }
-  } finally {
-    CPU.udivmodsi4RegionMode = previousRegion;
+  for (let i = 0; i < repeats; i += 1) {
+    const avr = testCase.create();
+    avr.cpu.udivmodsi4RegionMode = udivmodsi4Region;
+    avr.runCycles(testCase.cycles);
   }
   const elapsedMs = Math.max(0.001, nowMs() - start);
   const totalCycles = testCase.cycles * repeats;

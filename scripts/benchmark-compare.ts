@@ -13,7 +13,7 @@
  *
  *   bun run scripts/benchmark-compare.ts [--repeats N] [--case NAME] [--cycles N]
  */
-import { AVR, CPU, type Udivmodsi4RegionMode } from "../src";
+import { AVR, type Udivmodsi4RegionMode } from "../src";
 import { loadHex } from "../src/loader";
 import { FLASH_WORDS } from "../src/cpu";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
@@ -108,14 +108,9 @@ function runAvrts(workload: Workload, udivmodsi4Region: Udivmodsi4RegionMode): n
     return AVR(workload.hex);
   };
   const start = performance.now();
-  const previousRegion = CPU.udivmodsi4RegionMode;
-  CPU.udivmodsi4RegionMode = udivmodsi4Region;
-  try {
-    const avr = create();
-    avr.runCycles(workload.cycles);
-  } finally {
-    CPU.udivmodsi4RegionMode = previousRegion;
-  }
+  const avr = create();
+  avr.cpu.udivmodsi4RegionMode = udivmodsi4Region;
+  avr.runCycles(workload.cycles);
   const elapsed = Math.max(0.001, performance.now() - start);
   return workload.cycles / (elapsed / 1000);
 }
