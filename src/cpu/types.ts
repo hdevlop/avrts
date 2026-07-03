@@ -33,6 +33,7 @@ export type FastBlockProfileKind =
   | "subcmp-run"
   | "udivmodsi4-loop"
   | "umulhisi3"
+  | "mulhisi3"
   | "poll-wait"
   | "strcpy-zx"
   | "sbiw-dec"

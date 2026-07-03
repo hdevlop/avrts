@@ -659,6 +659,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     guard: "opcode === 0x9fa2 && this.tryRunFastBlock(pc, opcode, target)",
     body: ["continue;"],
   },
+  {
+    name: "mulhisi3-block",
+    guard: "(opcode & 0xfe0e) === 0x940e && this.tryRunFastBlock(pc, opcode, target)",
+    body: ["continue;"],
+  },
   // Add/word-arithmetic group (docs/performance-summary.md). ADD shares the 0x0c00 mask with
   // ADD-starting FastBlocks above, so they MUST stay before it: blocks get first
   // crack and only general ADDs fall through here.

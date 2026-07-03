@@ -13,7 +13,7 @@ single-sourced with a profiled twin from `scripts/generate-fast-core.ts` (drift 
 caught by `check:fast-core`). Per-opcode inline arms handle the common opcodes;
 **FastBlocks** recognize hot instruction *shapes* and run them specially — either
 bulk-skipping idle/poll loops (jump thousands of iterations in one step) or running
-a whole helper loop (`__udivmodsi4`, `umulhisi3`) in one dispatch. Default
+a whole helper loop (`__udivmodsi4`, `umulhisi3`/`mulhisi3`) in one dispatch. Default
 peripherals are event-scheduled on a clock-event queue, so the normal runtime pays
 no per-instruction peripheral fan-out.
 
@@ -76,6 +76,12 @@ cross-checks the same matrix against native simavr with the documented
   wait as the new `sensor-format` hotspot, `serial-buffer-wait` batches the exact
   `LDD Y+28; CPSE; RJMP; IN SREG; SBRC; RJMP -6` shape while preserving the same
   event/listener guards as the poll-wait block.
+  A fresh `dsp-fixed` profile then picked the avr-libc signed multiply wrapper,
+  so `mulhisi3` now batches the exact `CALL __umulhisi3; AND; BRPL; SUB/SBC; JMP;
+  SBRS/RET; SUB/SBC; RET` shape while preserving the inner CALL/RET stack
+  footprint. The post-change profile shows `mulhisi3` at 31,889 hits in the 5M
+  cycle `dsp-fixed` sample, with the old wrapper `AND`/`BRPL`/`JMP`/tail rows
+  removed from the top table.
   Profiles confirm these blocks remove hot rows; benchmark samples are noisy, so
   treat this as a profile-backed cleanup, not a new table-changing win yet.
 
@@ -84,8 +90,8 @@ cross-checks the same matrix against native simavr with the documented
 1. **Small, low-risk — more FastBlocks.** Continue only from fresh
    `profile:opcodes --mode fast` evidence. Current candidates are helper-loop
    shapes that still rank in the real-code profiles, especially residual
-   softfloat helper kernels, `__udivmodsi4` CFG rows, and repeated branch-shaped
-   helper loops that survive after the counted-loop cleanup. A few % each,
+   softfloat helper kernels, `__udivmodsi4` CFG rows, and branch-shaped helper
+   loops that survive after the counted-loop cleanup. A few % each,
    fixture-specific. Same machinery as the poll-wait block.
    The old 2026-07-02 `sensor-format` non-canonical `__udivmodsi4` candidate is
    no longer the obvious next patch after `serial-buffer-wait`; the fresh fast

@@ -31,6 +31,7 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "dec",
   "udivmodsi4-loop-block",
   "umulhisi3-block",
+  "mulhisi3-block",
   "add",
   "adc",
   "adiw",

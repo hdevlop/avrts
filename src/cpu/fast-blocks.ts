@@ -50,14 +50,15 @@ const FAST_BLOCK_ARDUINO_MICROS = 6;
 const FAST_BLOCK_SUBCMP_RUN = 7;
 const FAST_BLOCK_UDIVMODSI4_LOOP = 8;
 const FAST_BLOCK_UMULHISI3 = 9;
-const FAST_BLOCK_POLL_WAIT = 10;
-const FAST_BLOCK_STRCPY_ZX = 11;
-const FAST_BLOCK_SBIW_DEC = 12;
-const FAST_BLOCK_UTOA_COMMON_LOOP = 13;
-const FAST_BLOCK_SOFTFLOAT_RIGHT_INC = 14;
-const FAST_BLOCK_FP_SPLITA_COMMON = 15;
-const FAST_BLOCK_FP_SPLIT3_COMMON = 16;
-const FAST_BLOCK_SERIAL_BUFFER_WAIT = 17;
+const FAST_BLOCK_MULHISI3 = 10;
+const FAST_BLOCK_POLL_WAIT = 11;
+const FAST_BLOCK_STRCPY_ZX = 12;
+const FAST_BLOCK_SBIW_DEC = 13;
+const FAST_BLOCK_UTOA_COMMON_LOOP = 14;
+const FAST_BLOCK_SOFTFLOAT_RIGHT_INC = 15;
+const FAST_BLOCK_FP_SPLITA_COMMON = 16;
+const FAST_BLOCK_FP_SPLIT3_COMMON = 17;
+const FAST_BLOCK_SERIAL_BUFFER_WAIT = 18;
 
 // Minimum straight-line subtract/compare run length worth executing as one block
 // (the Arduino delay() 64-bit compare chain is 8 long).
@@ -83,6 +84,7 @@ const FAST_BLOCK_PROFILE_KINDS: readonly ProfileRunState["blockKind"][] = [
   "subcmp-run",
   "udivmodsi4-loop",
   "umulhisi3",
+  "mulhisi3",
   "poll-wait",
   "strcpy-zx",
   "sbiw-dec",
@@ -135,6 +137,9 @@ export function classifyFastBlock(cpu: CPU, pc: number, opcode: number): number 
   if (opcode === 0x9fa2) {
     return isUmulhisi3Block(cpu, pc) ? FAST_BLOCK_UMULHISI3 : FAST_BLOCK_NONE;
   }
+  if ((opcode & 0xfe0e) === 0x940e) {
+    return isMulhisi3Block(cpu, pc, opcode) ? FAST_BLOCK_MULHISI3 : FAST_BLOCK_NONE;
+  }
   if ((opcode & 0xfe0f) === 0x9001) {
     return isStrcpyZxBlock(cpu, pc, opcode) ? FAST_BLOCK_STRCPY_ZX : FAST_BLOCK_NONE;
   }
@@ -177,6 +182,8 @@ export function runFastBlock(
       return runUdivmodsi4LoopBlock(cpu, pc, target);
     case FAST_BLOCK_UMULHISI3:
       return runUmulhisi3Block(cpu, pc, target);
+    case FAST_BLOCK_MULHISI3:
+      return runMulhisi3Block(cpu, pc, target);
     case FAST_BLOCK_POLL_WAIT:
       return runPollWaitBlock(cpu, pc, target);
     case FAST_BLOCK_STRCPY_ZX:
@@ -677,10 +684,33 @@ function isUmulhisi3Block(cpu: CPU, pc: number): boolean {
   return true;
 }
 
-function runUmulhisi3Block(cpu: CPU, pc: number, target: number): boolean {
-  const blockCycles = 22;
-  if (!cpu.canRunFastBlock(target, blockCycles)) return false;
+function farOpcodeTarget(cpu: CPU, pc: number, opcode: number): number {
+  const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
+  return (high << 16) | cpu.flash[pc + 1]!;
+}
 
+function isMulhisi3Block(cpu: CPU, pc: number, opcode: number): boolean {
+  const flash = cpu.flash;
+  const umulPc = pc + 8;
+  const tailPc = pc + 25;
+  return (
+    farOpcodeTarget(cpu, pc, opcode) === umulPc &&
+    flash[pc + 2] === 0x2333 && // AND r19,r19
+    flash[pc + 3] === 0xf412 && // BRPL +4
+    flash[pc + 4] === 0x1b8a && // SUB r24,r26
+    flash[pc + 5] === 0x0b9b && // SBC r25,r27
+    flash[pc + 6] === 0x940c && // JMP tail
+    farOpcodeTarget(cpu, pc + 6, flash[pc + 6]!) === tailPc &&
+    isUmulhisi3Block(cpu, umulPc) &&
+    flash[tailPc] === 0xffb7 && // SBRS r27,7
+    flash[tailPc + 1] === 0x9508 && // RET
+    flash[tailPc + 2] === 0x1b82 && // SUB r24,r18
+    flash[tailPc + 3] === 0x0b93 && // SBC r25,r19
+    flash[tailPc + 4] === 0x9508 // RET
+  );
+}
+
+function executeUmulhisi3Core(cpu: CPU): void {
   const data = cpu.data;
   const al = data[26]!;
   const ah = data[27]!;
@@ -727,6 +757,43 @@ function runUmulhisi3Block(cpu: CPU, pc: number, target: number): boolean {
     (r25 === 0 ? SREG_Z : 0) |
     (finalSum > 0xff ? SREG_C : 0) |
     (n !== v ? SREG_S : 0);
+}
+
+function runUmulhisi3Block(cpu: CPU, pc: number, target: number): boolean {
+  const blockCycles = 22;
+  if (!cpu.canRunFastBlock(target, blockCycles)) return false;
+
+  executeUmulhisi3Core(cpu);
+  cpu._cycles += blockCycles;
+  cpu.pc = cpu.popWord();
+  return true;
+}
+
+function runMulhisi3Block(cpu: CPU, pc: number, target: number): boolean {
+  const data = cpu.data;
+  const rightHighNegative = (data[19]! & 0x80) !== 0;
+  const leftHighNegative = (data[27]! & 0x80) !== 0;
+  const blockCycles = 26 + 1 + (rightHighNegative ? 3 : 2) + 3 + (leftHighNegative ? 8 : 5);
+  if (!cpu.canRunFastBlock(target, blockCycles)) return false;
+
+  // The inner CALL/RET leaves its return address in SRAM even though SP is restored.
+  cpu.pushWord(pc + 2);
+  executeUmulhisi3Core(cpu);
+  cpu.popWord();
+
+  const andResult = data[19]!;
+  const andFlags =
+    ((andResult & 0x80) !== 0 ? SREG_N | SREG_S : 0) | (andResult === 0 ? SREG_Z : 0);
+  data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | andFlags;
+
+  if (rightHighNegative) {
+    data[24] = sub8(cpu, data[24]!, data[26]!, 0, false);
+    data[25] = sub8(cpu, data[25]!, data[27]!, data[SREG_ADDR]! & SREG_C ? 1 : 0, true);
+  }
+  if (leftHighNegative) {
+    data[24] = sub8(cpu, data[24]!, data[18]!, 0, false);
+    data[25] = sub8(cpu, data[25]!, data[19]!, data[SREG_ADDR]! & SREG_C ? 1 : 0, true);
+  }
 
   cpu._cycles += blockCycles;
   cpu.pc = cpu.popWord();

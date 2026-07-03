@@ -345,6 +345,9 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if (opcode === 0x9fa2 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
       }
+      else if ((opcode & 0xfe0e) === 0x940e && cpu.tryRunFastBlock(pc, opcode, target)) {
+        continue;
+      }
       else if ((opcode & 0xfc00) === 0x0c00) {
         const d = regD5(opcode);
         const dv = data[d]!;
@@ -1319,6 +1322,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         continue;
       }
       else if (opcode === 0x9fa2 && cpu.tryRunFastBlock(pc, opcode, target)) {
+        cpu.profileFastBlock(listener, pc, opcode, before);
+        continue;
+      }
+      else if ((opcode & 0xfe0e) === 0x940e && cpu.tryRunFastBlock(pc, opcode, target)) {
         cpu.profileFastBlock(listener, pc, opcode, before);
         continue;
       }

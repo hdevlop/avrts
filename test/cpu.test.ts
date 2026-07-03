@@ -1855,6 +1855,43 @@ describe("fast-path opcode parity", () => {
     cpu.pushWord(0x0123);
   }
 
+  function loadMulhisi3(cpu: CPU): void {
+    cpu.setExecutor(new Decoder());
+    cpu.flash.set([
+      0x940e, // CALL __umulhisi3
+      0x0008,
+      0x2333, // AND r19,r19
+      0xf412, // BRPL +4
+      0x1b8a, // SUB r24,r26
+      0x0b9b, // SBC r25,r27
+      0x940c, // JMP __usmulhisi3_tail
+      0x0019,
+      0x9fa2, // MUL r26,r18
+      0x01b0, // MOVW r22,r0
+      0x9fb3, // MUL r27,r19
+      0x01c0, // MOVW r24,r0
+      0x9fa3, // MUL r26,r19
+      0x0d70, // ADD r23,r0
+      0x1d81, // ADC r24,r1
+      0x2411, // EOR r1,r1
+      0x1d91, // ADC r25,r1
+      0x9fb2, // MUL r27,r18
+      0x0d70, // ADD r23,r0
+      0x1d81, // ADC r24,r1
+      0x2411, // EOR r1,r1
+      0x1d91, // ADC r25,r1
+      0x9508, // RET
+      0x0000,
+      0x0000,
+      0xffb7, // SBRS r27,7
+      0x9508, // RET
+      0x1b82, // SUB r24,r18
+      0x0b93, // SBC r25,r19
+      0x9508, // RET
+    ]);
+    cpu.pushWord(0x0123);
+  }
+
   function seedUmulhisi3(cpu: CPU, left: number, right: number, sreg: number): void {
     for (let r = 0; r < 32; r += 1) cpu.data[r] = (r * 17 + 3) & 0xff;
     cpu.data[26] = left & 0xff;
@@ -1917,6 +1954,66 @@ describe("fast-path opcode parity", () => {
 
     slow.run(22);
     fast.run(22);
+
+    expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    expect(fast.pc).toBe(slow.pc);
+    expect(fast.cycles).toBe(slow.cycles);
+  });
+
+  test("avr-libc __mulhisi3 block matches the handler path", () => {
+    const cases = [
+      { left: 0x0000, right: 0xffff, sreg: 0xa0 },
+      { left: 0x0001, right: 0x0001, sreg: 0x00 },
+      { left: 0x8123, right: 0x0045, sreg: 0x7c },
+      { left: 0x1234, right: 0x80ff, sreg: 0xff },
+      { left: 0xffff, right: 0xffff, sreg: 0x11 },
+    ];
+    for (const { left, right, sreg } of cases) {
+      const slow = new CPU();
+      const fast = new CPU();
+      loadMulhisi3(slow);
+      loadMulhisi3(fast);
+      slow.onTrace(() => {});
+      seedUmulhisi3(slow, left, right, sreg);
+      seedUmulhisi3(fast, left, right, sreg);
+
+      slow.run(50);
+      fast.run(50);
+
+      expect(fast.pc).toBe(slow.pc);
+      expect(fast.cycles).toBe(slow.cycles);
+      expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
+    }
+  });
+
+  test("profileRun reports the avr-libc __mulhisi3 block", () => {
+    const cpu = new CPU();
+    loadMulhisi3(cpu);
+    seedUmulhisi3(cpu, 0x8123, 0x80ff, 0);
+    let sawBlock = false;
+    cpu.profileRun(50, (event) => {
+      if (event.blockKind === "mulhisi3") sawBlock = true;
+    });
+    expect(sawBlock).toBe(true);
+  });
+
+  test("avr-libc __mulhisi3 block refuses to cross a clock event", () => {
+    const slow = new CPU();
+    const fast = new CPU();
+    loadMulhisi3(slow);
+    loadMulhisi3(fast);
+    slow.onTrace(() => {});
+    seedUmulhisi3(slow, 0x8123, 0x80ff, 0);
+    seedUmulhisi3(fast, 0x8123, 0x80ff, 0);
+    slow.addClockEvent(() => {
+      slow.data[0x100] = (slow.data[0x100]! + 1) & 0xff;
+    }, 3);
+    fast.addClockEvent(() => {
+      fast.data[0x100] = (fast.data[0x100]! + 1) & 0xff;
+    }, 3);
+
+    slow.run(50);
+    fast.run(50);
 
     expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
     expect(fast.pc).toBe(slow.pc);
