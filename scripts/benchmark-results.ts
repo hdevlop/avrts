@@ -295,11 +295,22 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value, Object.keys(value as Record<string, unknown>).sort(), 2);
 }
 
-function diffOutcomes(avrts: ScenarioOutcome, avr8js: ScenarioOutcome): string[] {
+function comparableResult(scenario: ResultScenario, outcome: ScenarioOutcome): number[] {
+  const result = [...outcome.result];
+  if (scenario === "peripheral-mix") {
+    // avrts now models TWI bus time, while avr8js completes TWI immediately.
+    // The fixture's byte 6 is only the old "timerTicks <= 120" threshold, so it
+    // is no longer a parity signal between these two engines.
+    result[6] = 0;
+  }
+  return result;
+}
+
+function diffOutcomes(scenario: ResultScenario, avrts: ScenarioOutcome, avr8js: ScenarioOutcome): string[] {
   const differences: string[] = [];
   if (!avrts.completed) differences.push(`avrts did not write the result marker within ${avrts.cycles} cycles`);
   if (!avr8js.completed) differences.push(`avr8js did not write the result marker within ${avr8js.cycles} cycles`);
-  if (JSON.stringify(avrts.result) !== JSON.stringify(avr8js.result)) {
+  if (JSON.stringify(comparableResult(scenario, avrts)) !== JSON.stringify(comparableResult(scenario, avr8js))) {
     differences.push(`result block differs:\navrts  ${JSON.stringify(avrts.result)}\navr8js ${JSON.stringify(avr8js.result)}`);
   }
   if (JSON.stringify(avrts.twi) !== JSON.stringify(avr8js.twi)) {
@@ -323,7 +334,7 @@ function compareScenario(scenario: ResultScenario, options: Partial<ResultOption
   };
   const avrts = runAvrts(resolved);
   const avr8js = runAvr8js(resolved);
-  const differences = diffOutcomes(avrts, avr8js);
+  const differences = diffOutcomes(scenario, avrts, avr8js);
   return { pass: differences.length === 0, avrts, avr8js, differences };
 }
 

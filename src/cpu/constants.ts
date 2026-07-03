@@ -171,6 +171,14 @@ export const TXEN0 = 3;
 export const UCSZ02 = 2;
 export const RXB80 = 1;
 export const TXB80 = 0;
+export const UMSEL01 = 7;
+export const UMSEL00 = 6;
+export const UPM01 = 5;
+export const UPM00 = 4;
+export const USBS0 = 3;
+export const UCSZ01 = 2;
+export const UCSZ00 = 1;
+export const UCPOL0 = 0;
 
 // --- ADC (data-space addresses) ---
 export const ADCL = 0x78;
@@ -254,8 +262,11 @@ export const SPIE = 7;
 export const SPE = 6;
 export const DORD = 5;
 export const MSTR = 4;
+export const SPR1 = 1;
+export const SPR0 = 0;
 export const SPIF = 7;
 export const WCOL = 6;
+export const SPI2X = 0;
 
 // --- TWI / I2C (data-space addresses) ---
 export const TWBR = 0xb8;
@@ -270,6 +281,8 @@ export const TWSTO = 4;
 export const TWSTA = 5;
 export const TWEA = 6;
 export const TWINT = 7;
+export const TWPS0 = 0;
+export const TWPS1 = 1;
 
 // --- Sleep & watchdog (data-space addresses) ---
 export const SMCR = 0x53;

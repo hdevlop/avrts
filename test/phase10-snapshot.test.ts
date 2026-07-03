@@ -53,31 +53,10 @@ import {
   USART_TX_VECTOR,
   MSTR,
 } from "../src/cpu";
-
-/**
- * Build an Intel HEX record from a list of 16-bit words (little-endian byte order).
- * Used in tests so we can hand-craft tiny programs and stay decoupled from external
- * hex fixtures when we're testing the snapshot mechanism itself.
- */
-function record(words: number[], address = 0): string {
-  const bytes: number[] = [];
-  for (const w of words) {
-    bytes.push(w & 0xff);
-    bytes.push((w >> 8) & 0xff);
-  }
-  const count = bytes.length;
-  const addrHi = (address >> 8) & 0xff;
-  const addrLo = address & 0xff;
-  const body = [count, addrHi, addrLo, 0x00, ...bytes];
-  let sum = 0;
-  for (const b of body) sum = (sum + b) & 0xff;
-  const checksum = (-sum) & 0xff;
-  const hex = [...body, checksum].map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join("");
-  return `:${hex}`;
-}
+import { DEFAULT_SPI_TRANSFER_CYCLES, DEFAULT_USART_FRAME_CYCLES, INTEL_HEX_EOF, record } from "./helpers";
 
 const HEX = {
-  eof: ":00000001FF",
+  eof: INTEL_HEX_EOF,
   ldiR16: (imm: number): string => record([0xe000 | (imm & 0xf0) << 4 | (imm & 0x0f) | 0 << 4 | (16 - 16)]),
   // Easier: just hardcode a few programs we'll actually use.
 };
@@ -266,6 +245,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
       (avr) => {
         avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR) | (1 << SPIE));
         avr.cpu.writeData(SPDR, 0x42);
+        avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);
       },
       SPI_STC_VECTOR,
       SPSR,
@@ -278,6 +258,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
       (avr) => {
         avr.cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << TXCIE0));
         avr.cpu.writeData(UDR0, 0x41);
+        avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
       },
       USART_TX_VECTOR,
       UCSR0A,

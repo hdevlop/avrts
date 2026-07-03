@@ -70,7 +70,6 @@ export class Adc {
   private readonly voltageEnabled = new Uint8Array(8);
   private remainingCycles = 0;
   private converting = false;
-  private conversionDueCycle = 0;
   private triggerSource = -1;
   private triggerWasHigh = false;
   private autoTriggerArmed = false;
@@ -80,7 +79,6 @@ export class Adc {
       return;
     }
     this.remainingCycles = 0;
-    this.conversionDueCycle = 0;
     this.completeConversion();
     this.scheduleEvents();
   };
@@ -94,7 +92,6 @@ export class Adc {
   reset(): void {
     this.remainingCycles = 0;
     this.converting = false;
-    this.conversionDueCycle = 0;
     this.triggerSource = -1;
     this.triggerWasHigh = false;
     this.refreshAutoTriggerArmed();
@@ -105,11 +102,9 @@ export class Adc {
     if (this.converting) {
       this.remainingCycles -= cycles;
       if (this.remainingCycles <= 0) {
-        this.conversionDueCycle = 0;
         this.completeConversion();
         this.scheduleEvents();
       } else {
-        this.conversionDueCycle = this.cpu.cycles + this.remainingCycles;
         if (this.autoTriggerArmed) this.resyncTriggerLatch();
         this.scheduleEvents();
         return;
@@ -178,7 +173,6 @@ export class Adc {
       this.cpu.data[ADCSRA] = this.cpu.data[ADCSRA]! & ~(1 << ADSC);
       this.converting = false;
       this.remainingCycles = 0;
-      this.conversionDueCycle = 0;
       this.refreshAutoTriggerArmed();
       this.scheduleEvents();
       return;
@@ -187,14 +181,12 @@ export class Adc {
     this.cpu.data[ADCSRA] = this.cpu.data[ADCSRA]! | (1 << ADSC);
     this.refreshAutoTriggerArmed();
     this.remainingCycles = CONVERSION_ADC_CLOCKS * this.prescaler();
-    this.conversionDueCycle = this.cpu.cycles + this.remainingCycles;
     this.scheduleEvents();
   }
 
   private completeConversion(): void {
     this.converting = false;
     this.remainingCycles = 0;
-    this.conversionDueCycle = 0;
     const result = this.sampleSelectedChannel();
     if ((this.cpu.data[ADMUX]! & (1 << ADLAR)) !== 0) {
       this.cpu.data[ADCL] = (result & 0x03) << 6;
@@ -287,7 +279,7 @@ export class Adc {
 
   private refreshRemainingCycles(): void {
     if (!this.converting) return;
-    this.remainingCycles = Math.max(1, this.conversionDueCycle - this.cpu.cycles);
+    this.remainingCycles = this.cpu.clockEventRemainingCycles(this.onConversionEvent);
   }
 
   private resyncTriggerLatch(): void {
@@ -343,7 +335,6 @@ export class Adc {
     this.voltageEnabled.set(snap.voltageEnabled);
     this.remainingCycles = snap.remainingCycles;
     this.converting = snap.converting;
-    this.conversionDueCycle = this.converting ? this.cpu.cycles + this.remainingCycles : 0;
     this.triggerSource = snap.triggerSource;
     this.triggerWasHigh = snap.triggerWasHigh;
     this.refreshAutoTriggerArmed();

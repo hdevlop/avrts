@@ -1,26 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AVR, PORTB, type DataWatchEvent } from "../src";
 import { UnknownOpcodeError } from "../src/cpu";
+import { INTEL_HEX_EOF, record } from "./helpers";
 
-/** Build an Intel HEX record from a list of 16-bit words (little-endian). */
-function record(words: number[], address = 0): string {
-  const bytes: number[] = [];
-  for (const w of words) {
-    bytes.push(w & 0xff);
-    bytes.push((w >> 8) & 0xff);
-  }
-  const count = bytes.length;
-  const addrHi = (address >> 8) & 0xff;
-  const addrLo = address & 0xff;
-  const body = [count, addrHi, addrLo, 0x00, ...bytes];
-  let sum = 0;
-  for (const b of body) sum = (sum + b) & 0xff;
-  const checksum = (-sum) & 0xff;
-  const hex = [...body, checksum].map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join("");
-  return `:${hex}`;
-}
-
-const EOF = ":00000001FF";
+const EOF = INTEL_HEX_EOF;
 
 /** LDI Rd, K (d = R - 16, so R must be 16..31). */
 const ldi = (r: number, k: number): number => {

@@ -8,11 +8,20 @@ import {
   TXCIE0,
   TXEN0,
   U2X0,
+  UBRR0H,
+  UBRR0L,
   UCSR0A,
   UCSR0B,
+  UCSR0C,
   UDR0,
   UDRIE0,
   UDRE0,
+  UCSZ00,
+  UCSZ01,
+  UCSZ02,
+  UPM00,
+  UPM01,
+  USBS0,
   USART_RX_VECTOR,
   USART_TX_VECTOR,
   USART_UDRE_VECTOR,
@@ -25,16 +34,20 @@ const UCSR0A_HARDWARE_MASK = (1 << RXC0) | (1 << TXC0) | (1 << UDRE0);
 const UCSR0A_WRITABLE_MASK = (1 << U2X0) | (1 << MPCM0);
 
 /**
- * Minimal USART0 model for Serial output. Transmission is modeled as immediate:
- * writing UDR0 emits one byte, then UDRE0/TXC0 are ready so Arduino's polling
- * loops keep moving. RX is buffered and interrupt flags are surfaced so Arduino's
- * serial core can use polling or interrupt-driven paths.
+ * USART0 model for Serial-style firmware. TX is scheduled by baud/frame timing:
+ * writes fill the AVR's double buffer and bytes become visible to host listeners
+ * only when the simulated frame finishes. RX remains host-injected and queued.
  */
 export class Usart0 {
   private readonly txListeners = new Set<SerialByteListener>();
   private readonly rxBytes: number[] = [];
   private rxHead = 0;
   private interruptSourcesEnabled = false;
+  private txShiftByte: number | null = null;
+  private txBufferByte: number | null = null;
+  private readonly onTxCompleteEvent = (): void => {
+    this.completeTxFrame();
+  };
   private readonly onInterruptEvent = (): void => {
     this.updateInterrupts();
     this.scheduleInterruptPoll();
@@ -45,9 +58,13 @@ export class Usart0 {
   }
 
   reset(): void {
+    this.cpu.clearClockEvent(this.onTxCompleteEvent);
     this.rxBytes.length = 0;
     this.rxHead = 0;
+    this.txShiftByte = null;
+    this.txBufferByte = null;
     this.cpu.data[UCSR0A] = (1 << UDRE0);
+    this.cpu.data[UCSR0C] = (1 << UCSZ01) | (1 << UCSZ00);
     this.cpu.data[UDR0] = 0;
     this.refreshInterruptSourcesEnabled();
     this.scheduleInterruptPoll();
@@ -64,16 +81,7 @@ export class Usart0 {
   receive(data: string | Uint8Array): void {
     const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
     for (const byte of bytes) this.rxBytes.push(byte & 0xff);
-    this.updateRxFlag();
-    this.updateInterrupts();
-    this.scheduleInterruptPoll();
-  }
-
-  /** Re-evaluate USART interrupt sources after CPU cycles/instruction boundaries. */
-  tick(): void {
-    if (!this.interruptSourcesEnabled) return;
-    this.updateInterrupts();
-    this.scheduleInterruptPoll();
+    this.refreshStatusFlagsAndInterrupts();
   }
 
   @OnWrite(UCSR0A)
@@ -82,25 +90,38 @@ export class Usart0 {
     // hardware-owned in this model.
     const hardware = (oldValue & UCSR0A_HARDWARE_MASK) & ~(value & (1 << TXC0));
     this.cpu.data[UCSR0A] = hardware | (value & UCSR0A_WRITABLE_MASK);
-    this.updateReadyFlags();
-    this.scheduleInterruptPoll();
+    this.refreshStatusFlagsAndInterrupts();
   }
 
   @OnWrite(UCSR0B)
   onWriteUcsr0b(): void {
     this.refreshInterruptSourcesEnabled();
     // Enabling RXEN0 should surface any already-queued RX bytes.
-    this.updateReadyFlags();
-    this.scheduleInterruptPoll();
+    this.refreshStatusFlagsAndInterrupts();
   }
 
   @OnWrite(UDR0)
   onWriteUdr0(_cpu: CPU, _addr: number, value: number): void {
-    if (this.txEnabled()) {
-      this.emitByte(value & 0xff);
+    const byte = value & 0xff;
+    if (!this.txEnabled()) {
+      this.cpu.data[UDR0] = byte;
+      return;
     }
-    this.cpu.data[UDR0] = value & 0xff;
-    this.cpu.data[UCSR0A] = this.cpu.readData(UCSR0A) | (1 << UDRE0) | (1 << TXC0);
+
+    if (this.txBufferByte !== null) {
+      // Hardware ignores writes while the transmit buffer is full.
+      this.cpu.data[UDR0] = this.txBufferByte;
+      return;
+    }
+
+    this.cpu.data[UDR0] = byte;
+    this.cpu.data[UCSR0A] = this.cpu.readData(UCSR0A) & ~(1 << TXC0);
+    if (this.txShiftByte === null) {
+      this.startTxFrame(byte);
+    } else {
+      this.txBufferByte = byte;
+      this.updateTxDataRegisterEmptyFlag();
+    }
     this.updateInterrupts();
     this.scheduleInterruptPoll();
   }
@@ -153,10 +174,66 @@ export class Usart0 {
     this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! | (1 << RXC0);
   }
 
-  private updateReadyFlags(): void {
-    this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! | (1 << UDRE0);
+  private updateTxDataRegisterEmptyFlag(): void {
+    if (this.txBufferByte === null) {
+      this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! | (1 << UDRE0);
+    } else {
+      this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! & ~(1 << UDRE0);
+    }
+  }
+
+  private startTxFrame(byte: number, remainingCycles = this.frameCycles()): void {
+    this.txShiftByte = byte & 0xff;
+    this.updateTxDataRegisterEmptyFlag();
+    this.cpu.addClockEvent(this.onTxCompleteEvent, remainingCycles);
+  }
+
+  private completeTxFrame(): void {
+    const byte = this.txShiftByte;
+    this.txShiftByte = null;
+    if (byte !== null) this.emitByte(byte);
+
+    if (this.txBufferByte !== null) {
+      const next = this.txBufferByte;
+      this.txBufferByte = null;
+      this.startTxFrame(next);
+    } else {
+      this.updateTxDataRegisterEmptyFlag();
+      this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! | (1 << TXC0);
+    }
+    this.updateInterrupts();
+    this.scheduleInterruptPoll();
+  }
+
+  private frameCycles(): number {
+    const ubrr = this.cpu.data[UBRR0L]! | (this.cpu.data[UBRR0H]! << 8);
+    const baudDivider = (ubrr + 1) * ((this.cpu.data[UCSR0A]! & (1 << U2X0)) !== 0 ? 8 : 16);
+    // simavr surfaces TXC0 one bit-time after the raw frame bits have shifted.
+    return baudDivider * (this.frameBits() + 1);
+  }
+
+  private frameBits(): number {
+    const controlB = this.cpu.data[UCSR0B]!;
+    const controlC = this.cpu.data[UCSR0C]!;
+    const sizeCode =
+      ((controlB >> UCSZ02) & 1) << 2 |
+      ((controlC >> UCSZ01) & 1) << 1 |
+      ((controlC >> UCSZ00) & 1);
+    const dataBits = sizeCode === 0b111 ? 9 : sizeCode + 5;
+    const parityBits = (controlC & ((1 << UPM01) | (1 << UPM00))) === 0 ? 0 : 1;
+    const stopBits = (controlC & (1 << USBS0)) === 0 ? 1 : 2;
+    return 1 + dataBits + parityBits + stopBits;
+  }
+
+  private txRemainingCycles(): number {
+    return this.txShiftByte === null ? 0 : this.cpu.clockEventRemainingCycles(this.onTxCompleteEvent);
+  }
+
+  private refreshStatusFlagsAndInterrupts(): void {
+    this.updateTxDataRegisterEmptyFlag();
     this.updateRxFlag();
     this.updateInterrupts();
+    this.scheduleInterruptPoll();
   }
 
   private refreshInterruptSourcesEnabled(): void {
@@ -208,7 +285,13 @@ export class Usart0 {
   snapshot(): Usart0Snapshot {
     const bytes = new Uint8Array(this.rxBytes.length - this.rxHead);
     for (let i = 0; i < bytes.length; i += 1) bytes[i] = this.rxBytes[this.rxHead + i]!;
-    return { rxBytes: bytes, rxHead: 0 };
+    return {
+      rxBytes: bytes,
+      rxHead: 0,
+      txShiftByte: this.txShiftByte,
+      txBufferByte: this.txBufferByte,
+      txRemainingCycles: this.txRemainingCycles(),
+    };
   }
 
   /** Restore queued RX bytes. UCSR0A/UCSR0B are restored with the CPU data. */
@@ -216,9 +299,13 @@ export class Usart0 {
     this.rxBytes.length = 0;
     for (const byte of snap.rxBytes) this.rxBytes.push(byte);
     this.rxHead = snap.rxHead;
+    this.txShiftByte = snap.txShiftByte ?? null;
+    this.txBufferByte = snap.txBufferByte ?? null;
+    this.cpu.clearClockEvent(this.onTxCompleteEvent);
+    if (this.txShiftByte !== null) {
+      this.cpu.addClockEvent(this.onTxCompleteEvent, snap.txRemainingCycles ?? this.frameCycles());
+    }
     this.refreshInterruptSourcesEnabled();
-    this.updateRxFlag();
-    this.updateInterrupts();
-    this.scheduleInterruptPoll();
+    this.refreshStatusFlagsAndInterrupts();
   }
 }

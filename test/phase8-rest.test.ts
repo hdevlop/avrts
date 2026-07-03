@@ -19,6 +19,7 @@ import {
   SPE,
   SPIF,
   SPSR,
+  WCOL,
   TWCR,
   TWDR,
   TWEA,
@@ -31,6 +32,7 @@ import {
   WDT_VECTOR,
   WDTCSR,
 } from "../src/cpu";
+import { DEFAULT_SPI_TRANSFER_CYCLES, DEFAULT_TWI_BYTE_CYCLES, DEFAULT_TWI_START_STOP_CYCLES } from "./helpers";
 
 describe("EEPROM", () => {
   test("register write sequence stores a byte (host-readable)", () => {
@@ -77,16 +79,64 @@ describe("EEPROM", () => {
 });
 
 describe("SPI", () => {
-  test("master transfer emits MOSI and clocks in the responder byte", () => {
+  test("master transfer emits MOSI and clocks in the responder byte after delay", () => {
     const avr = AVR();
     const sent: number[] = [];
     avr.spi.onByte((b) => sent.push(b));
     avr.spi.respondWith((b) => b ^ 0xff);
     avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     avr.cpu.writeData(SPDR, 0x3c);
+    expect(sent).toEqual([]);
+    expect((avr.cpu.readData(SPSR) >> SPIF) & 1).toBe(0);
+    expect(avr.cpu.readData(SPDR)).toBe(0x3c);
+    avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES - 1);
+    expect(sent).toEqual([]);
+    expect((avr.cpu.readData(SPSR) >> SPIF) & 1).toBe(0);
+    avr.runCycles(1);
     expect(sent).toEqual([0x3c]);
     expect(avr.cpu.readData(SPDR)).toBe(0xc3);
     expect((avr.cpu.readData(SPSR) >> SPIF) & 1).toBe(1);
+  });
+
+  test("new transfer clears stale SPIF and write collision keeps the active transfer", () => {
+    const avr = AVR();
+    const sent: number[] = [];
+    avr.spi.onByte((b) => sent.push(b));
+    avr.spi.respondWith((b) => b ^ 0xff);
+    avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
+
+    avr.cpu.writeData(SPDR, 0x10);
+    avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);
+    expect((avr.cpu.readData(SPSR) >> SPIF) & 1).toBe(1);
+
+    avr.cpu.writeData(SPDR, 0x22);
+    expect((avr.cpu.readData(SPSR) >> SPIF) & 1).toBe(0);
+    avr.cpu.writeData(SPDR, 0x33);
+    expect((avr.cpu.readData(SPSR) >> WCOL) & 1).toBe(1);
+    avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);
+    expect(sent).toEqual([0x10, 0x22]);
+    expect(avr.cpu.readData(SPDR)).toBe(0xdd);
+  });
+
+  test("snapshot restores an in-flight transfer", () => {
+    const source = AVR();
+    source.spi.respondWith((b) => b ^ 0xff);
+    source.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
+    source.cpu.writeData(SPDR, 0x5a);
+    source.runCycles(10);
+
+    const restored = AVR();
+    const sent: number[] = [];
+    restored.restore(source.snapshot());
+    restored.spi.onByte((b) => sent.push(b));
+    restored.spi.respondWith((b) => b ^ 0xff);
+    restored.runCycles(DEFAULT_SPI_TRANSFER_CYCLES - 10 - 1);
+    expect(sent).toEqual([]);
+    expect((restored.cpu.readData(SPSR) >> SPIF) & 1).toBe(0);
+    restored.runCycles(1);
+    expect(sent).toEqual([0x5a]);
+    expect(restored.cpu.readData(SPDR)).toBe(0xa5);
+    expect((restored.cpu.readData(SPSR) >> SPIF) & 1).toBe(1);
   });
 });
 
@@ -104,15 +154,25 @@ describe("TWI / I2C master", () => {
     const ctrl = (extra = 0) => cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | extra);
 
     ctrl(1 << TWSTA);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x08); // START
     cpu.writeData(TWDR, (0x50 << 1) | 0); // SLA+W
     ctrl();
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x18); // SLA+W ACK
     cpu.writeData(TWDR, 0xab);
     ctrl();
+    expect(received).toEqual([]);
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x28); // DATA ACK
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTO)); // STOP
+    expect((cpu.readData(TWCR) >> TWSTO) & 1).toBe(1);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0xf8); // idle after STOP
+    expect((cpu.readData(TWCR) >> TWSTO) & 1).toBe(0);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
     expect(received).toEqual([0xab]);
   });
 
@@ -124,13 +184,18 @@ describe("TWI / I2C master", () => {
     const cpu = avr.cpu;
 
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA)); // START
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
     cpu.writeData(TWDR, (0x50 << 1) | 1); // SLA+R
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN));
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x40); // SLA+R ACK
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWEA)); // read + ACK
+    expect(cpu.readData(TWDR)).not.toBe(0x11);
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWDR)).toBe(0x11);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x50);
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN)); // read + NACK
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWDR)).toBe(0x22);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x58);
   });
@@ -139,9 +204,53 @@ describe("TWI / I2C master", () => {
     const avr = AVR();
     const cpu = avr.cpu;
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
     cpu.writeData(TWDR, (0x40 << 1) | 0);
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN));
+    avr.runCycles(DEFAULT_TWI_BYTE_CYCLES);
     expect(cpu.readData(TWSR) & 0xf8).toBe(0x20); // SLA+W NACK
+  });
+
+  test("TWCR writes while pending preserve in-flight START and STOP bits", () => {
+    const avr = AVR();
+    const cpu = avr.cpu;
+
+    cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
+    cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN));
+    expect((cpu.readData(TWCR) >> TWSTA) & 1).toBe(1);
+    expect((cpu.readData(TWCR) >> TWSTO) & 1).toBe(0);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
+    expect((cpu.readData(TWCR) >> TWSTA) & 1).toBe(0);
+    expect(cpu.readData(TWSR) & 0xf8).toBe(0x08);
+
+    cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTO));
+    cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
+    expect((cpu.readData(TWCR) >> TWSTA) & 1).toBe(0);
+    expect((cpu.readData(TWCR) >> TWSTO) & 1).toBe(1);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+    avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
+    expect((cpu.readData(TWCR) >> TWSTO) & 1).toBe(0);
+    expect((cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+  });
+
+  test("snapshot restores a pending address operation", () => {
+    const source = AVR();
+    source.twi.connect(0x50, {});
+    source.cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
+    source.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
+    source.cpu.writeData(TWDR, 0x50 << 1);
+    source.cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN));
+    source.runCycles(20);
+
+    const restored = AVR();
+    restored.twi.connect(0x50, {});
+    restored.restore(source.snapshot());
+    restored.runCycles(DEFAULT_TWI_BYTE_CYCLES - 20 - 1);
+    expect((restored.cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
+    restored.runCycles(1);
+    expect(restored.cpu.readData(TWSR) & 0xf8).toBe(0x18);
+    expect((restored.cpu.readData(TWCR) >> TWINT) & 1).toBe(1);
   });
 });
 

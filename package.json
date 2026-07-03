@@ -14,6 +14,7 @@
     "oracle:simavr": "bun run scripts/simavr-oracle.ts",
     "oracle:simavr:compare": "bun run scripts/simavr-oracle.ts --compare-avrts",
     "oracle:simavr:result": "bun run scripts/simavr-oracle.ts --result-case all",
+    "oracle:simavr:timing": "bun run scripts/simavr-oracle.ts --timing-case all",
     "compile": "bun run scripts/compile.ts",
     "profile:opcodes": "bun run scripts/profile-opcodes.ts",
     "generate:fast-core": "bun run scripts/generate-fast-core.ts",

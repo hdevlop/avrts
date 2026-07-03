@@ -43,6 +43,7 @@ interface Options {
   flushCycles: number;
   twiSlave?: number;
   resultCase?: ResultCase;
+  timingCase?: TimingCase;
   analogRaw: number;
   compareAvrts: boolean;
   compareDumps: string[];
@@ -97,9 +98,15 @@ const DEFAULT_MAX_CYCLES = 5_000_000;
 const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
 const RESULT_SCENARIOS = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed"] as const;
+const TIMING_RESULT_ADDR = 0x0300;
+const TIMING_RESULT_LEN = 30;
+const TIMING_MAX_CYCLES = 1_000_000;
+const TIMING_HEX_PATH = "examples/peripheral-timing-oracle/peripheral-timing-oracle.hex";
+const TIMING_TWI_SLAVE_ADDR = 0x50;
 
 type ResultScenario = (typeof RESULT_SCENARIOS)[number];
 type ResultCase = ResultScenario | "all";
+type TimingCase = "all";
 
 interface TwiTranscript {
   starts: string[];
@@ -117,6 +124,23 @@ interface ScenarioOutcome {
   serial: number[];
 }
 
+interface TimingOutcome {
+  completed: boolean;
+  cycles: number;
+  result: number[];
+  twi: TwiTranscript;
+  serial: number[];
+}
+
+interface TimingComparison {
+  pass: boolean;
+  differences: string[];
+  normalizations: string[];
+  simavr: TimingOutcome;
+  avrts: TimingOutcome;
+  raw: SimavrState;
+}
+
 const RESULT_HEX_PATHS: Record<ResultScenario, string> = {
   "peripheral-mix": "examples/arduino-peripheral-mix/arduino-peripheral-mix.ino.hex",
   "isr-heavy": "examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex",
@@ -131,6 +155,7 @@ const RESULT_AVRTS_COMPARE: Record<ResultScenario, (options: { maxCycles: number
   "dsp-fixed": compareDspFixed,
 };
 
+const PERIPHERAL_MIX_TIMER_THRESHOLD_RESULT_INDEX = 6;
 const PERIPHERAL_MIX_PORTD_RESULT_INDEX = 12;
 
 function parseArgs(args: string[]): Options {
@@ -179,6 +204,8 @@ function parseArgs(args: string[]): Options {
       options.twiSlave = parseAddress(args[++i], "--twi-slave", 0x7f);
     } else if (arg === "--result-case" || arg === "--case") {
       options.resultCase = parseResultCase(args[++i]);
+    } else if (arg === "--timing-case") {
+      options.timingCase = parseTimingCase(args[++i]);
     } else if (arg === "--compare-dump") {
       options.compareDumps.push(required(args[++i], "--compare-dump"));
     } else if (arg === "--compare-avrts") {
@@ -245,6 +272,11 @@ function parseResultCase(value: string | undefined): ResultCase {
   if (value === "all") return value;
   if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
   throw new Error(`--result-case expects all, peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
+}
+
+function parseTimingCase(value: string | undefined): TimingCase {
+  if (value === "all") return value;
+  throw new Error(`--timing-case expects all, got ${value}.`);
 }
 
 function candidateSimavrPrefixes(): string[] {
@@ -535,8 +567,128 @@ function compareResultScenario(
   return { pass: differences.length === 0, differences, normalizations: [...new Set(normalizations)], simavr, avrts, raw };
 }
 
+function optionsForTimingScenario(base: Options): Options {
+  return {
+    ...base,
+    hex: TIMING_HEX_PATH,
+    freq: CLOCK_HZ,
+    cycles: base.cyclesSet ? base.cycles : TIMING_MAX_CYCLES,
+    dumps: [`result:0x${TIMING_RESULT_ADDR.toString(16)}:${TIMING_RESULT_LEN}`],
+    pokes: [],
+    untilResult: `0x${TIMING_RESULT_ADDR.toString(16)}:${TIMING_RESULT_LEN}:0xa7:0x5c`,
+    flushCycles: 0,
+    twiSlave: TIMING_TWI_SLAVE_ADDR,
+    compareAvrts: false,
+    compareDumps: [],
+  };
+}
+
+function timingComplete(data: Uint8Array): boolean {
+  return data[TIMING_RESULT_ADDR] === 0xa7 && data[TIMING_RESULT_ADDR + TIMING_RESULT_LEN - 1] === 0x5c;
+}
+
+function nextTimingTwiRead(transcript: TwiTranscript): number {
+  const last = transcript.writes.at(-1) ?? 0;
+  const prev = transcript.writes.at(-2) ?? 0;
+  return (0xa5 ^ last ^ prev ^ ((transcript.writes.length * 17) & 0xff)) & 0xff;
+}
+
+function createTimingTwiSlave(transcript: TwiTranscript) {
+  return {
+    start(address: number, read: boolean): boolean {
+      transcript.starts.push(`${read ? "R" : "W"}@${address.toString(16).padStart(2, "0")}`);
+      return address === TIMING_TWI_SLAVE_ADDR;
+    },
+    write(byte: number): boolean {
+      transcript.writes.push(byte & 0xff);
+      return true;
+    },
+    read(): number {
+      const value = nextTimingTwiRead(transcript);
+      transcript.reads.push(value);
+      return value;
+    },
+    stop(): void {
+      transcript.stops += 1;
+    },
+  };
+}
+
+function runAvrtsTiming(options: Options): TimingOutcome {
+  const hex = readFileSync(options.hex, "utf8");
+  const avr = AVR({ hex, timing: "cycle-exact" });
+  const twi = { starts: [], writes: [], reads: [], stops: 0 } satisfies TwiTranscript;
+  const serial: number[] = [];
+  avr.twi.connect(TIMING_TWI_SLAVE_ADDR, createTimingTwiSlave(twi));
+  avr.serial.onByte((byte) => serial.push(byte & 0xff));
+
+  while (avr.cpu.cycles < options.cycles && !timingComplete(avr.cpu.data)) {
+    avr.runCycles(1_000);
+  }
+
+  return {
+    completed: timingComplete(avr.cpu.data),
+    cycles: avr.cpu.cycles,
+    result: [...avr.cpu.data.slice(TIMING_RESULT_ADDR, TIMING_RESULT_ADDR + TIMING_RESULT_LEN)],
+    twi,
+    serial,
+  };
+}
+
+function timingOutcome(simavr: SimavrState): TimingOutcome {
+  return {
+    completed: simavr.completed,
+    cycles: simavr.cycles,
+    result: simavr.dumps.result ?? [],
+    twi: simavr.twi,
+    serial: simavr.serial,
+  };
+}
+
+function comparableTimingResult(outcome: TimingOutcome, normalizations: string[]): number[] {
+  const result = [...outcome.result];
+  if (result.length >= TIMING_RESULT_LEN) {
+    // Not timing signals for this oracle:
+    // - native simavr echoes MOSI into SPDR and clears SPIF after the fixture's
+    //   SPSR-then-SPDR read sequence; avrts uses the configured responder byte.
+    // - native simavr reports the first SLA+W ACK on its virtual-slave IRQ path
+    //   much sooner than later byte operations. START/STOP and data byte timing
+    //   are the calibration targets here.
+    result[5] = 0;
+    result[6] = 0;
+    result[10] = 0;
+    result[11] = 0;
+    normalizations.push("SPI received/status bytes normalized; this oracle compares SPI SPIF polling delay.");
+    normalizations.push("First TWI SLA+W elapsed bytes normalized; START/STOP and byte read/write delays remain compared.");
+  }
+  return result;
+}
+
+function compareTimingScenario(base: Options): TimingComparison {
+  const options = optionsForTimingScenario(base);
+  const raw = runOracle(options);
+  const simavr = timingOutcome(raw);
+  const avrts = runAvrtsTiming(options);
+  const differences: string[] = [];
+  const normalizations: string[] = [];
+
+  if (!simavr.completed) differences.push(`simavr did not write the timing result marker within ${simavr.cycles} cycles`);
+  if (!avrts.completed) differences.push(`avrts did not write the timing result marker within ${avrts.cycles} cycles`);
+  compareArray(differences, "timing-result", comparableTimingResult(simavr, normalizations), comparableTimingResult(avrts, normalizations));
+  compareArray(differences, "serial", simavr.serial, avrts.serial);
+  if (JSON.stringify(simavr.twi) !== JSON.stringify(avrts.twi)) {
+    differences.push(`twi: simavr=${stableJson(simavr.twi)} avrts=${stableJson(avrts.twi)}`);
+  }
+
+  return { pass: differences.length === 0, differences, normalizations: [...new Set(normalizations)], simavr, avrts, raw };
+}
+
 function comparableResult(scenario: ResultScenario, outcome: ScenarioOutcome, normalizations: string[]): number[] {
   const result = [...outcome.result];
+  if (scenario === "peripheral-mix" && result.length > PERIPHERAL_MIX_TIMER_THRESHOLD_RESULT_INDEX) {
+    result[PERIPHERAL_MIX_TIMER_THRESHOLD_RESULT_INDEX] = 0;
+    normalizations.push("peripheral-mix timer-threshold byte is normalized; timed TWI makes the old ticks<=120 threshold engine-dependent.");
+  }
   if (scenario === "peripheral-mix" && result.length > PERIPHERAL_MIX_PORTD_RESULT_INDEX) {
     result[PERIPHERAL_MIX_PORTD_RESULT_INDEX] = 0;
     normalizations.push("peripheral-mix PORTD PWM latch byte is normalized; simavr keeps timer-driven OC0B separate from the PORTD latch.");
@@ -564,6 +716,20 @@ function printScenarioOutcome(label: string, outcome: ScenarioOutcome): void {
   console.log(`       serial bytes=${outcome.serial.length}`);
 }
 
+function read16(bytes: number[], offset: number): number {
+  return (bytes[offset] ?? 0) | ((bytes[offset + 1] ?? 0) << 8);
+}
+
+function printTimingOutcome(label: string, outcome: TimingOutcome): void {
+  const result = outcome.result;
+  console.log(`${label.padEnd(6)} completed=${String(outcome.completed).padEnd(5)} cycles=${outcome.cycles.toLocaleString()}`);
+  console.log(
+    `       usartTXC=${read16(result, 1)} spiSPIF=${read16(result, 3)} twiStart=${read16(result, 7)} twiWrite=${read16(result, 13)} twiRestart=${read16(result, 16)} twiSlaR=${read16(result, 19)} twiRead=${read16(result, 22)} twiStop=${read16(result, 26)}`,
+  );
+  console.log(`       statuses start=0x${(result[9] ?? 0).toString(16)} write=0x${(result[15] ?? 0).toString(16)} read=0x${(result[24] ?? 0).toString(16)} twcrStop=0x${(result[28] ?? 0).toString(16)}`);
+  console.log(`       serial bytes=${outcome.serial.length} twi starts=${outcome.twi.starts.length} writes=${outcome.twi.writes.length} reads=${outcome.twi.reads.length} stops=${outcome.twi.stops}`);
+}
+
 function runResultOracle(options: Options): boolean {
   const scenarios = options.resultCase === "all" ? RESULT_SCENARIOS : [options.resultCase!];
   let failed = false;
@@ -587,6 +753,25 @@ function runResultOracle(options: Options): boolean {
     failed ||= !result.pass;
   }
   return !failed;
+}
+
+function runTimingOracle(options: Options): boolean {
+  const result = compareTimingScenario(options);
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return result.pass;
+  }
+  console.log("simavr native timing oracle: USART/SPI/TWI polling vs avrts");
+  printTimingOutcome("simavr", result.simavr);
+  printTimingOutcome("avrts", result.avrts);
+  if (result.pass) {
+    console.log("\nPASS: calibrated timing result, serial output, and I2C transcript match.");
+    for (const note of result.normalizations) console.log(`NOTE: ${note}`);
+    return true;
+  }
+  console.error("\nFAILED");
+  for (const difference of result.differences) console.error(`\n${difference}`);
+  return false;
 }
 
 function printResult(result: SimavrState, json: boolean): void {
@@ -626,6 +811,10 @@ function printCompare(result: CompareResult, json: boolean): void {
 if (import.meta.main) {
   try {
     const options = parseArgs(Bun.argv.slice(2));
+    if (options.timingCase) {
+      if (!runTimingOracle(options)) process.exit(1);
+      process.exit(0);
+    }
     if (options.resultCase) {
       if (!runResultOracle(options)) process.exit(1);
       process.exit(0);

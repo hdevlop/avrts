@@ -66,7 +66,7 @@ describe("Phase 9 golden fixtures", () => {
     avr.serial.onText((chunk) => {
       text += chunk;
     });
-    avr.runCycles(200_000);
+    avr.runCycles(300_000);
 
     expect(text).toContain("hello avrts\r\n");
   });

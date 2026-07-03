@@ -38,6 +38,12 @@ export interface Usart0Snapshot {
   /** Queued host bytes waiting for firmware to read. */
   rxBytes: Uint8Array;
   rxHead: number;
+  /** Byte currently being shifted out, null/undefined when TX is idle. */
+  txShiftByte?: number | null;
+  /** One-byte transmit buffer, null/undefined when the buffer is empty. */
+  txBufferByte?: number | null;
+  /** Remaining cycles for the current TX frame. */
+  txRemainingCycles?: number;
 }
 
 export interface AdcSnapshot {
@@ -66,6 +72,9 @@ export interface EepromSnapshot {
  */
 export interface SpiSnapshot {
   responderReset: true;
+  busy?: boolean;
+  pendingMosi?: number;
+  remainingCycles?: number;
 }
 
 export interface TwiSnapshot {
@@ -74,6 +83,8 @@ export interface TwiSnapshot {
   reading: boolean;
   /** Address of the slave currently being addressed (null = none). */
   currentAddress: number | null;
+  pendingOperation?: "start" | "stop" | "transfer" | null;
+  remainingCycles?: number;
 }
 
 export interface WatchdogSnapshot {
