@@ -887,14 +887,38 @@ function runSbiwDecLoopBlock(cpu: CPU, pc: number, opcode: number, target: numbe
   const before = cpu.data[d]! | (cpu.data[d + 1]! << 8);
   const iterations = before === 0 ? 0x10000 : before;
   const blockCycles = iterations * 4 - 1;
-  if (!cpu.canRunFastBlock(target, blockCycles)) return false;
+  if (cpu.canRunFastBlock(target, blockCycles)) {
+    cpu.data[d] = 0;
+    cpu.data[d + 1] = 0;
+    cpu.data[SREG_ADDR] = (cpu.data[SREG_ADDR]! & ~SREG_WORD_MASK) | SREG_Z;
+    cpu._cycles += blockCycles;
+    cpu.pc = pc + 2;
+    return true;
+  }
 
-  cpu.data[d] = 0;
-  cpu.data[d + 1] = 0;
-  cpu.data[SREG_ADDR] = (cpu.data[SREG_ADDR]! & ~SREG_WORD_MASK) | SREG_Z;
-  cpu._cycles += blockCycles;
-  cpu.pc = pc + 2;
+  const partialIterations = Math.min(iterations - 1, cpu.bulkIdleLoopIterations(target, 4));
+  if (partialIterations <= 1) return false;
+
+  const result = (before - partialIterations) & 0xffff;
+  const beforeLast = (result + 1) & 0xffff;
+  cpu.data[d] = result & 0xff;
+  cpu.data[d + 1] = result >> 8;
+  setSbiwDecFlags(cpu, beforeLast, result);
+  cpu._cycles += partialIterations * 4;
+  cpu.pc = pc;
   return true;
+}
+
+function setSbiwDecFlags(cpu: CPU, before: number, result: number): void {
+  const n = (result & 0x8000) !== 0;
+  const v = (before & ~result & 0x8000) !== 0;
+  const flags =
+    (v ? SREG_V : 0) |
+    (n ? SREG_N : 0) |
+    (result === 0 ? SREG_Z : 0) |
+    (before < 1 ? SREG_C : 0) |
+    (n !== v ? SREG_S : 0);
+  cpu.data[SREG_ADDR] = (cpu.data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
 }
 
 /** Bulk-skip `RJMP -1` when nothing observable can happen before the target/event. */

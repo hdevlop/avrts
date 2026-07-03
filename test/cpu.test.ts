@@ -1329,6 +1329,23 @@ describe("fast-path opcode parity", () => {
     expectSameCoreState(fast, slow, [24, 25, SREG_ADDR]);
   });
 
+  test("SBIW/BRNE decrement loop partially skips up to a clock event", () => {
+    const slow = createSbiwDecLoop(100);
+    const fast = createSbiwDecLoop(100);
+    const slowEvents: number[] = [];
+    const fastEvents: number[] = [];
+    slow.onTrace(() => {});
+    slow.addClockEvent(() => slowEvents.push(slow.cycles), 64);
+    fast.addClockEvent(() => fastEvents.push(fast.cycles), 64);
+
+    slow.run(80);
+    fast.run(80);
+
+    expect(fastEvents).toEqual(slowEvents);
+    expect(fastEvents).toEqual([64]);
+    expectSameCoreState(fast, slow, [24, 25, SREG_ADDR]);
+  });
+
   test("SBIW/BRNE decrement loop preserves per-instruction cycle listeners", () => {
     const cpu = createSbiwDecLoop(2);
     const elapsed: number[] = [];
@@ -1343,6 +1360,19 @@ describe("fast-path opcode parity", () => {
     const cpu = createSbiwDecLoop(3);
     let sawBlock = false;
     cpu.profileRun(11, (event) => {
+      if (event.blockKind === "sbiw-dec") sawBlock = true;
+    });
+
+    expect(sawBlock).toBe(true);
+  });
+
+  test("profileRun reports partial SBIW decrement loop blocks before events", () => {
+    const cpu = createSbiwDecLoop(100);
+    cpu.addClockEvent(() => {
+      cpu.data[0x100] = (cpu.data[0x100]! + 1) & 0xff;
+    }, 64);
+    let sawBlock = false;
+    cpu.profileRun(80, (event) => {
       if (event.blockKind === "sbiw-dec") sawBlock = true;
     });
 

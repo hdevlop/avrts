@@ -62,7 +62,8 @@ cross-checks the same matrix against native simavr with the documented
 - **Lever C — counted-loop FastBlock cleanup:** the existing shift-left counted
   loop now covers the 2-byte `ADD;ADC;DEC;BRNE` form seen in `string-heavy`; the
   `SBIW ...,1;BRNE` delay/countdown loop is batched under the same event/listener
-  guards; and the generated ladder has a narrow guarded entry for SRAM
+  guards, including partial skips up to the next clock event for interrupt-heavy
+  countdowns; and the generated ladder has a narrow guarded entry for SRAM
   `LD Z+; ST X+; AND; BRNE` string copies. The avr-libc `__utoa_common`
   `ADD;ADC;ADC;CP;BRCS;SUB;INC;SUBI;BRNE` bit loop is also recognized exactly.
   Float-math's avr-libc `__addsf3x` right-normalize
