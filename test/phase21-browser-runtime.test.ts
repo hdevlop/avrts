@@ -45,6 +45,9 @@ class FakeClientWorker implements WorkerLike {
 class FakeWorkerScope implements WorkerScopeLike {
   readonly events: AVRWorkerEvent[] = [];
   onmessage: ((event: MessageEvent<AVRWorkerCommand>) => void) | null = null;
+  private nextTimerId = 1;
+  private readonly timerQueue: Array<{ id: number; handler: () => void; interval: boolean; active: boolean }> = [];
+  private readonly timers = new Map<number, { id: number; handler: () => void; interval: boolean; active: boolean }>();
 
   postMessage(message: AVRWorkerEvent): void {
     this.events.push(message);
@@ -53,10 +56,65 @@ class FakeWorkerScope implements WorkerScopeLike {
   send(command: AVRWorkerCommand): void {
     this.onmessage?.({ data: command } as MessageEvent<AVRWorkerCommand>);
   }
+
+  setTimeout(handler: () => void): ReturnType<typeof setTimeout> {
+    return this.addTimer(handler, false);
+  }
+
+  clearTimeout(handle: ReturnType<typeof setTimeout>): void {
+    this.clearTimer(handle);
+  }
+
+  setInterval(handler: () => void): ReturnType<typeof setInterval> {
+    return this.addTimer(handler, true);
+  }
+
+  clearInterval(handle: ReturnType<typeof setInterval>): void {
+    this.clearTimer(handle);
+  }
+
+  runTimers(limit = 20): void {
+    for (let i = 0; i < limit; i += 1) {
+      const timer = this.timerQueue.shift();
+      if (!timer) return;
+      if (!timer.active) continue;
+      if (!timer.interval) this.timers.delete(timer.id);
+      timer.handler();
+      if (timer.interval && timer.active) this.timerQueue.push(timer);
+    }
+  }
+
+  private addTimer(handler: () => void, interval: boolean): ReturnType<typeof setTimeout> {
+    const timer = { id: this.nextTimerId++, handler, interval, active: true };
+    this.timers.set(timer.id, timer);
+    this.timerQueue.push(timer);
+    return timer.id as unknown as ReturnType<typeof setTimeout>;
+  }
+
+  private clearTimer(handle: ReturnType<typeof setTimeout>): void {
+    const timer = this.timers.get(handle as unknown as number);
+    if (!timer) return;
+    timer.active = false;
+    this.timers.delete(timer.id);
+  }
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor<T>(
+  scope: FakeWorkerScope,
+  resolve: () => T | undefined,
+  timeoutMessage: string,
+): Promise<T> {
+  for (let i = 0; i < 200; i += 1) {
+    scope.runTimers();
+    const found = resolve();
+    if (found !== undefined) return found;
+    await delay(5);
+  }
+  throw new Error(timeoutMessage);
 }
 
 async function waitForEvent<T extends AVRWorkerEvent["type"]>(
@@ -64,15 +122,27 @@ async function waitForEvent<T extends AVRWorkerEvent["type"]>(
   type: T,
   predicate: (event: Extract<AVRWorkerEvent, { type: T }>) => boolean = () => true,
 ): Promise<Extract<AVRWorkerEvent, { type: T }>> {
-  for (let i = 0; i < 80; i += 1) {
-    const found = scope.events.find(
+  return waitFor(
+    scope,
+    () =>
+      scope.events.find(
       (event): event is Extract<AVRWorkerEvent, { type: T }> =>
         event.type === type && predicate(event as Extract<AVRWorkerEvent, { type: T }>),
-    );
-    if (found) return found;
-    await delay(5);
-  }
-  throw new Error(`timed out waiting for worker event ${type}`);
+      ),
+    `timed out waiting for worker event ${type}`,
+  );
+}
+
+async function waitForSerialText(scope: FakeWorkerScope, expected: string): Promise<{ text: string; events: Extract<AVRWorkerEvent, { type: "serial" }>[] }> {
+  return waitFor(
+    scope,
+    () => {
+      const events = scope.events.filter((event): event is Extract<AVRWorkerEvent, { type: "serial" }> => event.type === "serial");
+      const text = events.map((event) => event.text).join("");
+      return text.includes(expected) ? { text, events } : undefined;
+    },
+    `timed out waiting for serial text ${expected}`,
+  );
 }
 
 describe("Phase 21 - browser worker runtime client", () => {
@@ -163,12 +233,13 @@ describe("Phase 21 - browser worker host", () => {
 
     await waitForEvent(scope, "ready");
     scope.send({ type: "loadHex", hex: serialPrintHex });
+    scope.send({ type: "setSpeed", speed: "max" });
     scope.send({ type: "start" });
 
-    const serial = await waitForEvent(scope, "serial", (event) => event.text.includes("hello avrts"));
+    const serial = await waitForSerialText(scope, "hello avrts");
 
-    expect(serial.text.length).toBeGreaterThan(1);
     expect(serial.text).toContain("hello avrts");
+    expect(serial.events.some((event) => event.text.length > 1)).toBe(true);
   });
 
   test("watchData batches writes as watchFrame events", async () => {

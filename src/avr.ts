@@ -45,7 +45,7 @@ import {
   UCSR0A,
   USART_TX_VECTOR,
 } from "./cpu";
-import { loadHex } from "./loader";
+import { parseHex } from "./loader";
 import {
   Adc,
   attachPeripheral,
@@ -181,7 +181,12 @@ export interface GpioHandle {
 }
 
 export interface SerialHandle {
+  /** Raw transmitted bytes, exactly as the firmware wrote them to UDR0. */
   onByte(handler: (byte: number) => void): () => void;
+  /**
+   * Transmitted text, decoded as streaming UTF-8: multi-byte characters are
+   * delivered once complete, invalid sequences become U+FFFD.
+   */
   onText(handler: (text: string) => void): () => void;
   write(text: string | Uint8Array): void;
   clear(): void;
@@ -329,6 +334,11 @@ class AVRRuntime implements AVR {
   private serialChunks: string[] = [];
   private serialTextCache = "";
   private serialTextDirty = false;
+  // Streaming UTF-8 decoder for the serial *text* path (`onText`/`getText`).
+  // Bytes of an incomplete multi-byte sequence are held until the sequence
+  // completes; invalid sequences decode to U+FFFD. `onByte` stays raw.
+  private serialDecoder = new TextDecoder();
+  private readonly serialByteBuffer = new Uint8Array(1);
   private coalescePinEvents = false;
   private frameDepth = 0;
 
@@ -434,6 +444,7 @@ class AVRRuntime implements AVR {
   pause(): this {
     if (!this.running || this.paused) return this;
     this.paused = true;
+    this.cancelLoop();
     this.emit("pause");
     return this;
   }
@@ -443,6 +454,7 @@ class AVRRuntime implements AVR {
     if (!this.paused) return this;
     this.paused = false;
     this.lastHostFrameMs = this.nowMs();
+    this.scheduleLoop();
     this.emit("resume");
     return this;
   }
@@ -563,7 +575,7 @@ class AVRRuntime implements AVR {
 
   use(options: AVROptions): this {
     if (options.chip) this.useChip(options.chip);
-    if (options.clockHz) this.useClock(options.clockHz);
+    if (options.clockHz !== undefined) this.useClock(options.clockHz);
     if (options.timing) this.useTiming(options.timing);
     if (options.eventCoalescing) this.setEventCoalescing(options.eventCoalescing);
     if (options.hex) this.useHex(options.hex);
@@ -576,6 +588,9 @@ class AVRRuntime implements AVR {
   }
 
   useClock(clockHz: number): this {
+    if (!Number.isFinite(clockHz) || clockHz <= 0) {
+      throw new Error(`useClock(clockHz) expects a positive finite number, got ${clockHz}.`);
+    }
     this.clockHz = clockHz;
     this.watchdog.setClock(clockHz);
     return this;
@@ -596,9 +611,9 @@ class AVRRuntime implements AVR {
   }
 
   useHex(hex: string): this {
+    const parsed = parseHex(hex);
     this.programSource = hex;
-    this.cpu.flash.fill(0);
-    loadHex(hex, this.cpu.flash);
+    this.cpu.flash.set(parsed);
     this.reset();
     this.emit("load");
     return this;
@@ -627,8 +642,8 @@ class AVRRuntime implements AVR {
   reload(): this {
     if (this.programSource === null) return this;
     const hex = this.programSource;
-    this.cpu.flash.fill(0);
-    loadHex(hex, this.cpu.flash);
+    const parsed = parseHex(hex);
+    this.cpu.flash.set(parsed);
     this.reset();
     this.emit("load");
     return this;
@@ -839,7 +854,7 @@ class AVRRuntime implements AVR {
       this.running = true;
       this.paused = snap.runtime.paused;
       this.lastHostFrameMs = this.nowMs();
-      this.scheduleLoop();
+      if (!this.paused) this.scheduleLoop();
     } else if (wasRunning) {
       // We cancelled a loop that was running before restore; signal stop so the UI
       // updates its controls.
@@ -957,7 +972,9 @@ class AVRRuntime implements AVR {
   }
 
   private emitSerialByte(byte: number): void {
-    const text = String.fromCharCode(byte);
+    this.serialByteBuffer[0] = byte;
+    const text = this.serialDecoder.decode(this.serialByteBuffer, { stream: true });
+    if (text === "") return; // mid-sequence: wait for the remaining UTF-8 bytes
     this.serialChunks.push(text);
     this.serialTextDirty = true;
     if (this.serialChunks.length >= SERIAL_CHUNK_COMPACT_THRESHOLD) {
@@ -986,15 +1003,22 @@ class AVRRuntime implements AVR {
     this.serialTextCache = text;
     this.serialChunks = [];
     this.serialTextDirty = false;
+    // Drop any buffered partial UTF-8 sequence along with the text.
+    this.serialDecoder = new TextDecoder();
   }
 
   private scheduleLoop(): void {
+    if (this.loopHandle !== null || !this.running || this.paused) return;
+
     const raf = (globalThis as {
       requestAnimationFrame?: (callback: (timestamp: number) => void) => number;
     }).requestAnimationFrame;
 
     const tick = (timestamp?: number): void => {
-      if (!this.running) return;
+      if (!this.running || this.paused) {
+        this.loopHandle = null;
+        return;
+      }
       const now = typeof timestamp === "number" ? timestamp : this.nowMs();
       const deltaMs = Math.max(0, now - this.lastHostFrameMs);
       this.lastHostFrameMs = now;
@@ -1005,9 +1029,12 @@ class AVRRuntime implements AVR {
         this.emit("error", error);
         return;
       }
-      // reportDebugState (called by frame -> runCycles) may have stopped the loop
-      // on a breakpoint or captured error. Don't reschedule in that case.
-      if (!this.running) return;
+      // reportDebugState (called by frame -> runCycles) may have paused on a
+      // breakpoint/captured error, or pause()/stop() may have cancelled the loop.
+      if (!this.running || this.paused) {
+        this.loopHandle = null;
+        return;
+      }
       if (this.loopUsesRaf) this.loopHandle = raf!(tick);
     };
 

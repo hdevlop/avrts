@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { AVR, DDRB, PINB, PORTB } from "../src";
+import { AVR, DDRB, IntelHexError, PINB, PORTB, TXEN0, UCSR0B, UDR0 } from "../src";
+import { DEFAULT_USART_FRAME_CYCLES } from "./helpers";
+
+function transmitByte(avr: ReturnType<typeof AVR>, byte: number): void {
+  avr.cpu.writeData(UDR0, byte);
+  avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
+}
 
 test("AVR() constructs with ATmega328P defaults", () => {
   const status = AVR().status();
@@ -49,6 +55,30 @@ test("useHex clears stale flash before loading a new program", () => {
   expect(avr.cpu.flash[0]).toBe(0x940c);
   avr.useHex(":00000001FF");
   expect(avr.cpu.flash[0]).toBe(0x0000);
+});
+
+test("useHex leaves the previous program intact when parsing fails", () => {
+  const first = ":040000000AE2FFCF42\n:00000001FF\n";
+  const avr = AVR(first);
+
+  expect(() => avr.useHex(":020000000C945F\n:00000001FF\n")).toThrow(IntelHexError);
+  expect(avr.cpu.flash[0]).toBe(0xe20a);
+  expect(avr.status().programLoaded).toBe(true);
+
+  avr.runCycles(1);
+  expect(avr.cpu.data[16]).toBe(0x2a);
+});
+
+test("failed useHex does not emit load", () => {
+  const avr = AVR();
+  let loadEvents = 0;
+  avr.on("load", () => {
+    loadEvents += 1;
+  });
+
+  expect(() => avr.useHex(":0200000ZZZ9999\n")).toThrow(IntelHexError);
+  expect(loadEvents).toBe(0);
+  expect(avr.status().programLoaded).toBe(false);
 });
 
 test("facade pin(13) observes PB5 output toggles from a loaded program", () => {
@@ -110,6 +140,58 @@ test("frame advances simulated time using speed", () => {
   avr.setSpeed(10).frame(2);
   expect(avr.status().cycles).toBe(25);
   expect(avr.status().speed).toBe(10);
+});
+
+test("serial text decodes multi-byte UTF-8 output; onByte stays raw", () => {
+  const avr = AVR();
+  avr.cpu.writeData(UCSR0B, 1 << TXEN0);
+  const chunks: string[] = [];
+  const rawBytes: number[] = [];
+  avr.serial.onText((text) => chunks.push(text));
+  avr.serial.onByte((byte) => rawBytes.push(byte));
+
+  const encoded = new TextEncoder().encode("T=25°C é");
+  for (const byte of encoded) transmitByte(avr, byte);
+
+  expect(avr.serial.getText()).toBe("T=25°C é");
+  expect(chunks.join("")).toBe("T=25°C é");
+  // Multi-byte characters arrive whole, never as partial-sequence chunks.
+  expect(chunks.every((chunk) => chunk.length > 0)).toBe(true);
+  expect(rawBytes).toEqual([...encoded]);
+});
+
+test("serial.clear() drops a buffered partial UTF-8 sequence", () => {
+  const avr = AVR();
+  avr.cpu.writeData(UCSR0B, 1 << TXEN0);
+
+  transmitByte(avr, 0xc3); // first byte of a 2-byte sequence ("é")
+  expect(avr.serial.getText()).toBe("");
+  avr.serial.clear();
+
+  transmitByte(avr, 0x41); // "A"
+  expect(avr.serial.getText()).toBe("A");
+});
+
+test("invalid serial bytes decode to U+FFFD without derailing later text", () => {
+  const avr = AVR();
+  avr.cpu.writeData(UCSR0B, 1 << TXEN0);
+
+  transmitByte(avr, 0xff); // never valid in UTF-8
+  transmitByte(avr, 0x41); // "A"
+
+  expect(avr.serial.getText()).toBe("�A");
+});
+
+test("useClock rejects invalid clock rates", () => {
+  const avr = AVR();
+
+  expect(() => avr.useClock(0)).toThrow("positive finite number");
+  expect(() => avr.useClock(-16_000_000)).toThrow("positive finite number");
+  expect(() => avr.useClock(NaN)).toThrow("positive finite number");
+  expect(() => avr.use({ clockHz: 0 })).toThrow("positive finite number");
+
+  avr.use({ clockHz: 8_000_000 });
+  expect(avr.status().clockHz).toBe(8_000_000);
 });
 
 test("start, pause, resume, and stop update runtime status and events", () => {
