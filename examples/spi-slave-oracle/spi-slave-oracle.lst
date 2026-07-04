@@ -1,0 +1,105 @@
+
+examples\spi-slave-oracle\spi-slave-oracle.elf:     file format elf32-avr
+
+
+Disassembly of section .text:
+
+00000000 <__vectors>:
+   0:	0c 94 34 00 	jmp	0x68	; 0x68 <__ctors_end>
+   4:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+   8:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+   c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  10:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  14:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  18:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  1c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  20:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  24:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  28:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  2c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  30:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  34:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  38:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  3c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  40:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  44:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  48:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  4c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  50:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  54:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  58:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  5c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  60:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  64:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+
+00000068 <__ctors_end>:
+  68:	11 24       	eor	r1, r1
+  6a:	1f be       	out	0x3f, r1	; 63
+  6c:	cf ef       	ldi	r28, 0xFF	; 255
+  6e:	d8 e0       	ldi	r29, 0x08	; 8
+  70:	de bf       	out	0x3e, r29	; 62
+  72:	cd bf       	out	0x3d, r28	; 61
+  74:	0e 94 40 00 	call	0x80	; 0x80 <main>
+  78:	0c 94 7f 00 	jmp	0xfe	; 0xfe <_exit>
+
+0000007c <__bad_interrupt>:
+  7c:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
+
+00000080 <main>:
+  80:	e0 e0       	ldi	r30, 0x00	; 0
+  82:	f3 e0       	ldi	r31, 0x03	; 3
+
+00000084 <.L2>:
+  84:	11 92       	st	Z+, r1
+  86:	e0 31       	cpi	r30, 0x10	; 16
+  88:	83 e0       	ldi	r24, 0x03	; 3
+  8a:	f8 07       	cpc	r31, r24
+  8c:	d9 f7       	brne	.-10     	; 0x84 <.L2>
+  8e:	87 ea       	ldi	r24, 0xA7	; 167
+  90:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <_end+0x200>
+  94:	22 98       	cbi	0x04, 2	; 4
+  96:	2a 98       	cbi	0x05, 2	; 5
+  98:	80 e4       	ldi	r24, 0x40	; 64
+  9a:	8c bd       	out	0x2c, r24	; 44
+  9c:	1d bc       	out	0x2d, r1	; 45
+  9e:	85 ea       	ldi	r24, 0xA5	; 165
+  a0:	8e bd       	out	0x2e, r24	; 46
+  a2:	10 92 80 00 	sts	0x0080, r1	; 0x800080 <__TEXT_REGION_LENGTH__+0x7f8080>
+  a6:	10 92 81 00 	sts	0x0081, r1	; 0x800081 <__TEXT_REGION_LENGTH__+0x7f8081>
+  aa:	10 92 85 00 	sts	0x0085, r1	; 0x800085 <__TEXT_REGION_LENGTH__+0x7f8085>
+  ae:	10 92 84 00 	sts	0x0084, r1	; 0x800084 <__TEXT_REGION_LENGTH__+0x7f8084>
+  b2:	81 e0       	ldi	r24, 0x01	; 1
+  b4:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__TEXT_REGION_LENGTH__+0x7f8081>
+  b8:	81 e5       	ldi	r24, 0x51	; 81
+  ba:	80 93 0e 03 	sts	0x030E, r24	; 0x80030e <_end+0x20e>
+
+000000be <.L3>:
+  be:	0d b4       	in	r0, 0x2d	; 45
+  c0:	07 fe       	sbrs	r0, 7
+  c2:	fd cf       	rjmp	.-6      	; 0xbe <.L3>
+  c4:	80 91 84 00 	lds	r24, 0x0084	; 0x800084 <__TEXT_REGION_LENGTH__+0x7f8084>
+  c8:	90 91 85 00 	lds	r25, 0x0085	; 0x800085 <__TEXT_REGION_LENGTH__+0x7f8085>
+  cc:	10 92 81 00 	sts	0x0081, r1	; 0x800081 <__TEXT_REGION_LENGTH__+0x7f8081>
+  d0:	3d b5       	in	r19, 0x2d	; 45
+  d2:	4e b5       	in	r20, 0x2e	; 46
+  d4:	2d b5       	in	r18, 0x2d	; 45
+  d6:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <_end+0x201>
+  da:	90 93 02 03 	sts	0x0302, r25	; 0x800302 <_end+0x202>
+  de:	40 93 03 03 	sts	0x0303, r20	; 0x800303 <_end+0x203>
+  e2:	30 93 04 03 	sts	0x0304, r19	; 0x800304 <_end+0x204>
+  e6:	20 93 05 03 	sts	0x0305, r18	; 0x800305 <_end+0x205>
+  ea:	8c b5       	in	r24, 0x2c	; 44
+  ec:	80 93 06 03 	sts	0x0306, r24	; 0x800306 <_end+0x206>
+  f0:	8e b5       	in	r24, 0x2e	; 46
+  f2:	80 93 07 03 	sts	0x0307, r24	; 0x800307 <_end+0x207>
+  f6:	8c e5       	ldi	r24, 0x5C	; 92
+  f8:	80 93 0f 03 	sts	0x030F, r24	; 0x80030f <_end+0x20f>
+
+000000fc <.L4>:
+  fc:	ff cf       	rjmp	.-2      	; 0xfc <.L4>
+
+000000fe <_exit>:
+  fe:	f8 94       	cli
+
+00000100 <__stop_program>:
+ 100:	ff cf       	rjmp	.-2      	; 0x100 <__stop_program>

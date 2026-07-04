@@ -19,8 +19,10 @@ import type {
   IoReadHook,
   IoWriteHook,
   PendingInterrupt,
+  ProgramMemoryReadHook,
   ProfileRunListener,
   ProfileRunState,
+  SpmInstructionHook,
   TraceListener,
   TraceState,
 } from "./types";
@@ -90,6 +92,8 @@ export class CPU {
 
   /** Program counter (word index into `flash`). */
   pc = 0;
+  /** Boot-vector offset applied when MCUCR.IVSEL relocates interrupt vectors. */
+  interruptVectorBase = 0;
   /**
    * Internal cycle counter (the unit of simulated time).
    * @internal Exposed for the generated execution cores (see generated/cores.ts);
@@ -146,12 +150,16 @@ export class CPU {
   private readonly pendingCycleListenerRemovalDepths = new Map<CycleListener, number>();
   private cycleListenerDispatchDepth = 0;
   private readonly pendingInterrupts: PendingInterrupt[] = [];
+  private programMemoryReadHook: ProgramMemoryReadHook | undefined;
+  private spmInstructionHook: SpmInstructionHook | undefined;
   // Sparse, indexed by data-space address; peripherals install hooks here.
   /** @internal fast-block surface (see fast-blocks.ts). */
   readonly writeHooks: Array<IoWriteHook[] | undefined> = [];
   /** @internal fast-block surface (see fast-blocks.ts). */
   readonly readHooks: Array<IoReadHook[] | undefined> = [];
   private readonly wdrListeners: Array<() => void> = [];
+  private readonly sleepListeners: Array<(mode: number) => void> = [];
+  private readonly wakeListeners: Array<() => void> = [];
   // Event-scheduled peripheral clock events (sorted by absolute cycle), plus a
   // small reuse pool. `nextClockEvent === undefined` is the common case (no
   // peripheral has scheduled anything), so the hot path is a single null check.
@@ -217,6 +225,7 @@ export class CPU {
   /** Power-on state: clear data space, PC=0, cycles=0, SP=RAMEND. */
   reset(): void {
     this.pc = 0;
+    this.interruptVectorBase = 0;
     this.cycles = 0;
     this.sleeping = false;
     this.data.fill(0);
@@ -231,11 +240,18 @@ export class CPU {
 
   /** Enter sleep (SLEEP instruction). Only sleeps if SMCR.SE is set, per hardware. */
   sleep(): void {
-    if ((this.data[SMCR]! & (1 << SE)) !== 0) this.sleeping = true;
+    if ((this.data[SMCR]! & (1 << SE)) === 0) return;
+    this.sleeping = true;
+    const mode = this.sleepMode;
+    for (const listener of [...this.sleepListeners]) listener(mode);
   }
 
   get isSleeping(): boolean {
     return this.sleeping;
+  }
+
+  get sleepMode(): number {
+    return (this.data[SMCR]! >> 1) & 0x07;
   }
 
   /** Register a listener fired by the WDR instruction (watchdog reset). */
@@ -244,6 +260,24 @@ export class CPU {
     return () => {
       const index = this.wdrListeners.indexOf(listener);
       if (index >= 0) this.wdrListeners.splice(index, 1);
+    };
+  }
+
+  /** Register a listener fired when SLEEP successfully enters a sleep mode. */
+  onSleep(listener: (mode: number) => void): () => void {
+    this.sleepListeners.push(listener);
+    return () => {
+      const index = this.sleepListeners.indexOf(listener);
+      if (index >= 0) this.sleepListeners.splice(index, 1);
+    };
+  }
+
+  /** Register a listener fired when an enabled interrupt wakes the CPU. */
+  onWake(listener: () => void): () => void {
+    this.wakeListeners.push(listener);
+    return () => {
+      const index = this.wakeListeners.indexOf(listener);
+      if (index >= 0) this.wakeListeners.splice(index, 1);
     };
   }
 
@@ -293,6 +327,30 @@ export class CPU {
       return;
     }
     for (let i = 0; i < hooks.length; i += 1) hooks[i]!(this, addr, masked, oldValue);
+  }
+
+  /** Read one byte from program memory, with fuse/signature-row override support. */
+  readProgramByte(byteAddr: number, readerPc = this.pc): number {
+    const normalized = byteAddr & 0xffff;
+    const override = this.programMemoryReadHook?.(normalized, readerPc);
+    if (override !== undefined) return override & 0xff;
+    const word = this.flash[normalized >> 1]!;
+    return normalized & 1 ? (word >> 8) & 0xff : word & 0xff;
+  }
+
+  /** Install or clear the optional LPM special-row reader. */
+  setProgramMemoryReadHook(hook: ProgramMemoryReadHook | undefined): void {
+    this.programMemoryReadHook = hook;
+  }
+
+  /** Install or clear the optional SPM instruction handler. */
+  setSpmInstructionHook(hook: SpmInstructionHook | undefined): void {
+    this.spmInstructionHook = hook;
+  }
+
+  /** Called by the SPM instruction after decoding. */
+  executeSpmInstruction(pc: number = this.pc): void {
+    this.spmInstructionHook?.(pc);
   }
 
   /** Register a peripheral hook fired after `addr` is written (via writeData/OUT/ST...). */
@@ -761,12 +819,16 @@ export class CPU {
     // pending interrupt, so this avoids the flag bit-math on the common path.
     if (this.pendingInterrupts.length === 0 || !this.sreg.I) return;
     const interrupt = this.pendingInterrupts.shift()!;
+    const wasSleeping = this.sleeping;
     this.sleeping = false; // an enabled interrupt wakes the CPU from sleep
     interrupt.acknowledge?.();
     this.pushWord(this.pc);
     this.sreg.I = false;
-    this.pc = interrupt.vector;
-    this.cycles += 4;
+    this.pc = this.interruptVectorBase + interrupt.vector;
+    this.cycles += wasSleeping ? 8 : 4;
+    if (wasSleeping) {
+      for (const listener of [...this.wakeListeners]) listener();
+    }
   }
 
   // --- Debug accessors (Phase 11) ---
@@ -810,6 +872,7 @@ export class CPU {
       data: new Uint8Array(this.data),
       flash: new Uint16Array(this.flash),
       pendingInterrupts: this.pendingInterrupts.map((p) => p.vector),
+      interruptVectorBase: this.interruptVectorBase,
     };
   }
 
@@ -820,6 +883,7 @@ export class CPU {
    */
   restore(snap: CpuSnapshot, acknowledgeForVector?: InterruptAcknowledgeResolver): void {
     this.pc = snap.pc;
+    this.interruptVectorBase = snap.interruptVectorBase ?? 0;
     this._cycles = snap.cycles;
     this.sleeping = snap.sleeping;
     this.data.set(snap.data);

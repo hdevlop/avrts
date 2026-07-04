@@ -668,6 +668,14 @@ export class InstructionSet {
     cpu.cycles += 3;
   }
 
+  @Op("SPM", 0xffff, 0x95e8)
+  spm(cpu: CPU): void {
+    const pc = cpu.pc;
+    cpu.executeSpmInstruction(pc);
+    cpu.pc += 1;
+    cpu.cycles += 4;
+  }
+
   // === multiply (R1:R0 = product) ===
 
   @Op("MUL", 0xfc00, 0x9c00)
@@ -873,8 +881,7 @@ export class InstructionSet {
 
   /** Read one byte of flash at a byte address (Harvard program space). */
   private lpmByte(cpu: CPU, byteAddr: number): number {
-    const word = cpu.flash[byteAddr >> 1]!;
-    return byteAddr & 1 ? (word >> 8) & 0xff : word & 0xff;
+    return cpu.readProgramByte(byteAddr);
   }
 
 }

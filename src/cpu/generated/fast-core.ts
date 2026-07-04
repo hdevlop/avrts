@@ -99,5 +99,6 @@ export const GENERATED_FAST_CORE_ARM_NAMES = [
   "fmulsu",
   "sleep",
   "wdr",
+  "spm",
   "break",
 ] as const;

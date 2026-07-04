@@ -135,8 +135,13 @@ describe("USART0", () => {
 
     avr.serial.write("A");
     expect(avr.cpu.readData(UDR0)).toBe(0);
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES * 2);
+    expect(avr.cpu.readData(UCSR0A) & (1 << RXC0)).toBe(0);
 
     avr.cpu.writeData(UCSR0B, 1 << RXEN0);
+    // Enabling the receiver starts shifting: one frame time to RXC0.
+    expect(avr.cpu.readData(UCSR0A) & (1 << RXC0)).toBe(0);
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
     expect(avr.cpu.readData(UCSR0A) & (1 << RXC0)).toBe(1 << RXC0);
     expect(avr.cpu.readData(UDR0)).toBe(0x41);
   });
@@ -147,12 +152,12 @@ describe("USART0", () => {
 
     cpu.flash[0] = 0x9478; // sei
     cpu.flash[1] = 0xcfff; // rjmp -1
-    cpu.flash[USART_RX_VECTOR] = 0x9518; // reti
+    cpu.flash[USART_RX_VECTOR] = 0xcfff; // park inside the ISR
 
     cpu.writeData(UCSR0B, (1 << RXEN0) | (1 << RXCIE0));
     avr.serial.write("R");
 
-    avr.step();
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES + 8);
     expect(cpu.pc).toBe(USART_RX_VECTOR);
     expect(cpu.readData(UCSR0A) & (1 << RXC0)).toBe(1 << RXC0);
     expect(cpu.readData(UDR0)).toBe(0x52);

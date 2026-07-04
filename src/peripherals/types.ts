@@ -36,6 +36,11 @@ export interface AnalogChannelHandle {
   setVoltage(volts: number, referenceVolts?: number): void;
 }
 
+export interface AnalogComparatorHandle {
+  setInput(input: "ain0" | "ain1", volts: number): void;
+  readOutput(): boolean;
+}
+
 export type PwmChannel = "A" | "B";
 
 export interface PwmSignal {
@@ -54,7 +59,19 @@ export interface PwmSource {
 }
 
 /** Returns the byte clocked in on MISO in response to each MOSI byte sent. */
-export type SpiTransferResponder = (mosiByte: number) => number;
+export interface SpiTransferMeta {
+  bitOrder: "msb-first" | "lsb-first";
+  mode: "master" | "slave";
+}
+
+export type SpiTransferResponder = (mosiByte: number, meta: SpiTransferMeta) => number;
+export type SpiByteListener = (byte: number, meta: SpiTransferMeta) => void;
+
+/** Host-side SPI master for driving firmware configured as an SPI slave. */
+export interface SpiMasterHandle {
+  /** Clock one byte into the simulated slave and return the byte it had loaded in SPDR. */
+  transfer(byte: number): number;
+}
 
 /**
  * A virtual I²C slave the master can talk to. All callbacks are optional; a
@@ -69,4 +86,20 @@ export interface TwiSlave {
   read?(): number;
   /** Master issued STOP. */
   stop?(): void;
+}
+
+/** Host-side I2C master for driving firmware configured as a TWI slave. */
+export interface TwiMasterHandle {
+  /** Address the simulated AVR as a slave; returns false when it does not ACK. */
+  start(address: number, read?: boolean): boolean;
+  /** Send a repeated START condition to the currently addressed simulated slave. */
+  restart(): void;
+  /** Clock one byte from the host master into the simulated slave receiver. */
+  write(byte: number): void;
+  /** Clock one byte out of the simulated slave transmitter. */
+  read(ack?: boolean): number;
+  /** Send STOP to the addressed simulated slave. */
+  stop(): void;
+  /** Force the firmware master to lose arbitration; returns true when it is then addressed as a slave. */
+  injectArbitrationLost(address?: number, read?: boolean): boolean;
 }

@@ -1,15 +1,23 @@
 import {
   ADC_VECTOR,
+  ACI,
+  ACSR,
   ADCSRA,
   ADIF,
+  ANALOG_COMP_VECTOR,
+  BORF,
   CPU,
+  CLKPR,
   DEFAULT_CLOCK_HZ,
   Decoder,
   EIFR,
+  EXTRF,
+  FLASH_WORDS,
   INTF0,
   INTF1,
   INT0_VECTOR,
   INT1_VECTOR,
+  MCUSR,
   OCF0A,
   OCF0B,
   OCF1A,
@@ -20,9 +28,17 @@ import {
   PCIF1,
   PCIF2,
   PCIFR,
+  PORF,
   PCINT0_VECTOR,
   PCINT1_VECTOR,
   PCINT2_VECTOR,
+  PRADC,
+  PRSPI,
+  PRTIM0,
+  PRTIM1,
+  PRTIM2,
+  PRTWI,
+  PRUSART0,
   SPIF,
   SPI_STC_VECTOR,
   SPSR,
@@ -44,33 +60,45 @@ import {
   TXC0,
   UCSR0A,
   USART_TX_VECTOR,
+  WDRF,
 } from "./cpu";
 import { parseHex } from "./loader";
 import {
   Adc,
+  AnalogComparator,
   attachPeripheral,
+  ChipControl,
+  ClockControl,
   Eeprom,
   ExternalInterrupts,
   Gpio,
   PIN_MAP,
   pinInfo,
   PinChangeInterrupt,
+  PowerReduction,
+  SelfProgramming,
+  SleepControl,
   Spi,
   Timer0,
   Timer1,
   Timer2,
+  TimerSync,
   Twi,
   Usart0,
   Watchdog,
 } from "./peripherals";
 import type {
   AnalogChannelHandle,
+  AnalogComparatorHandle,
   PinChangeEvent,
   PortName,
   PwmChannel,
   PwmSignal,
   PwmSource,
+  SpiByteListener,
+  SpiMasterHandle,
   SpiTransferResponder,
+  TwiMasterHandle,
   TwiSlave,
 } from "./peripherals";
 import type { AVRSnapshot } from "./snapshot";
@@ -83,6 +111,20 @@ import type { AVRSnapshot } from "./snapshot";
  * core `AVRRuntime` path.)
  */
 const SERIAL_CHUNK_COMPACT_THRESHOLD = 1024;
+const FUSE_BYTE_DEFAULT = 0xff;
+const LOW_FUSE_CKDIV8 = 7;
+const LOW_FUSE_SUT0 = 4;
+const LOW_FUSE_SUT1 = 5;
+const HIGH_FUSE_BOOTRST = 0;
+const HIGH_FUSE_BOOTSZ0 = 1;
+const HIGH_FUSE_BOOTSZ1 = 2;
+const HIGH_FUSE_EESAVE = 3;
+const HIGH_FUSE_WDTON = 4;
+const FUSE_CONFIG_LOW = 1 << 0;
+const FUSE_CONFIG_HIGH = 1 << 1;
+const FUSE_CONFIG_EXTENDED = 1 << 2;
+const FUSE_CONFIG_LOCK_BITS = 1 << 3;
+const BOOT_SECTION_WORDS = [2048, 1024, 512, 256] as const;
 
 /**
  * Public consumer facade. This is the API surface described in
@@ -94,6 +136,20 @@ const SERIAL_CHUNK_COMPACT_THRESHOLD = 1024;
 
 /** Chip presets. Starts with one; future chips extend this union. */
 export type AVRChip = "atmega328p";
+
+export interface AVRFuseBytes {
+  low: number;
+  high: number;
+  extended: number;
+  lockBits: number;
+}
+
+export interface AVRFuseConfig {
+  low?: number;
+  high?: number;
+  extended?: number;
+  lockBits?: number;
+}
      
 /**
  * Timing granularity used by the simulator. `"fast"` (default) notifies
@@ -108,6 +164,7 @@ export interface AVROptions {
   chip?: AVRChip;
   clockHz?: number;
   timing?: AVRTiming;
+  fuses?: AVRFuseConfig;
   eventCoalescing?: AVREventCoalescingOptions;
 }
 
@@ -160,6 +217,11 @@ export interface AVREvent {
 
 export type AVREventHandler = (event: AVREvent) => void;
 
+interface RuntimeResetOptions {
+  clearProgram?: boolean;
+  preserveCycles?: boolean;
+}
+
 export interface PinHandle {
   read(): boolean;
   setInput(high: boolean): void;
@@ -208,12 +270,14 @@ export interface EepromHandle {
 }
 
 export interface SpiHandle {
-  onByte(handler: (byte: number) => void): () => void;
+  onByte(handler: SpiByteListener): () => void;
   respondWith(responder: SpiTransferResponder): void;
+  master(): SpiMasterHandle;
 }
 
 export interface TwiHandle {
   connect(address: number, slave: TwiSlave): void;
+  master(): TwiMasterHandle;
 }
 
 /** Watchpoint payload — fires on every firmware write to the watched address. */
@@ -239,6 +303,7 @@ export interface AVR {
   readonly eeprom: EepromHandle;
   readonly spi: SpiHandle;
   readonly twi: TwiHandle;
+  readonly comparator: AnalogComparatorHandle;
 
   start(): this;
   pause(): this;
@@ -250,6 +315,8 @@ export interface AVR {
   use(options: AVROptions): this;
   useChip(chip: AVRChip): this;
   useClock(clockHz: number): this;
+  useFuses(fuses: AVRFuseConfig): this;
+  fuses(): AVRFuseBytes;
   useHex(hex: string): this;
   useTiming(timing: AVRTiming): this;
   setEventCoalescing(options: AVREventCoalescingOptions): this;
@@ -257,6 +324,7 @@ export interface AVR {
   loadHex(hex: string): this;
   loadFile(fileLike: { text(): Promise<string> }): Promise<this>;
   clearProgram(): this;
+  chipErase(): this;
   reload(): this;
 
   /** Execute one instruction. */
@@ -284,6 +352,8 @@ export interface AVR {
   watchData(address: number, handler: DataWatchHandler): () => void;
 
   reset(options?: { clearProgram?: boolean }): this;
+  resetExternal(): this;
+  resetBrownOut(): this;
   status(): AVRStatus;
 
   /** Capture plain-data snapshot of CPU + every peripheral. */
@@ -302,9 +372,13 @@ class AVRRuntime implements AVR {
   readonly eeprom: EepromHandle;
   readonly spi: SpiHandle;
   readonly twi: TwiHandle;
+  readonly comparator: AnalogComparatorHandle;
 
   private chip: AVRChip = "atmega328p";
+  private baseClockHz = DEFAULT_CLOCK_HZ;
   private clockHz = DEFAULT_CLOCK_HZ;
+  private fuseBytes: AVRFuseBytes = defaultFuses();
+  private configuredFuseMask = 0;
   private speed: AVRSpeed = 1;
   private running = false;
   private paused = false;
@@ -318,9 +392,16 @@ class AVRRuntime implements AVR {
   private readonly timer2: Timer2;
   private readonly usart0: Usart0;
   private readonly adc: Adc;
+  private readonly analogComparator: AnalogComparator;
   private readonly eepromDevice: Eeprom;
   private readonly spiDevice: Spi;
+  private readonly clockControl: ClockControl;
+  private readonly chipControl: ChipControl;
+  private readonly selfProgramming: SelfProgramming;
   private readonly twiDevice: Twi;
+  private readonly powerReduction: PowerReduction;
+  private readonly sleepControl: SleepControl;
+  private readonly timerSync: TimerSync;
   private readonly watchdog: Watchdog;
   private readonly pcint: PinChangeInterrupt;
   private readonly exti: ExternalInterrupts;
@@ -351,21 +432,56 @@ class AVRRuntime implements AVR {
     this.timer2 = new Timer2(this.cpu, this.gpioPeripheral);
     this.usart0 = new Usart0(this.cpu);
     this.adc = new Adc(this.cpu);
+    this.analogComparator = new AnalogComparator(this.cpu, this.adc);
     this.eepromDevice = new Eeprom(this.cpu);
-    this.spiDevice = new Spi(this.cpu);
+    this.spiDevice = new Spi(this.cpu, this.gpioPeripheral);
+    this.clockControl = new ClockControl(this.cpu, (divider) => this.applyClockDivider(divider));
+    this.chipControl = new ChipControl(this.cpu, () => this.bootStartWord());
+    this.selfProgramming = new SelfProgramming(
+      this.cpu,
+      () => this.fuseBytes,
+      (lockBits) => {
+        this.fuseBytes = { ...this.fuseBytes, lockBits: lockBits & 0xff };
+      },
+      () => this.bootStartWord(),
+    );
     this.twiDevice = new Twi(this.cpu);
-    this.watchdog = new Watchdog(this.cpu, this.clockHz);
+    this.powerReduction = new PowerReduction(this.cpu, [
+      { bit: PRADC, target: this.adc },
+      { bit: PRUSART0, target: this.usart0 },
+      { bit: PRSPI, target: this.spiDevice },
+      { bit: PRTIM1, target: this.timer1 },
+      { bit: PRTIM0, target: this.timer0 },
+      { bit: PRTIM2, target: this.timer2 },
+      { bit: PRTWI, target: this.twiDevice },
+    ]);
+    this.sleepControl = new SleepControl(this.cpu, [this.timer0, this.timer1], this.timer2);
+    this.timerSync = new TimerSync(this.cpu, [this.timer0, this.timer1], [this.timer2]);
+    this.watchdog = new Watchdog(this.cpu, this.clockHz, {
+      onSystemReset: () => {
+        this.resetInternal({ preserveCycles: true }, 1 << WDRF);
+      },
+      alwaysOn: () => this.wdtonFuseProgrammed(),
+    });
     this.pcint = new PinChangeInterrupt(this.cpu, this.gpioPeripheral);
     this.exti = new ExternalInterrupts(this.cpu, this.gpioPeripheral);
+    // ACIC: comparator output edges reach the Timer1 input-capture unit.
+    this.analogComparator.onCaptureTrigger((high) => this.timer1.comparatorCaptureEdge(high));
     attachPeripheral(this.cpu, this.gpioPeripheral);
     attachPeripheral(this.cpu, this.timer0);
     attachPeripheral(this.cpu, this.timer1);
     attachPeripheral(this.cpu, this.timer2);
     attachPeripheral(this.cpu, this.usart0);
     attachPeripheral(this.cpu, this.adc);
+    attachPeripheral(this.cpu, this.analogComparator);
     attachPeripheral(this.cpu, this.eepromDevice);
     attachPeripheral(this.cpu, this.spiDevice);
+    attachPeripheral(this.cpu, this.clockControl);
+    attachPeripheral(this.cpu, this.chipControl);
+    attachPeripheral(this.cpu, this.selfProgramming);
     attachPeripheral(this.cpu, this.twiDevice);
+    attachPeripheral(this.cpu, this.powerReduction);
+    attachPeripheral(this.cpu, this.timerSync);
     attachPeripheral(this.cpu, this.watchdog);
     attachPeripheral(this.cpu, this.pcint);
     this.pcint.attach();
@@ -417,12 +533,22 @@ class AVRRuntime implements AVR {
       respondWith: (responder) => {
         this.spiDevice.respondWith(responder);
       },
+      master: () => this.spiDevice.master(),
     };
     this.twi = {
       connect: (address, slave) => {
         this.twiDevice.connect(address, slave);
       },
+      master: () => this.twiDevice.master(),
     };
+    this.comparator = {
+      setInput: (input, volts) => {
+        this.analogComparator.setInput(input, volts);
+      },
+      readOutput: () => this.analogComparator.readOutput(),
+    };
+    this.cpu.data[MCUSR] = 1 << PORF;
+    this.analogComparator.reset();
     for (const [pinText, info] of Object.entries(PIN_MAP)) {
       const pin = Number(pinText);
       this.gpioPeripheral.onPinChange(info.port, info.bit, (high) => {
@@ -577,6 +703,7 @@ class AVRRuntime implements AVR {
     if (options.chip) this.useChip(options.chip);
     if (options.clockHz !== undefined) this.useClock(options.clockHz);
     if (options.timing) this.useTiming(options.timing);
+    if (options.fuses) this.useFuses(options.fuses);
     if (options.eventCoalescing) this.setEventCoalescing(options.eventCoalescing);
     if (options.hex) this.useHex(options.hex);
     return this;
@@ -591,9 +718,27 @@ class AVRRuntime implements AVR {
     if (!Number.isFinite(clockHz) || clockHz <= 0) {
       throw new Error(`useClock(clockHz) expects a positive finite number, got ${clockHz}.`);
     }
-    this.clockHz = clockHz;
-    this.watchdog.setClock(clockHz);
+    this.baseClockHz = clockHz;
+    this.applyClockDivider(this.clockDivider());
     return this;
+  }
+
+  useFuses(fuses: AVRFuseConfig): this {
+    if (fuses.low !== undefined) this.configuredFuseMask |= FUSE_CONFIG_LOW;
+    if (fuses.high !== undefined) this.configuredFuseMask |= FUSE_CONFIG_HIGH;
+    if (fuses.extended !== undefined) this.configuredFuseMask |= FUSE_CONFIG_EXTENDED;
+    if (fuses.lockBits !== undefined) this.configuredFuseMask |= FUSE_CONFIG_LOCK_BITS;
+    this.fuseBytes = {
+      low: fuseByte("low", fuses.low, this.fuseBytes.low),
+      high: fuseByte("high", fuses.high, this.fuseBytes.high),
+      extended: fuseByte("extended", fuses.extended, this.fuseBytes.extended),
+      lockBits: fuseByte("lockBits", fuses.lockBits, this.fuseBytes.lockBits),
+    };
+    return this;
+  }
+
+  fuses(): AVRFuseBytes {
+    return { ...this.fuseBytes };
   }
 
   useTiming(timing: AVRTiming): this {
@@ -634,6 +779,19 @@ class AVRRuntime implements AVR {
   clearProgram(): this {
     this.programSource = null;
     this.cpu.flash.fill(0);
+    this.reset();
+    this.emit("clear");
+    return this;
+  }
+
+  chipErase(): this {
+    this.programSource = null;
+    this.cpu.flash.fill(0xffff);
+    this.cpu.invalidateDecodeCache();
+    this.fuseBytes = { ...this.fuseBytes, lockBits: FUSE_BYTE_DEFAULT };
+    if (!this.fuseProgrammed(this.fuseBytes.high, HIGH_FUSE_EESAVE)) {
+      this.eepromDevice.erase();
+    }
     this.reset();
     this.emit("clear");
     return this;
@@ -760,19 +918,43 @@ class AVRRuntime implements AVR {
   }
 
   reset(options: { clearProgram?: boolean } = {}): this {
+    return this.resetInternal(options, 1 << PORF);
+  }
+
+  resetExternal(): this {
+    return this.resetInternal({}, 1 << EXTRF);
+  }
+
+  resetBrownOut(): this {
+    return this.resetInternal({}, 1 << BORF);
+  }
+
+  private resetInternal(options: RuntimeResetOptions, mcusrFlags: number): this {
+    const preservedCycles = options.preserveCycles ? this.cpu.cycles : 0;
     if (options.clearProgram) {
       this.programSource = null;
       this.cpu.flash.fill(0);
     }
     this.cpu.reset();
+    if (options.preserveCycles) this.cpu.cycles = preservedCycles;
+    this.cpu.pc = this.resetVectorWord();
+    this.cpu.data[MCUSR] = mcusrFlags & 0xff;
     this.timer0.reset();
     this.timer1.reset();
     this.timer2.reset();
     this.usart0.reset();
     this.adc.reset();
+    this.analogComparator.reset();
     this.eepromDevice.reset();
     this.spiDevice.reset();
+    this.clockControl.reset();
+    this.applyFuseClockOnReset();
+    this.applyStartupDelayOnReset();
+    this.chipControl.reset();
+    this.selfProgramming.reset();
     this.twiDevice.reset();
+    this.powerReduction.reset();
+    this.sleepControl.reset();
     this.watchdog.reset();
     this.pcint.reset();
     this.exti.reset();
@@ -799,6 +981,7 @@ class AVRRuntime implements AVR {
       cpu: this.cpu.snapshot(),
       runtime: {
         clockHz: this.clockHz,
+        baseClockHz: this.baseClockHz,
         chip: this.chip,
         speed: this.speed,
         programSource: this.programSource,
@@ -806,6 +989,8 @@ class AVRRuntime implements AVR {
         paused: this.paused,
         serialText: this.getSerialText(),
         timing: this.cpu.timing,
+        fuses: this.fuses(),
+        configuredFuseMask: this.configuredFuseMask,
       },
       gpio: this.gpioPeripheral.snapshot(),
       timer0: this.timer0.snapshot(),
@@ -815,6 +1000,10 @@ class AVRRuntime implements AVR {
       adc: this.adc.snapshot(),
       eeprom: this.eepromDevice.snapshot(),
       spi: this.spiDevice.snapshot(),
+      clock: this.clockControl.snapshot(),
+      chip: this.chipControl.snapshot(),
+      spm: this.selfProgramming.snapshot(),
+      comparator: this.analogComparator.snapshot(),
       twi: this.twiDevice.snapshot(),
       watchdog: this.watchdog.snapshot(),
       pcint: this.pcint.snapshot(),
@@ -827,20 +1016,29 @@ class AVRRuntime implements AVR {
 
     this.cpu.restore(snap.cpu, (vector) => this.acknowledgeForVector(vector));
     this.chip = snap.runtime.chip;
+    this.baseClockHz = snap.runtime.baseClockHz ?? snap.runtime.clockHz;
     this.clockHz = snap.runtime.clockHz;
+    this.fuseBytes = normalizeFuses(snap.runtime.fuses);
+    this.configuredFuseMask = snap.runtime.configuredFuseMask ?? 0;
     this.speed = snap.runtime.speed;
     this.programSource = snap.runtime.programSource;
     this.cpu.timing = snap.runtime.timing;
-    this.watchdog.setClock(this.clockHz);
     this.gpioPeripheral.restore(snap.gpio);
     this.timer0.restore(snap.timer0);
     this.timer1.restore(snap.timer1);
     this.timer2.restore(snap.timer2);
     this.usart0.restore(snap.usart0);
     this.adc.restore(snap.adc);
+    this.analogComparator.restore(snap.comparator);
     this.eepromDevice.restore(snap.eeprom);
     this.spiDevice.restore(snap.spi);
     this.twiDevice.restore(snap.twi);
+    this.clockControl.restore(snap.clock);
+    this.chipControl.restore(snap.chip);
+    this.selfProgramming.restore(snap.spm);
+    this.powerReduction.restore();
+    this.sleepControl.restore();
+    this.timerSync.restore();
     this.watchdog.restore(snap.watchdog);
     this.pcint.restore(snap.pcint);
     this.exti.restore(snap.exti);
@@ -910,6 +1108,10 @@ class AVRRuntime implements AVR {
       case SPI_STC_VECTOR:
         return () => {
           this.cpu.data[SPSR] = this.cpu.readData(SPSR) & ~(1 << SPIF);
+        };
+      case ANALOG_COMP_VECTOR:
+        return () => {
+          this.cpu.data[ACSR] = this.cpu.readData(ACSR) & ~(1 << ACI);
         };
       case USART_TX_VECTOR:
         return () => {
@@ -1063,6 +1265,76 @@ class AVRRuntime implements AVR {
     return this.speed === "max" ? AVRRuntime.maxSpeedMultiplier : this.speed;
   }
 
+  private resetVectorWord(): number {
+    return this.fuseProgrammed(this.fuseBytes.high, HIGH_FUSE_BOOTRST) ? this.bootStartWord() : 0;
+  }
+
+  private bootStartWord(): number {
+    const bootsz =
+      ((this.fuseBytes.high >> HIGH_FUSE_BOOTSZ1) & 1) << 1 |
+      ((this.fuseBytes.high >> HIGH_FUSE_BOOTSZ0) & 1);
+    return FLASH_WORDS - BOOT_SECTION_WORDS[bootsz]!;
+  }
+
+  private applyFuseClockOnReset(): void {
+    const clkps = this.fuseProgrammed(this.fuseBytes.low, LOW_FUSE_CKDIV8) ? 3 : 0;
+    this.cpu.data[CLKPR] = clkps;
+    this.applyClockDivider(1 << clkps);
+  }
+
+  private applyStartupDelayOnReset(): void {
+    const delay = this.startupDelayCycles();
+    if (delay > 0) this.cpu.cycles = this.cpu.cycles + delay;
+  }
+
+  private startupDelayCycles(): number {
+    if ((this.configuredFuseMask & FUSE_CONFIG_LOW) === 0) return 0;
+
+    const low = this.fuseBytes.low;
+    const cksel = low & 0x0f;
+    const sut = ((low >> LOW_FUSE_SUT1) & 1) << 1 | ((low >> LOW_FUSE_SUT0) & 1);
+    if (cksel === 0x02) {
+      switch (sut) {
+        case 0:
+          return 25; // 6 CK oscillator startup + 19 CK reset delay.
+        case 1:
+          return 25 + this.msToCycles(4);
+        case 2:
+          return 25 + this.msToCycles(65);
+        default:
+          return 0; // Reserved SUT setting for calibrated internal RC.
+      }
+    }
+
+    const oscillatorCycles = sut === 0 ? 6 : sut === 1 ? 258 : 16_384;
+    const resetCycles = 14;
+    const extraDelayMs = sut === 2 ? 4 : sut === 3 ? 65 : 0;
+    return oscillatorCycles + resetCycles + this.msToCycles(extraDelayMs);
+  }
+
+  private msToCycles(ms: number): number {
+    return Math.max(0, Math.round((ms / 1000) * this.clockHz));
+  }
+
+  private wdtonFuseProgrammed(): boolean {
+    return this.fuseProgrammed(this.fuseBytes.high, HIGH_FUSE_WDTON);
+  }
+
+  private fuseProgrammed(byte: number, bit: number): boolean {
+    return (byte & (1 << bit)) === 0;
+  }
+
+  private clockDivider(): number {
+    const clkps = this.cpu.data[CLKPR]! & 0x0f;
+    return 1 << Math.min(clkps, 8);
+  }
+
+  private applyClockDivider(divider: number): void {
+    const normalized = Number.isFinite(divider) && divider > 0 ? divider : 1;
+    this.clockHz = this.baseClockHz / normalized;
+    this.watchdog.setClock(this.clockHz);
+  }
+
   private nowMs(): number {
     return (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
   }
@@ -1091,4 +1363,31 @@ export function AVR(input?: string | AVROptions): AVR {
     runtime.use(input);
   }
   return runtime;
+}
+
+function defaultFuses(): AVRFuseBytes {
+  return {
+    low: FUSE_BYTE_DEFAULT,
+    high: FUSE_BYTE_DEFAULT,
+    extended: FUSE_BYTE_DEFAULT,
+    lockBits: FUSE_BYTE_DEFAULT,
+  };
+}
+
+function normalizeFuses(fuses: AVRFuseConfig | undefined): AVRFuseBytes {
+  const defaults = defaultFuses();
+  return {
+    low: fuseByte("low", fuses?.low, defaults.low),
+    high: fuseByte("high", fuses?.high, defaults.high),
+    extended: fuseByte("extended", fuses?.extended, defaults.extended),
+    lockBits: fuseByte("lockBits", fuses?.lockBits, defaults.lockBits),
+  };
+}
+
+function fuseByte(name: string, value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || value < 0 || value > 0xff) {
+    throw new Error(`useFuses(${name}) expects an integer byte, got ${value}.`);
+  }
+  return value & 0xff;
 }

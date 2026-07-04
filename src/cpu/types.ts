@@ -79,6 +79,12 @@ export type IoReadHook = (cpu: CPU, addr: number) => number | undefined;
 /** Runs after each instruction with the number of cycles that instruction consumed. */
 export type CycleListener = (cycles: number, cpu: CPU) => void;
 
+/** Optional special program-space reader used by LPM for fuse/signature rows and lock checks. */
+export type ProgramMemoryReadHook = (byteAddr: number, readerPc: number) => number | undefined;
+
+/** Optional handler called when the SPM instruction executes. */
+export type SpmInstructionHook = (pc: number) => void;
+
 export interface PendingInterrupt {
   vector: number;
   acknowledge?: () => void;

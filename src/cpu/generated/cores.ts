@@ -764,24 +764,21 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if (opcode === 0x95c8) {
         const ld = 0;
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
         cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9004) {
         const ld = regD5(opcode);
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
         cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9005) {
         const ld = regD5(opcode);
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         const next = (z + 1) & 0xffff;
         data[30] = next & 0xff;
         data[31] = (next >> 8) & 0xff;
@@ -960,6 +957,11 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.kickWatchdog();
         cpu.pc += 1;
         cpu.cycles += 1;
+      }
+      else if (opcode === 0x95e8) {
+        cpu.executeSpmInstruction(pc);
+        cpu.pc += 1;
+        cpu.cycles += 4;
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;
@@ -1747,24 +1749,21 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       else if (opcode === 0x95c8) {
         const ld = 0;
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
         cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9004) {
         const ld = regD5(opcode);
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
         cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9005) {
         const ld = regD5(opcode);
         const z = data[30]! | (data[31]! << 8);
-        const word = flash[z >> 1]!;
-        data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;
+        data[ld] = cpu.readProgramByte(z);
         const next = (z + 1) & 0xffff;
         data[30] = next & 0xff;
         data[31] = (next >> 8) & 0xff;
@@ -1944,6 +1943,11 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.kickWatchdog();
         cpu.pc += 1;
         cpu.cycles += 1;
+      }
+      else if (opcode === 0x95e8) {
+        cpu.executeSpmInstruction(pc);
+        cpu.pc += 1;
+        cpu.cycles += 4;
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;

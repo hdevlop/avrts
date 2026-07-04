@@ -5,6 +5,9 @@
 #define RESULT_START 0xa7
 #define RESULT_END 0x5c
 #define TWI_SLAVE_ADDR 0x50
+#define UART_RX_READY_ONE 0x71
+#define UART_RX_READY_OVERFLOW 0x72
+#define UART_RX_MARKER_OFFSET 39
 
 static void store16(uint8_t offset, uint16_t value) {
   RESULT[offset] = (uint8_t)value;
@@ -36,6 +39,40 @@ static uint16_t measure_usart_txc(void) {
   while ((UCSR0A & _BV(TXC0)) == 0) {
   }
   return timer_stop();
+}
+
+static uint16_t measure_usart_rxc(uint8_t* received, uint8_t* status) {
+  UBRR0H = 0;
+  UBRR0L = 0;
+  UCSR0A = 0;
+  UCSR0B = _BV(RXEN0);
+  UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
+
+  timer_start();
+  RESULT[UART_RX_MARKER_OFFSET] = UART_RX_READY_ONE;
+  while ((UCSR0A & _BV(RXC0)) == 0) {
+  }
+  const uint16_t elapsed = timer_stop();
+  *status = UCSR0A;
+  *received = UDR0;
+  return elapsed;
+}
+
+static uint16_t measure_usart_dor(uint8_t* status, uint8_t* first, uint8_t* second, uint8_t* after_reads) {
+  UCSR0B = 0;
+  UCSR0A = 0;
+  UCSR0B = _BV(RXEN0);
+
+  timer_start();
+  RESULT[UART_RX_MARKER_OFFSET] = UART_RX_READY_OVERFLOW;
+  while ((UCSR0A & _BV(DOR0)) == 0 && TCNT1 < 1000) {
+  }
+  const uint16_t elapsed = timer_stop();
+  *status = UCSR0A;
+  *first = UDR0;
+  *second = UDR0;
+  *after_reads = UCSR0A;
+  return elapsed;
 }
 
 static uint16_t measure_spi_spif(uint8_t* received, uint8_t* status) {
@@ -76,7 +113,7 @@ static uint16_t measure_twi_stop(uint8_t* control) {
 }
 
 int main(void) {
-  for (uint8_t i = 0; i < 32; i++) RESULT[i] = 0;
+  for (uint8_t i = 0; i < 40; i++) RESULT[i] = 0;
   RESULT[0] = RESULT_START;
 
   store16(1, measure_usart_txc());
@@ -117,7 +154,23 @@ int main(void) {
   uint8_t twcr_after_stop = 0;
   store16(26, measure_twi_stop(&twcr_after_stop));
   RESULT[28] = twcr_after_stop;
-  RESULT[29] = RESULT_END;
+
+  uint8_t usart_rx_byte = 0;
+  uint8_t usart_rx_status = 0;
+  store16(29, measure_usart_rxc(&usart_rx_byte, &usart_rx_status));
+  RESULT[31] = usart_rx_byte;
+  RESULT[32] = usart_rx_status;
+
+  uint8_t usart_dor_status = 0;
+  uint8_t usart_dor_first = 0;
+  uint8_t usart_dor_second = 0;
+  uint8_t usart_dor_after_reads = 0;
+  store16(33, measure_usart_dor(&usart_dor_status, &usart_dor_first, &usart_dor_second, &usart_dor_after_reads));
+  RESULT[35] = usart_dor_status;
+  RESULT[36] = usart_dor_first;
+  RESULT[37] = usart_dor_second;
+  RESULT[38] = usart_dor_after_reads;
+  RESULT[39] = RESULT_END;
 
   for (;;) {
   }

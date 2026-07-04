@@ -1,5 +1,5 @@
 import { OnWrite } from "../core";
-import { WDE, WDIE, WDP3, WDT_VECTOR, WDTCSR } from "../cpu";
+import { MCUSR, WDE, WDIE, WDP3, WDRF, WDT_VECTOR, WDTCSR } from "../cpu";
 import type { CPU } from "../cpu";
 import type { WatchdogSnapshot } from "../snapshot";
 
@@ -16,13 +16,23 @@ const PERIOD_MS = [16, 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000] as const;
 export class Watchdog {
   private scheduled = false;
   private fireAtCycle = 0;
+  private readonly onSystemReset: () => void;
+  private readonly alwaysOn: () => boolean;
   // Stable callback identity so addClockEvent/clearClockEvent pair up.
   private readonly timeoutEvent = (): void => this.onTimeout();
 
   constructor(
     private readonly cpu: CPU,
     private clockHz: number,
+    options: { onSystemReset?: () => void; alwaysOn?: () => boolean } = {},
   ) {
+    this.onSystemReset =
+      options.onSystemReset ??
+      (() => {
+        this.cpu.reset();
+        this.cpu.data[MCUSR] = 1 << WDRF;
+      });
+    this.alwaysOn = options.alwaysOn ?? (() => false);
     this.cpu.onWdr(() => this.kick());
   }
 
@@ -32,6 +42,7 @@ export class Watchdog {
   }
 
   reset(): void {
+    this.forceWdeIfNeeded();
     this.reschedule();
   }
 
@@ -42,6 +53,7 @@ export class Watchdog {
 
   @OnWrite(WDTCSR)
   onWriteWdtcsr(): void {
+    this.forceWdeIfNeeded();
     this.reschedule(); // reconfiguring restarts the timeout window
   }
 
@@ -58,24 +70,36 @@ export class Watchdog {
 
   private onTimeout(): void {
     this.scheduled = false;
-    this.fire();
-    this.reschedule(); // re-arm the next window if still enabled
+    const reset = this.fire();
+    if (!reset) this.reschedule(); // re-arm the next window if still enabled
   }
 
-  private fire(): void {
+  private fire(): boolean {
     const wdtcsr = this.cpu.data[WDTCSR]!;
+    if (this.alwaysOn()) {
+      this.onSystemReset();
+      return true;
+    }
     if ((wdtcsr & (1 << WDIE)) !== 0) {
       this.cpu.requestInterrupt(WDT_VECTOR);
       // Interrupt-and-reset mode: hardware clears WDIE after the interrupt fires.
       this.cpu.data[WDTCSR] = wdtcsr & ~(1 << WDIE);
     } else if ((wdtcsr & (1 << WDE)) !== 0) {
-      this.cpu.reset();
+      this.onSystemReset();
+      return true;
     }
+    return false;
   }
 
   private enabled(): boolean {
     const wdtcsr = this.cpu.data[WDTCSR]!;
     return (wdtcsr & (1 << WDE)) !== 0 || (wdtcsr & (1 << WDIE)) !== 0;
+  }
+
+  private forceWdeIfNeeded(): void {
+    if (this.alwaysOn() || (this.cpu.data[MCUSR]! & (1 << WDRF)) !== 0) {
+      this.cpu.data[WDTCSR] = this.cpu.data[WDTCSR]! | (1 << WDE);
+    }
   }
 
   private timeoutCycles(): number {

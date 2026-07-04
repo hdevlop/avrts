@@ -91,6 +91,10 @@ export const TOIE1 = 0;
 export const OCIE1A = 1;
 export const OCIE1B = 2;
 export const ICIE1 = 5;
+export const ICES1 = 6; // in TCCR1B
+export const ICNC1 = 7; // in TCCR1B
+export const FOC1B = 6; // in TCCR1C
+export const FOC1A = 7; // in TCCR1C
 export const WGM10 = 0;
 export const WGM11 = 1;
 export const WGM12 = 3; // in TCCR1B
@@ -119,6 +123,19 @@ export const OCF2B = 2;
 export const TOIE2 = 0;
 export const OCIE2A = 1;
 export const OCIE2B = 2;
+// ASSR bits (Timer2 asynchronous mode)
+export const EXCLK = 6;
+export const AS2 = 5;
+export const TCN2UB = 4;
+export const OCR2AUB = 3;
+export const OCR2BUB = 2;
+export const TCR2AUB = 1;
+export const TCR2BUB = 0;
+// GTCCR (shared timer prescaler control)
+export const GTCCR = 0x43;
+export const TSM = 7;
+export const PSRASY = 1;
+export const PSRSYNC = 0;
 export const WGM20 = 0;
 export const WGM21 = 1;
 export const WGM22 = 3; // in TCCR2B
@@ -142,10 +159,13 @@ export const TIMER1_OVF_VECTOR = 0x001a;
 export const TIMER0_COMPA_VECTOR = 0x001c;
 export const TIMER0_COMPB_VECTOR = 0x001e;
 export const TIMER0_OVF_VECTOR = 0x0020;
+export const SPI_STC_VECTOR = 0x0022;
 export const USART_RX_VECTOR = 0x0024;
 export const USART_UDRE_VECTOR = 0x0026;
 export const USART_TX_VECTOR = 0x0028;
 export const ADC_VECTOR = 0x002a;
+export const EE_READY_VECTOR = 0x002c;
+export const ANALOG_COMP_VECTOR = 0x002e;
 
 // --- USART0 (data-space addresses) ---
 export const UCSR0A = 0xc0;
@@ -187,10 +207,12 @@ export const ADCSRA = 0x7a;
 export const ADCSRB = 0x7b;
 export const ADMUX = 0x7c;
 export const DIDR0 = 0x7e;
+export const DIDR1 = 0x7f;
 
 export const ADTS0 = 0;
 export const ADTS1 = 1;
 export const ADTS2 = 2;
+export const ACME = 6;
 export const ADPS0 = 0;
 export const ADPS1 = 1;
 export const ADPS2 = 2;
@@ -210,8 +232,6 @@ export const PCINT0_VECTOR = 0x0006;
 export const PCINT1_VECTOR = 0x0008;
 export const PCINT2_VECTOR = 0x000a;
 export const WDT_VECTOR = 0x000c;
-export const SPI_STC_VECTOR = 0x0022;
-export const EE_READY_VECTOR = 0x002c;
 export const TWI_VECTOR = 0x0030;
 
 // --- External interrupts (data-space addresses + flag/enable/sense bits) ---
@@ -274,6 +294,7 @@ export const TWSR = 0xb9;
 export const TWAR = 0xba;
 export const TWDR = 0xbb;
 export const TWCR = 0xbc;
+export const TWAMR = 0xbd;
 export const TWIE = 0;
 export const TWEN = 2;
 export const TWWC = 3;
@@ -283,11 +304,49 @@ export const TWEA = 6;
 export const TWINT = 7;
 export const TWPS0 = 0;
 export const TWPS1 = 1;
+export const TWGCE = 0;
 
 // --- Sleep & watchdog (data-space addresses) ---
 export const SMCR = 0x53;
 export const SE = 0;
+export const SM0 = 1;
+export const SM1 = 2;
+export const SM2 = 3;
+export const MCUCR = 0x55;
+export const SPMCSR = 0x57;
+export const IVCE = 0;
+export const IVSEL = 1;
+export const PUD = 4;
+export const BODSE = 5;
+export const BODS = 6;
+export const SELFPRGEN = 0;
+export const PGERS = 1;
+export const PGWRT = 2;
+export const BLBSET = 3;
+export const RWWSRE = 4;
+export const SIGRD = 5;
+export const RWWSB = 6;
+export const SPMIE = 7;
 export const MCUSR = 0x54;
+export const PORF = 0;
+export const EXTRF = 1;
+export const BORF = 2;
+export const WDRF = 3;
+export const CLKPR = 0x61;
+export const CLKPS0 = 0;
+export const CLKPS1 = 1;
+export const CLKPS2 = 2;
+export const CLKPS3 = 3;
+export const CLKPCE = 7;
+export const PRR = 0x64;
+export const PRADC = 0;
+export const PRUSART0 = 1;
+export const PRSPI = 2;
+export const PRTIM1 = 3;
+export const PRTIM0 = 5;
+export const PRTIM2 = 6;
+export const PRTWI = 7;
+export const OSCCAL = 0x66;
 export const WDTCSR = 0x60;
 export const WDP0 = 0;
 export const WDP1 = 1;
@@ -296,6 +355,18 @@ export const WDE = 3;
 export const WDCE = 4;
 export const WDP3 = 5;
 export const WDIE = 6;
+export const SPM_READY_VECTOR = 0x0032;
+
+// --- Analog comparator (data-space addresses) ---
+export const ACSR = 0x50;
+export const ACIS0 = 0;
+export const ACIS1 = 1;
+export const ACIC = 2;
+export const ACIE = 3;
+export const ACI = 4;
+export const ACO = 5;
+export const ACBG = 6;
+export const ACD = 7;
 
 // --- Timing ---
 /** Default clock for Arduino Uno/Nano. */

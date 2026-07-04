@@ -324,8 +324,7 @@ function lpmArm(name: string, guard: string, dest: string, inc: boolean): Genera
   const body = [
     `const ld = ${dest};`,
     "const z = data[30]! | (data[31]! << 8);",
-    "const word = flash[z >> 1]!;",
-    "data[ld] = z & 1 ? (word >> 8) & 0xff : word & 0xff;",
+    "data[ld] = this.readProgramByte(z);",
   ];
   if (inc) {
     body.push(
@@ -935,6 +934,11 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
     name: "wdr",
     guard: "opcode === 0x95a8",
     body: ["this.kickWatchdog();", "this.pc += 1;", "this.cycles += 1;"],
+  },
+  {
+    name: "spm",
+    guard: "opcode === 0x95e8",
+    body: ["this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;"],
   },
   {
     name: "break",

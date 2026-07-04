@@ -38,8 +38,15 @@ reveals something the others can't), and add external references so "fast" and
   makes that threshold engine-dependent, and normalizes the PORTD PWM latch byte
   because simavr keeps timer-driven OC0B state separate from the PORTD latch
   while avrts/avr8js expose that bit in the latch. `bun run oracle:simavr:timing`
-  covers USART/SPI/TWI polling timing and calibrates the AVR-visible USART TXC0
-  and TWI START/STOP delays.
+  covers USART/SPI/TWI polling timing and calibrates the AVR-visible USART TXC0,
+  USART RXC0/data arrival, SPI master `SPIF`, SPI slave receive/SPIF, Timer2
+  async 32.768 kHz drift, and TWI START/STOP delays. USART DOR0 status is
+  normalized in that native oracle because simavr's UART input IRQ has a
+  64-byte host FIFO rather than the ATmega328P two-byte receive-buffer overrun
+  path; avrts keeps DOR0 covered in focused Bun tests. SPI slave host-output
+  bytes are normalized because simavr's SPI input IRQ echoes the injected byte
+  instead of the preloaded slave `SPDR`; the oracle still compares the
+  firmware-visible receive/SPIF result block.
 - Only external speed comparison today: **avr8js**. Native simavr is wired as a
   local accuracy oracle, not a speed peer.
 - Latest measured results are in [Recorded fixture evidence](#recorded-fixture-evidence)
@@ -150,9 +157,12 @@ The valuable external references are native simulators used as *ceilings* and
   helper, with the documented `peripheral-mix` timer-threshold and PORTD
   PWM-latch normalizations.
 - [x] **simavr native peripheral-timing oracle.** `bun run oracle:simavr:timing`
-  runs a small avr-libc fixture that polls USART `TXC0`, SPI `SPIF`, and TWI
-  `TWINT`/`TWSTO`, then compares calibrated timing bytes, serial output, and the
-  TWI transcript against avrts.
+  runs avr-libc fixtures that poll USART `TXC0`/`RXC0`, SPI master `SPIF`,
+  SPI slave receive/SPIF, Timer2 async 32.768 kHz drift, and TWI
+  `TWINT`/`TWSTO`, then compare calibrated timing bytes, serial output, RX data,
+  SPI slave result blocks, Timer2 snapshots, and TWI transcripts against avrts.
+  DOR0 and SPI slave host-output bytes are reported but normalized for the
+  native simavr limitations described above.
 - [ ] **simulavr / qemu-system-avr** — only if a third reference is ever needed to
   settle an accuracy dispute. High setup, low marginal value. Not recommended now.
 

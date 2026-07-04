@@ -25,6 +25,10 @@ import {
   OCF1B,
   REFS0,
   REFS1,
+  SM0,
+  SM1,
+  SM2,
+  SMCR,
   TIFR0,
   TIFR1,
   TOV0,
@@ -45,6 +49,9 @@ const ADC_PRESCALER: Readonly<Record<number, number>> = {
 };
 
 const CONVERSION_ADC_CLOCKS = 13;
+const ADC_CHANNEL_COUNT = 16;
+const TEMPERATURE_CHANNEL = 8;
+const BANDGAP_CHANNEL = 14;
 const DEFAULT_EXTERNAL_REFERENCE_VOLTS = 5;
 const DEFAULT_AVCC_REFERENCE_VOLTS = 5;
 const DEFAULT_INTERNAL_REFERENCE_VOLTS = 1.1;
@@ -65,14 +72,15 @@ const enum AdcTriggerSource {
  * 10-bit value per channel; firmware starts a conversion through ADCSRA.ADSC.
  */
 export class Adc {
-  private readonly channels = new Uint16Array(8);
-  private readonly channelVoltages = new Float64Array(8);
-  private readonly voltageEnabled = new Uint8Array(8);
+  private readonly channels = new Uint16Array(ADC_CHANNEL_COUNT);
+  private readonly channelVoltages = new Float64Array(ADC_CHANNEL_COUNT);
+  private readonly voltageEnabled = new Uint8Array(ADC_CHANNEL_COUNT);
   private remainingCycles = 0;
   private converting = false;
   private triggerSource = -1;
   private triggerWasHigh = false;
   private autoTriggerArmed = false;
+  private powerReduced = false;
   private readonly onConversionEvent = (): void => {
     if (!this.converting) {
       this.scheduleEvents();
@@ -87,9 +95,14 @@ export class Adc {
     this.scheduleEvents();
   };
 
-  constructor(private readonly cpu: CPU) {}
+  constructor(private readonly cpu: CPU) {
+    this.channelVoltages[BANDGAP_CHANNEL] = DEFAULT_INTERNAL_REFERENCE_VOLTS;
+    this.voltageEnabled[BANDGAP_CHANNEL] = 1;
+    this.cpu.onSleep(() => this.onSleep());
+  }
 
   reset(): void {
+    this.powerReduced = false;
     this.remainingCycles = 0;
     this.converting = false;
     this.triggerSource = -1;
@@ -99,6 +112,7 @@ export class Adc {
   }
 
   tick(cycles: number): void {
+    if (this.powerReduced) return;
     if (this.converting) {
       this.remainingCycles -= cycles;
       if (this.remainingCycles <= 0) {
@@ -132,6 +146,25 @@ export class Adc {
     this.channelVoltages[normalized] = Number.isFinite(volts) ? Math.max(0, volts) : 0;
     this.voltageEnabled[normalized] = 1;
     this.channels[normalized] = clamp10(Math.round(ratio * 1023));
+  }
+
+  readChannelVoltage(channel: number): number {
+    const normalized = this.normalizeChannel(channel);
+    if (this.voltageEnabled[normalized] !== 0) return this.channelVoltages[normalized]!;
+    return (this.channels[normalized]! / 1023) * DEFAULT_AVCC_REFERENCE_VOLTS;
+  }
+
+  setPowerReduced(reduced: boolean): void {
+    if (this.powerReduced === reduced) return;
+    if (reduced) {
+      this.refreshRemainingCycles();
+      this.powerReduced = true;
+      this.cpu.clearClockEvent(this.onConversionEvent);
+      this.cpu.clearClockEvent(this.onAutoTriggerEvent);
+      return;
+    }
+    this.powerReduced = false;
+    this.scheduleEvents();
   }
 
   @OnWrite(ADCSRA)
@@ -210,11 +243,12 @@ export class Adc {
   }
 
   private selectedChannel(): number {
-    return this.normalizeChannel(this.cpu.data[ADMUX]! & 0x0f);
+    return this.cpu.data[ADMUX]! & 0x0f;
   }
 
   private sampleSelectedChannel(): number {
     const channel = this.selectedChannel();
+    if (!this.isSupportedChannel(channel)) return 0;
     if (this.voltageEnabled[channel] === 0) return this.channels[channel]!;
     return clamp10((this.channelVoltages[channel]! / this.referenceVoltage()) * 1023);
   }
@@ -264,6 +298,11 @@ export class Adc {
   }
 
   private scheduleEvents(): void {
+    if (this.powerReduced) {
+      this.cpu.clearClockEvent(this.onConversionEvent);
+      this.cpu.clearClockEvent(this.onAutoTriggerEvent);
+      return;
+    }
     if (this.converting) {
       this.cpu.addClockEvent(this.onConversionEvent, this.remainingCycles);
       this.cpu.clearClockEvent(this.onAutoTriggerEvent);
@@ -278,8 +317,19 @@ export class Adc {
   }
 
   private refreshRemainingCycles(): void {
-    if (!this.converting) return;
+    if (!this.converting || this.powerReduced) return;
     this.remainingCycles = this.cpu.clockEventRemainingCycles(this.onConversionEvent);
+  }
+
+  private onSleep(): void {
+    if (!this.isNoiseReductionSleepMode()) return;
+    if (this.converting || this.powerReduced) return;
+    this.startConversion();
+  }
+
+  private isNoiseReductionSleepMode(): boolean {
+    const mode = (this.cpu.data[SMCR]! >> SM0) & ((1 << (SM2 - SM0 + 1)) - 1);
+    return mode === 0b001;
   }
 
   private resyncTriggerLatch(): void {
@@ -308,10 +358,14 @@ export class Adc {
   }
 
   private normalizeChannel(channel: number): number {
-    if (!Number.isInteger(channel) || channel < 0 || channel > 7) {
-      throw new Error(`Unknown ADC channel ${channel} (valid channels: 0..7)`);
+    if (!this.isSupportedChannel(channel)) {
+      throw new Error(`Unknown ADC channel ${channel} (valid channels: 0..8 and 14)`);
     }
     return channel;
+  }
+
+  private isSupportedChannel(channel: number): boolean {
+    return Number.isInteger(channel) && ((channel >= 0 && channel <= TEMPERATURE_CHANNEL) || channel === BANDGAP_CHANNEL);
   }
 
   // --- Snapshot / restore (Phase 10) ---
@@ -330,6 +384,7 @@ export class Adc {
   }
 
   restore(snap: AdcSnapshot): void {
+    this.powerReduced = false;
     this.channels.set(snap.channels);
     this.channelVoltages.set(snap.channelVoltages);
     this.voltageEnabled.set(snap.voltageEnabled);

@@ -27,15 +27,23 @@ export interface Timer0Snapshot {
 
 export interface Timer1Snapshot {
   count: number;
+  /** Timer1 dual-slope PWM direction, when running an up/down WGM mode. */
+  countingDown?: boolean;
   prescalerRemainder: number;
+  /** Remaining cycles of a noise-canceler-delayed input capture (0 = none). */
+  captureDelayRemaining?: number;
 }
 
 export interface Timer2Snapshot {
   prescalerRemainder: number;
+  /** ASSR update-busy bits (TCN2UB..TCR2BUB) still latching. */
+  asyncBusyMask?: number;
+  /** Remaining cycles until the pending async register updates latch. */
+  asyncBusyRemaining?: number;
 }
 
 export interface Usart0Snapshot {
-  /** Queued host bytes waiting for firmware to read. */
+  /** Legacy: pending RX bytes without frame metadata (kept for old snapshots). */
   rxBytes: Uint8Array;
   rxHead: number;
   /** Byte currently being shifted out, null/undefined when TX is idle. */
@@ -44,6 +52,16 @@ export interface Usart0Snapshot {
   txBufferByte?: number | null;
   /** Remaining cycles for the current TX frame. */
   txRemainingCycles?: number;
+  /** Encoded frames (9 data bits + error flags) in the 2-level receive FIFO. */
+  rxFifo?: number[];
+  /** Encoded frame currently crossing the wire, null when RX is idle. */
+  rxShiftFrame?: number | null;
+  /** Remaining cycles for the in-flight RX frame. */
+  rxRemainingCycles?: number;
+  /** Encoded frames still queued on the host side of the wire. */
+  rxWire?: number[];
+  /** Data-overrun (DOR0) latched and not yet cleared by a UDR0 read. */
+  rxOverrun?: boolean;
 }
 
 export interface AdcSnapshot {
@@ -74,7 +92,37 @@ export interface SpiSnapshot {
   responderReset: true;
   busy?: boolean;
   pendingMosi?: number;
+  pendingMode?: "master" | "slave" | null;
   remainingCycles?: number;
+  spifClearArmed?: boolean;
+}
+
+export interface ClockControlSnapshot {
+  unlocked: boolean;
+  remainingCycles?: number;
+}
+
+export interface ChipControlSnapshot {
+  ivUnlocked: boolean;
+  ivUnlockRemaining?: number;
+  bodUnlocked: boolean;
+  bodUnlockRemaining?: number;
+}
+
+export interface SelfProgrammingSnapshot {
+  pageBuffer: Uint16Array;
+  pendingOperation?: "erase" | "write" | "lock" | "rww" | null;
+  pendingPageBase?: number;
+  pendingLockValue?: number;
+  pendingRemainingCycles?: number;
+  commandClearRemainingCycles?: number;
+}
+
+export interface AnalogComparatorSnapshot {
+  ain0Volts: number;
+  ain1Volts: number;
+  output: boolean;
+  initialized: boolean;
 }
 
 export interface TwiSnapshot {
@@ -83,8 +131,27 @@ export interface TwiSnapshot {
   reading: boolean;
   /** Address of the slave currently being addressed (null = none). */
   currentAddress: number | null;
-  pendingOperation?: "start" | "stop" | "transfer" | null;
+  pendingOperation?:
+    | "start"
+    | "stop"
+    | "transfer"
+    | "slaveAddress"
+    | "slaveWrite"
+    | "slaveRead"
+    | "slaveStop"
+    | "slaveRestart"
+    | "arbitrationLost"
+    | null;
   remainingCycles?: number;
+  slaveActive?: boolean;
+  slaveTransmitting?: boolean;
+  slaveGeneralCall?: boolean;
+  pendingHostAddress?: number;
+  pendingHostRead?: boolean;
+  pendingHostGeneralCall?: boolean;
+  pendingHostByte?: number;
+  pendingHostAck?: boolean;
+  pendingArbitrationLost?: boolean;
 }
 
 export interface WatchdogSnapshot {
@@ -103,6 +170,8 @@ export interface ExternalInterruptsSnapshot {
 
 export interface CpuSnapshot {
   pc: number;
+  /** Boot-vector offset applied to pending interrupt vectors. */
+  interruptVectorBase?: number;
   cycles: number;
   sleeping: boolean;
   /** Copy of the flat data space (registers, I/O, SRAM). */
@@ -115,6 +184,8 @@ export interface CpuSnapshot {
 
 export interface RuntimeSnapshot {
   clockHz: number;
+  /** Undivided clock configured by useClock(); CLKPR derives clockHz from this. */
+  baseClockHz?: number;
   chip: AVRChip;
   speed: AVRSpeed;
   programSource: string | null;
@@ -122,6 +193,14 @@ export interface RuntimeSnapshot {
   paused: boolean;
   serialText: string;
   timing: "fast" | "cycle-exact";
+  fuses?: {
+    low: number;
+    high: number;
+    extended: number;
+    lockBits: number;
+  };
+  /** Bitmask of fuse bytes explicitly configured by host code; older snapshots omit it. */
+  configuredFuseMask?: number;
 }
 
 /** Top-level snapshot returned by `avr.snapshot()`. */
@@ -136,6 +215,10 @@ export interface AVRSnapshot {
   adc: AdcSnapshot;
   eeprom: EepromSnapshot;
   spi: SpiSnapshot;
+  clock?: ClockControlSnapshot;
+  chip?: ChipControlSnapshot;
+  spm?: SelfProgrammingSnapshot;
+  comparator?: AnalogComparatorSnapshot;
   twi: TwiSnapshot;
   watchdog: WatchdogSnapshot;
   pcint: PcintSnapshot;

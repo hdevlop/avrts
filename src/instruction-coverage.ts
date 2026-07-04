@@ -156,14 +156,14 @@ export const COVERAGE: ReadonlyArray<CoverageEntry> = [
   { mnemonic: "NOP", status: "implemented" },
   { mnemonic: "SLEEP", status: "implemented" },
   { mnemonic: "WDR", status: "implemented" },
+  { mnemonic: "SPM", status: "implemented" },
   { mnemonic: "BREAK", status: "implemented" },
 
   // --- Intentionally not modelled for ATmega328P ---
 
-  // ELPM / SPM are only useful with >64K program memory; ATmega328P has 16K
-  // words and never generates these from avr-gcc at -Os.
+  // ELPM is only useful with >64K program memory; ATmega328P has 16K words and
+  // never generates it from avr-gcc at -Os.
   { mnemonic: "ELPM", status: "not-implemented", note: "ATmega328P has 16K words (< 64K); ELPM is only needed for larger flash" },
-  { mnemonic: "SPM", status: "not-implemented", note: "Store Program Memory; used by bootloaders, not by application sketches" },
 
   // EICALL / EJMP are extended indirect calls/jumps for >128K program memory.
   { mnemonic: "EICALL", status: "not-implemented", note: "ATmega328P has 16K words (< 128K); EICALL is for ATmega2560+" },
@@ -271,6 +271,7 @@ export const COVERAGE_SAMPLES: ReadonlyArray<CoverageCheck> = [
   { mnemonic: "NOP", opcode: 0x0000 },
   { mnemonic: "SLEEP", opcode: 0x9588 },
   { mnemonic: "WDR", opcode: 0x95a8 },
+  { mnemonic: "SPM", opcode: 0x95e8 },
   { mnemonic: "BREAK", opcode: 0x9598 },
 ];
 
@@ -282,7 +283,6 @@ export const COVERAGE_SAMPLES: ReadonlyArray<CoverageCheck> = [
  */
 export const UNSUPPORTED_SAMPLES: ReadonlyArray<CoverageCheck> = [
   { mnemonic: "ELPM", opcode: 0x9006 }, // ELPM Rd, Z
-  { mnemonic: "SPM", opcode: 0x95e8 },
   { mnemonic: "EICALL", opcode: 0x9519 },
   { mnemonic: "EJMP", opcode: 0x9419 }, // EIJMP encoding
   { mnemonic: "DES", opcode: 0x940b }, // DES 0

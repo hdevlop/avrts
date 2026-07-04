@@ -1,0 +1,232 @@
+
+examples/arduino-comparator-interrupt/build/arduino-comparator-interrupt.ino.elf:     file format elf32-avr
+
+
+Disassembly of section .text:
+
+00000000 <__vectors>:
+   0:	0c 94 34 00 	jmp	0x68	; 0x68 <__ctors_end>
+   4:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+   8:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+   c:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  10:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  14:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  18:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  1c:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  20:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  24:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  28:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  2c:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  30:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  34:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  38:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  3c:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  40:	0c 94 5d 00 	jmp	0xba	; 0xba <__vector_16>
+  44:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  48:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  4c:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  50:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  54:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  58:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  5c:	0c 94 a7 00 	jmp	0x14e	; 0x14e <__vector_23>
+  60:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+  64:	0c 94 46 00 	jmp	0x8c	; 0x8c <__bad_interrupt>
+
+00000068 <__ctors_end>:
+  68:	11 24       	eor	r1, r1
+  6a:	1f be       	out	0x3f, r1	; 63
+  6c:	cf ef       	ldi	r28, 0xFF	; 255
+  6e:	d8 e0       	ldi	r29, 0x08	; 8
+  70:	de bf       	out	0x3e, r29	; 62
+  72:	cd bf       	out	0x3d, r28	; 61
+
+00000074 <__do_clear_bss>:
+  74:	21 e0       	ldi	r18, 0x01	; 1
+  76:	a0 e0       	ldi	r26, 0x00	; 0
+  78:	b1 e0       	ldi	r27, 0x01	; 1
+  7a:	01 c0       	rjmp	.+2      	; 0x7e <.do_clear_bss_start>
+
+0000007c <.do_clear_bss_loop>:
+  7c:	1d 92       	st	X+, r1
+
+0000007e <.do_clear_bss_start>:
+  7e:	ab 30       	cpi	r26, 0x0B	; 11
+  80:	b2 07       	cpc	r27, r18
+  82:	e1 f7       	brne	.-8      	; 0x7c <.do_clear_bss_loop>
+  84:	0e 94 be 00 	call	0x17c	; 0x17c <main>
+  88:	0c 94 23 01 	jmp	0x246	; 0x246 <_exit>
+
+0000008c <__bad_interrupt>:
+  8c:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
+
+00000090 <_ZL13publishResultv>:
+  90:	87 ea       	ldi	r24, 0xA7	; 167
+  92:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <__bss_end+0x1f5>
+  96:	80 91 01 01 	lds	r24, 0x0101	; 0x800101 <risingEdges>
+  9a:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <__bss_end+0x1f6>
+  9e:	80 91 00 01 	lds	r24, 0x0100	; 0x800100 <acoInIsr>
+  a2:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <__bss_end+0x1f7>
+  a6:	80 b7       	in	r24, 0x30	; 48
+  a8:	85 fb       	bst	r24, 5
+  aa:	88 27       	eor	r24, r24
+  ac:	80 f9       	bld	r24, 0
+  ae:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <__bss_end+0x1f8>
+  b2:	8c e5       	ldi	r24, 0x5C	; 92
+  b4:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <__bss_end+0x1f9>
+  b8:	08 95       	ret
+
+000000ba <__vector_16>:
+  ba:	1f 92       	push	r1
+  bc:	0f 92       	push	r0
+  be:	0f b6       	in	r0, 0x3f	; 63
+  c0:	0f 92       	push	r0
+  c2:	11 24       	eor	r1, r1
+  c4:	2f 93       	push	r18
+  c6:	3f 93       	push	r19
+  c8:	8f 93       	push	r24
+  ca:	9f 93       	push	r25
+  cc:	af 93       	push	r26
+  ce:	bf 93       	push	r27
+  d0:	80 91 07 01 	lds	r24, 0x0107	; 0x800107 <timer0_millis>
+  d4:	90 91 08 01 	lds	r25, 0x0108	; 0x800108 <timer0_millis+0x1>
+  d8:	a0 91 09 01 	lds	r26, 0x0109	; 0x800109 <timer0_millis+0x2>
+  dc:	b0 91 0a 01 	lds	r27, 0x010A	; 0x80010a <timer0_millis+0x3>
+  e0:	30 91 06 01 	lds	r19, 0x0106	; 0x800106 <timer0_fract>
+  e4:	23 e0       	ldi	r18, 0x03	; 3
+  e6:	23 0f       	add	r18, r19
+  e8:	2d 37       	cpi	r18, 0x7D	; 125
+  ea:	58 f5       	brcc	.+86     	; 0x142 <__vector_16+0x88>
+  ec:	01 96       	adiw	r24, 0x01	; 1
+  ee:	a1 1d       	adc	r26, r1
+  f0:	b1 1d       	adc	r27, r1
+  f2:	20 93 06 01 	sts	0x0106, r18	; 0x800106 <timer0_fract>
+  f6:	80 93 07 01 	sts	0x0107, r24	; 0x800107 <timer0_millis>
+  fa:	90 93 08 01 	sts	0x0108, r25	; 0x800108 <timer0_millis+0x1>
+  fe:	a0 93 09 01 	sts	0x0109, r26	; 0x800109 <timer0_millis+0x2>
+ 102:	b0 93 0a 01 	sts	0x010A, r27	; 0x80010a <timer0_millis+0x3>
+ 106:	80 91 02 01 	lds	r24, 0x0102	; 0x800102 <timer0_overflow_count>
+ 10a:	90 91 03 01 	lds	r25, 0x0103	; 0x800103 <timer0_overflow_count+0x1>
+ 10e:	a0 91 04 01 	lds	r26, 0x0104	; 0x800104 <timer0_overflow_count+0x2>
+ 112:	b0 91 05 01 	lds	r27, 0x0105	; 0x800105 <timer0_overflow_count+0x3>
+ 116:	01 96       	adiw	r24, 0x01	; 1
+ 118:	a1 1d       	adc	r26, r1
+ 11a:	b1 1d       	adc	r27, r1
+ 11c:	80 93 02 01 	sts	0x0102, r24	; 0x800102 <timer0_overflow_count>
+ 120:	90 93 03 01 	sts	0x0103, r25	; 0x800103 <timer0_overflow_count+0x1>
+ 124:	a0 93 04 01 	sts	0x0104, r26	; 0x800104 <timer0_overflow_count+0x2>
+ 128:	b0 93 05 01 	sts	0x0105, r27	; 0x800105 <timer0_overflow_count+0x3>
+ 12c:	bf 91       	pop	r27
+ 12e:	af 91       	pop	r26
+ 130:	9f 91       	pop	r25
+ 132:	8f 91       	pop	r24
+ 134:	3f 91       	pop	r19
+ 136:	2f 91       	pop	r18
+ 138:	0f 90       	pop	r0
+ 13a:	0f be       	out	0x3f, r0	; 63
+ 13c:	0f 90       	pop	r0
+ 13e:	1f 90       	pop	r1
+ 140:	18 95       	reti
+ 142:	26 e8       	ldi	r18, 0x86	; 134
+ 144:	23 0f       	add	r18, r19
+ 146:	02 96       	adiw	r24, 0x02	; 2
+ 148:	a1 1d       	adc	r26, r1
+ 14a:	b1 1d       	adc	r27, r1
+ 14c:	d2 cf       	rjmp	.-92     	; 0xf2 <__vector_16+0x38>
+
+0000014e <__vector_23>:
+ 14e:	1f 92       	push	r1
+ 150:	0f 92       	push	r0
+ 152:	0f b6       	in	r0, 0x3f	; 63
+ 154:	0f 92       	push	r0
+ 156:	11 24       	eor	r1, r1
+ 158:	8f 93       	push	r24
+ 15a:	80 91 01 01 	lds	r24, 0x0101	; 0x800101 <risingEdges>
+ 15e:	8f 5f       	subi	r24, 0xFF	; 255
+ 160:	80 93 01 01 	sts	0x0101, r24	; 0x800101 <risingEdges>
+ 164:	80 b7       	in	r24, 0x30	; 48
+ 166:	85 fb       	bst	r24, 5
+ 168:	88 27       	eor	r24, r24
+ 16a:	80 f9       	bld	r24, 0
+ 16c:	80 93 00 01 	sts	0x0100, r24	; 0x800100 <acoInIsr>
+ 170:	8f 91       	pop	r24
+ 172:	0f 90       	pop	r0
+ 174:	0f be       	out	0x3f, r0	; 63
+ 176:	0f 90       	pop	r0
+ 178:	1f 90       	pop	r1
+ 17a:	18 95       	reti
+
+0000017c <main>:
+ 17c:	78 94       	sei
+ 17e:	84 b5       	in	r24, 0x24	; 36
+ 180:	82 60       	ori	r24, 0x02	; 2
+ 182:	84 bd       	out	0x24, r24	; 36
+ 184:	84 b5       	in	r24, 0x24	; 36
+ 186:	81 60       	ori	r24, 0x01	; 1
+ 188:	84 bd       	out	0x24, r24	; 36
+ 18a:	85 b5       	in	r24, 0x25	; 37
+ 18c:	82 60       	ori	r24, 0x02	; 2
+ 18e:	85 bd       	out	0x25, r24	; 37
+ 190:	85 b5       	in	r24, 0x25	; 37
+ 192:	81 60       	ori	r24, 0x01	; 1
+ 194:	85 bd       	out	0x25, r24	; 37
+ 196:	80 91 6e 00 	lds	r24, 0x006E	; 0x80006e <__DATA_REGION_ORIGIN__+0xe>
+ 19a:	81 60       	ori	r24, 0x01	; 1
+ 19c:	80 93 6e 00 	sts	0x006E, r24	; 0x80006e <__DATA_REGION_ORIGIN__+0xe>
+ 1a0:	10 92 81 00 	sts	0x0081, r1	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+ 1a4:	80 91 81 00 	lds	r24, 0x0081	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+ 1a8:	82 60       	ori	r24, 0x02	; 2
+ 1aa:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+ 1ae:	80 91 81 00 	lds	r24, 0x0081	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+ 1b2:	81 60       	ori	r24, 0x01	; 1
+ 1b4:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+ 1b8:	80 91 80 00 	lds	r24, 0x0080	; 0x800080 <__DATA_REGION_ORIGIN__+0x20>
+ 1bc:	81 60       	ori	r24, 0x01	; 1
+ 1be:	80 93 80 00 	sts	0x0080, r24	; 0x800080 <__DATA_REGION_ORIGIN__+0x20>
+ 1c2:	80 91 b1 00 	lds	r24, 0x00B1	; 0x8000b1 <__DATA_REGION_ORIGIN__+0x51>
+ 1c6:	84 60       	ori	r24, 0x04	; 4
+ 1c8:	80 93 b1 00 	sts	0x00B1, r24	; 0x8000b1 <__DATA_REGION_ORIGIN__+0x51>
+ 1cc:	80 91 b0 00 	lds	r24, 0x00B0	; 0x8000b0 <__DATA_REGION_ORIGIN__+0x50>
+ 1d0:	81 60       	ori	r24, 0x01	; 1
+ 1d2:	80 93 b0 00 	sts	0x00B0, r24	; 0x8000b0 <__DATA_REGION_ORIGIN__+0x50>
+ 1d6:	80 91 7a 00 	lds	r24, 0x007A	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1da:	84 60       	ori	r24, 0x04	; 4
+ 1dc:	80 93 7a 00 	sts	0x007A, r24	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1e0:	80 91 7a 00 	lds	r24, 0x007A	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1e4:	82 60       	ori	r24, 0x02	; 2
+ 1e6:	80 93 7a 00 	sts	0x007A, r24	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1ea:	80 91 7a 00 	lds	r24, 0x007A	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1ee:	81 60       	ori	r24, 0x01	; 1
+ 1f0:	80 93 7a 00 	sts	0x007A, r24	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1f4:	80 91 7a 00 	lds	r24, 0x007A	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1f8:	80 68       	ori	r24, 0x80	; 128
+ 1fa:	80 93 7a 00 	sts	0x007A, r24	; 0x80007a <__DATA_REGION_ORIGIN__+0x1a>
+ 1fe:	10 92 c1 00 	sts	0x00C1, r1	; 0x8000c1 <__DATA_REGION_ORIGIN__+0x61>
+ 202:	10 92 00 03 	sts	0x0300, r1	; 0x800300 <__bss_end+0x1f5>
+ 206:	10 92 01 03 	sts	0x0301, r1	; 0x800301 <__bss_end+0x1f6>
+ 20a:	10 92 02 03 	sts	0x0302, r1	; 0x800302 <__bss_end+0x1f7>
+ 20e:	10 92 03 03 	sts	0x0303, r1	; 0x800303 <__bss_end+0x1f8>
+ 212:	10 92 04 03 	sts	0x0304, r1	; 0x800304 <__bss_end+0x1f9>
+ 216:	10 92 05 03 	sts	0x0305, r1	; 0x800305 <__bss_end+0x1fa>
+ 21a:	10 92 06 03 	sts	0x0306, r1	; 0x800306 <__bss_end+0x1fb>
+ 21e:	10 92 07 03 	sts	0x0307, r1	; 0x800307 <__bss_end+0x1fc>
+ 222:	f8 94       	cli
+ 224:	83 e0       	ldi	r24, 0x03	; 3
+ 226:	80 bf       	out	0x30, r24	; 48
+ 228:	80 b7       	in	r24, 0x30	; 48
+ 22a:	88 60       	ori	r24, 0x08	; 8
+ 22c:	80 bf       	out	0x30, r24	; 48
+ 22e:	78 94       	sei
+ 230:	0e 94 48 00 	call	0x90	; 0x90 <_ZL13publishResultv>
+ 234:	c0 e0       	ldi	r28, 0x00	; 0
+ 236:	d0 e0       	ldi	r29, 0x00	; 0
+ 238:	0e 94 48 00 	call	0x90	; 0x90 <_ZL13publishResultv>
+ 23c:	20 97       	sbiw	r28, 0x00	; 0
+ 23e:	e1 f3       	breq	.-8      	; 0x238 <main+0xbc>
+ 240:	0e 94 00 00 	call	0	; 0x0 <__vectors>
+ 244:	f9 cf       	rjmp	.-14     	; 0x238 <main+0xbc>
+
+00000246 <_exit>:
+ 246:	f8 94       	cli
+
+00000248 <__stop_program>:
+ 248:	ff cf       	rjmp	.-2      	; 0x248 <__stop_program>

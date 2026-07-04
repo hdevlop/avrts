@@ -14,6 +14,7 @@ import {
   UCSR0B,
   UDR0,
 } from "../src";
+import { DEFAULT_USART_FRAME_CYCLES } from "./helpers";
 
 function makeCpu(program: number[]): CPU {
   const flash = new Uint16Array(FLASH_WORDS);
@@ -30,6 +31,7 @@ describe("USART RX is firmware-readable", () => {
     cpu.writeData(UCSR0B, 1 << RXEN0); // enable the receiver
     avr.serial.write("Hi");
 
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES * 2); // one frame per byte
     expect((cpu.readData(UCSR0A) >> RXC0) & 1).toBe(1); // RXC0: data available
     expect(cpu.readData(UDR0)).toBe(0x48); // 'H'
     expect(cpu.readData(UDR0)).toBe(0x69); // 'i'
@@ -40,9 +42,11 @@ describe("USART RX is firmware-readable", () => {
     const avr = AVR();
     const cpu = avr.cpu;
     avr.serial.write("x"); // queued before Serial.begin enables RXEN0
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES * 2);
     expect((cpu.readData(UCSR0A) >> RXC0) & 1).toBe(0);
 
-    cpu.writeData(UCSR0B, 1 << RXEN0); // enabling RX surfaces the queued byte
+    cpu.writeData(UCSR0B, 1 << RXEN0); // enabling RX starts shifting the byte
+    avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
     expect((cpu.readData(UCSR0A) >> RXC0) & 1).toBe(1);
     expect(cpu.readData(UDR0)).toBe(0x78); // 'x'
   });

@@ -37,8 +37,8 @@ cycles, or races against a transfer should see hardware-like timing.
 - [x] Do not implement exact sleep-mode power consumption states.
 - [x] Do not model every analog/electrical bus detail, such as rise time,
   contention, capacitance, or noise.
-- [x] Do not pace RX (USART receive stays host-injected and instant); document
-  as a limitation.
+- [x] Original pass did not pace RX; later Phase 1 USART work superseded this
+  and now paces host-injected RX through the simulated wire/FIFO.
 
 These should remain documented simulator limitations unless a later plan targets
 them directly.
@@ -211,21 +211,25 @@ Full gates before declaring done:
 
 - [x] `bun run typecheck`
 - [x] `bun test` (catches the wider fallout listed in Phase 5)
-- [x] Add or update simavr oracle coverage for at least one USART polling case,
-  one SPI polling case, and one TWI polling case; use the oracle to calibrate
-  the TWI START/STOP cycle counts.
+- [x] Add or update simavr oracle coverage for USART polling cases
+  (`TXC0` and later `RXC0`/data), SPI master polling, SPI slave receive/SPIF,
+  Timer2 async drift, and TWI polling/slave cases; use the oracle to calibrate
+  the TWI START/STOP cycle counts. DOR0 overrun stays covered by focused Bun
+  tests because native simavr's UART input IRQ uses a 64-byte host FIFO. SPI
+  slave host-output bytes are normalized because native simavr's SPI input IRQ
+  echoes the injected byte instead of the preloaded slave `SPDR`.
 
 ## Done Definition
 
-- [x] Firmware polling `TXC0`, `SPIF`, or `TWINT` can observe time passing before
-  the flag becomes ready.
+- [x] Firmware polling `TXC0`, `RXC0`, `SPIF`, or `TWINT` can observe time
+  passing before the flag becomes ready.
 - [x] Interrupt-driven firmware receives USART/SPI/TWI interrupts at delayed
   transfer completion, not at register write time.
 - [x] Snapshot/restore of an in-flight transfer resumes with the correct
   remaining cycle delay.
 - [x] README or public docs separate "timed AVR-visible behavior now modeled"
-  from still-missing features like fuses, bootloader, self-programming,
-  brown-out, RX pacing, and detailed sleep power states.
+  from still-missing features like bootloader validation and detailed sleep
+  power states.
 
 ## Validation Evidence
 

@@ -52,6 +52,11 @@ export class Eeprom {
     return this.cells.slice();
   }
 
+  /** Chip erase resets EEPROM bytes unless the EESAVE fuse preserves them. */
+  erase(): void {
+    this.cells.fill(0xff);
+  }
+
   @OnWrite(EECR)
   onWriteEecr(_cpu: CPU, _addr: number, value: number): void {
     if ((value & (1 << EERE)) !== 0) {

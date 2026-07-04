@@ -54,6 +54,10 @@ const TIMER0_FLAG_MASK = (1 << TOV0) | (1 << OCF0A) | (1 << OCF0B);
 export class Timer0 implements PwmSource {
   private prescalerRemainder = 0;
   private lastCycle = 0;
+  private powerReduced = false;
+  // GTCCR TSM+PSRSYNC holds the shared prescaler in reset (counter frozen).
+  private prescalerHeld = false;
+  private sleepPaused = false;
   // Cached prescaler divisor, recomputed only when the CS bits (TCCR0B) change.
   // tick() runs every instruction, so it must not re-read/re-map the register.
   private cachedPrescaler: number | undefined = undefined;
@@ -79,6 +83,9 @@ export class Timer0 implements PwmSource {
   }
 
   reset(): void {
+    this.powerReduced = false;
+    this.prescalerHeld = false;
+    this.sleepPaused = false;
     this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
@@ -90,6 +97,7 @@ export class Timer0 implements PwmSource {
   }
 
   tick(cycles: number): void {
+    if (this.frozen()) return;
     const prescaler = this.cachedPrescaler;
     if (prescaler === undefined) return;
 
@@ -177,6 +185,57 @@ export class Timer0 implements PwmSource {
     return this.pwm.on(channel, listener);
   }
 
+  setPowerReduced(reduced: boolean): void {
+    if (this.powerReduced === reduced) return;
+    if (reduced) {
+      this.syncToCpuCycle();
+      this.powerReduced = true;
+      this.cpu.clearClockEvent(this.onClockEvent);
+      return;
+    }
+    this.powerReduced = false;
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
+  }
+
+  /** GTCCR TSM+PSRSYNC: hold the shared prescaler in reset (counter frozen). */
+  setPrescalerHeld(held: boolean): void {
+    if (this.prescalerHeld === held) return;
+    if (held) {
+      this.syncToCpuCycle();
+      this.prescalerHeld = true;
+      this.cpu.clearClockEvent(this.onClockEvent);
+      return;
+    }
+    this.prescalerHeld = false;
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
+  }
+
+  /** GTCCR PSRSYNC: reset the shared prescaler (counter value untouched). */
+  resetPrescaler(): void {
+    this.syncToCpuCycle();
+    this.prescalerRemainder = 0;
+    this.scheduleClockEvent();
+  }
+
+  setSleepPaused(paused: boolean): void {
+    if (this.sleepPaused === paused) return;
+    if (paused) {
+      this.syncToCpuCycle();
+      this.sleepPaused = true;
+      this.cpu.clearClockEvent(this.onClockEvent);
+      return;
+    }
+    this.sleepPaused = false;
+    this.lastCycle = this.cpu.cycles;
+    this.scheduleClockEvent();
+  }
+
+  private frozen(): boolean {
+    return this.powerReduced || this.prescalerHeld || this.sleepPaused;
+  }
+
   private incrementCounter(): void {
     const next = (this.cpu.data[TCNT0]! + 1) & 0xff;
     this.cpu.data[TCNT0] = next;
@@ -215,6 +274,7 @@ export class Timer0 implements PwmSource {
     const elapsed = now - this.lastCycle;
     if (elapsed <= 0) return;
     this.lastCycle = now;
+    if (this.frozen()) return;
     const prescaler = this.cachedPrescaler;
     if (prescaler === undefined) return;
     const total = this.prescalerRemainder + elapsed;
@@ -232,7 +292,7 @@ export class Timer0 implements PwmSource {
 
   private scheduleClockEvent(): void {
     const prescaler = this.cachedPrescaler;
-    if (prescaler === undefined) {
+    if (this.frozen() || prescaler === undefined) {
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -378,6 +438,8 @@ export class Timer0 implements PwmSource {
   }
 
   restore(snap: Timer0Snapshot): void {
+    this.powerReduced = false;
+    this.sleepPaused = false;
     this.prescalerRemainder = snap.prescalerRemainder | 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
