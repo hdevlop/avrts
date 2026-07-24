@@ -21,15 +21,16 @@ no per-instruction peripheral fan-out.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **1.48-2.65x (win)** |
-| IO-bound near-parity | serial-print, analog-write, peripheral-mix | 0.83-0.94x |
-| real compiled code | sensor, dsp, isr, string, float, bitbang | **0.42-1.00x** |
+| synthetic / idle-dominated | tight-loop, delay-blink | **0.92-1.86x** |
+| IO-bound | serial-print, analog-write, peripheral-mix | 0.66-1.04x |
+| real compiled code | sensor, dsp, isr, string, float, bitbang | **0.35-0.74x** |
 
-Real-code throughput mostly still trails avr8js: arithmetic/string/ISR fixtures
-sit around 0.42-0.68x, while `sensor-format` recovered to ~1.00x in the latest
-isolated sample after the serial-buffer wait FastBlock. The recorded table is
-faster than realtime on every fixture, but the weakest margin is `bitbang-crc`,
-so realtime headroom is fixture-specific. 513 tests green; result oracles match
+The 2026-07-13 Windows release-review sample remains faster than realtime on ten
+of eleven fixtures, but `bitbang-crc` measured 15.45M cycles/s in the common
+best-of-3 matrix and 13.11M cycles/s in a focused best-of-10 run. Realtime
+headroom is therefore fixture- and host-specific, not a blanket guarantee.
+Real-code throughput still trails avr8js at roughly 0.35-0.74x. 653 tests green;
+result oracles match
 avr8js for the four `bench:result` fixtures, and `oracle:simavr:result` now
 cross-checks the same matrix against native simavr with the documented
 `peripheral-mix` timer-threshold and PORTD PWM-latch normalizations.

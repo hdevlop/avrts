@@ -39,21 +39,21 @@ describe("compile (source -> hex -> run)", () => {
     // The produced image loads and runs without throwing.
     const avr = AVR(result.hex);
     expect(() => avr.runCycles(10_000)).not.toThrow();
-  });
+  }, 15_000);
 
   test.skipIf(!hasAvrGcc())("compileSourceAndRun returns a runnable AVR", () => {
     const avr = compileSourceAndRun(TINY_C);
     avr.runCycles(10_000);
     expect(avr.status().cycles).toBeGreaterThanOrEqual(10_000);
-  });
+  }, 15_000);
 
   test.skipIf(!hasAvrGcc())("compiles an example .c file by path", () => {
     const result = compile("examples/timer0-overflow-blink/timer0-overflow-blink.c");
     expect(result.lang).toBe("c");
     expect(result.hex).toContain(":00000001FF");
-  });
+  }, 15_000);
 
   test.skipIf(!hasAvrGcc())("reports a CompileError for a source that fails to build", () => {
     expect(() => compileSource("this is not valid C;")).toThrow(CompileError);
-  });
+  }, 15_000);
 });

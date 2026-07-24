@@ -236,28 +236,29 @@ The valuable external references are native simulators used as *ceilings* and
 
 Active sample:
 
-`bench:compare --repeats 3 --isolate`, best-of-3, 16 MHz, 2026-07-03 - after
-real peripheral timing and the `serial-buffer-wait` FastBlock; see
-`performance-summary.md`.
+`bench:compare --repeats 3 --isolate`, best-of-3, 16 MHz, 2026-07-13 Windows
+release-review run; see `performance-summary.md`.
 
 | fixture         | avrts (cyc/s) | avr8js (cyc/s) | ratio | class |
 | --------------- | ------------- | -------------- | ----- | ----- |
-| tight-loop      | 132,970,590   | 89,863,569     | 1.48x | synthetic - FastBlock idle-skip |
-| delay-blink     | 131,780,085   | 49,691,821     | 2.65x | synthetic - micros/subcmp blocks |
-| serial-print    | 67,381,540    | 71,903,856     | 0.94x | IO-bound near-parity |
-| analog-write    | 64,248,606    | 77,375,905     | 0.83x | IO-bound near-parity |
-| peripheral-mix  | 54,907,947    | 59,463,992     | 0.92x | IO + timed peripherals |
-| sensor-format   | 52,251,409    | 52,159,508     | 1.00x | real - Serial buffer wait now batched |
-| float-math      | 21,687,655    | 41,953,700     | 0.52x | real - soft-float kernels |
-| bitbang-crc     | 18,010,055    | 43,054,270     | 0.42x | real - bit-banged GPIO (hook-bound) |
-| isr-heavy       | 29,066,726    | 45,867,899     | 0.63x | real - ISR churn + poll-wait |
-| string-heavy    | 32,979,899    | 53,302,517     | 0.62x | real - String/format |
-| dsp-fixed       | 36,405,629    | 53,764,192     | 0.68x | real - FIR/MAC; poll-wait + umulhisi3 |
+| tight-loop      | 169,293,251   | 90,897,274     | 1.86x | synthetic - FastBlock idle-skip |
+| delay-blink     | 45,182,024    | 48,868,699     | 0.92x | synthetic - micros/subcmp blocks |
+| serial-print    | 57,944,948    | 72,576,103     | 0.80x | IO-bound |
+| analog-write    | 51,630,224    | 78,689,722     | 0.66x | IO-bound |
+| peripheral-mix  | 61,128,506    | 58,776,577     | 1.04x | IO + timed peripherals |
+| sensor-format   | 28,466,833    | 52,460,227     | 0.54x | real - formatting + timed serial |
+| float-math      | 18,904,213    | 42,006,358     | 0.45x | real - soft-float kernels |
+| bitbang-crc     | 15,449,365    | 44,295,729     | 0.35x | real - bit-banged GPIO (hook-bound) |
+| isr-heavy       | 35,076,126    | 47,602,545     | 0.74x | real - ISR churn + poll-wait |
+| string-heavy    | 25,309,856    | 53,105,786     | 0.48x | real - String/format |
+| dsp-fixed       | 25,666,771    | 55,252,831     | 0.46x | real - FIR/MAC; poll-wait + umulhisi3 |
 
-Reading the active sample: synthetic fixtures still win; IO-bound fixtures are
-near parity after realistic peripheral timing; `sensor-format` recovered to
-parity because the timed-serial ring-buffer wait is now batched; arithmetic,
-string, ISR, and bit-banged GPIO fixtures still trail at ~0.42-0.68x.
+Reading the active sample: performance is host- and workload-dependent.
+`tight-loop` and `peripheral-mix` win, while the remaining workloads trail
+avr8js. Ten fixtures exceed 16M cycles/s in this matrix; `bitbang-crc` does not.
+A focused `--case bitbang-crc --repeats 10 --isolate` run measured 13,112,962
+cycles/s versus avr8js at 40,177,004 cycles/s (0.33x), confirming that the
+README must not make a blanket realtime claim.
 
 Latest small slice: real USART timing made Arduino `HardwareSerial::write`'s
 TX ring-buffer wait (`0x0249..0x024e` in `sensor-format`) dominate the PC

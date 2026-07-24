@@ -177,17 +177,71 @@ export interface WorkerScopeLike {
   setInterval?(handler: () => void, timeout?: number): ReturnType<typeof setInterval>;
   clearInterval?(handle: ReturnType<typeof setInterval>): void;
   onmessage?: ((event: MessageEvent<AVRWorkerCommand>) => void) | null;
+  /** Monotonic wall clock in ms for real-time pacing; defaults to performance.now(). */
+  now?(): number;
+  /**
+   * Schedule a task with no minimum-delay clamp (browser: `MessageChannel`), used
+   * to drive the execution pump at "max" speed without the ~4 ms nested-timeout
+   * throttle. Returns a cancel function. Defaults to a `MessageChannel` scheduler.
+   */
+  scheduleImmediate?(handler: () => void): () => void;
 }
 
 const DIGITAL_PINS = Array.from({ length: 14 }, (_, pin) => pin);
 const PWM_PINS = [3, 5, 6, 9, 10, 11] as const;
 const MAX_SNAPSHOT_COUNT = 10;
 const FRAME_MS = 33;
-const CHUNK_MS = 2;
-const MAX_CHUNK_CYCLES = 50_000;
+// Real-time pacing: how often the finite-speed pump ticks (the browser clamps
+// nested timers to ~4 ms anyway; the accumulator keeps throughput correct
+// regardless of the actual spacing).
+const PACING_TICK_MS = 4;
+// Cap catch-up after a stall/tab-throttle so the worker never replays minutes of
+// missed time in a single blocking batch.
+const MAX_CATCHUP_MS = 100;
+// Cycles per "max"-speed pump before yielding, bounding command latency while
+// letting the immediate scheduler keep the engine near its ceiling.
+const MAX_PUMP_CYCLES = 200_000;
+
+type ImmediateScheduler = (handler: () => void) => () => void;
+
+function createDefaultNow(): () => number {
+  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
+  if (perf && typeof perf.now === "function") {
+    const perfNow = perf.now.bind(perf);
+    return () => perfNow();
+  }
+  return () => Date.now();
+}
+
+function createImmediateScheduler(
+  setTimer: (handler: () => void, timeout?: number) => ReturnType<typeof setTimeout>,
+  clearTimer: (handle: ReturnType<typeof setTimeout>) => void,
+): ImmediateScheduler {
+  const channelCtor = (globalThis as { MessageChannel?: typeof MessageChannel }).MessageChannel;
+  if (channelCtor) {
+    const channel = new channelCtor();
+    let pending: (() => void) | null = null;
+    channel.port1.onmessage = () => {
+      const handler = pending;
+      pending = null;
+      handler?.();
+    };
+    return (handler) => {
+      pending = handler;
+      channel.port2.postMessage(0);
+      return () => {
+        pending = null;
+      };
+    };
+  }
+  return (handler) => {
+    const id = setTimer(handler, 0);
+    return () => clearTimer(id);
+  };
+}
 
 export function createAVRWorkerRuntime(options: AVRWorkerRuntimeOptions = {}): AVRWorkerRuntime {
-  const worker = options.worker ?? new Worker(new URL("./browser-worker.ts", import.meta.url), { type: "module" });
+  const worker = options.worker ?? new Worker(new URL("./browser-worker.js", import.meta.url), { type: "module" });
   const listeners = new Map<AVRWorkerEventType, Set<AVRWorkerEventHandler>>();
   let latestStatus: AVRStatus | null = null;
 
@@ -261,7 +315,9 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   let running = false;
   let paused = false;
   let speed: AVRSpeed = 1;
-  let pumpHandle: ReturnType<typeof setTimeout> | null = null;
+  let pumpCancel: (() => void) | null = null;
+  let lastPumpHostMs = 0;
+  let pumpResidualCycles = 0;
   let frameHandle: ReturnType<typeof setInterval> | null = null;
   let snapshotCounter = 0;
 
@@ -281,6 +337,9 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   const clearTimer = scope.clearTimeout?.bind(scope) ?? clearTimeout;
   const setEvery = scope.setInterval?.bind(scope) ?? setInterval;
   const clearEvery = scope.clearInterval?.bind(scope) ?? clearInterval;
+  const now = scope.now?.bind(scope) ?? createDefaultNow();
+  const scheduleImmediate: ImmediateScheduler =
+    scope.scheduleImmediate?.bind(scope) ?? createImmediateScheduler(setTimer, clearTimer);
 
   const status = (): AVRStatus => ({
     ...avr.status(),
@@ -362,38 +421,62 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     frameHandle = null;
   };
 
+  const resetPacing = (): void => {
+    lastPumpHostMs = now();
+    pumpResidualCycles = 0;
+  };
+
   const schedulePump = (): void => {
-    if (!running || paused || pumpHandle !== null) return;
-    pumpHandle = setTimer(() => {
-      pumpHandle = null;
-      pump();
-    }, 0);
+    if (!running || paused || pumpCancel !== null) return;
+    if (speed === "max") {
+      pumpCancel = scheduleImmediate(runPump);
+    } else {
+      const id = setTimer(runPump, PACING_TICK_MS);
+      pumpCancel = () => clearTimer(id);
+    }
   };
 
   const cancelPump = (): void => {
-    if (pumpHandle === null) return;
-    clearTimer(pumpHandle);
-    pumpHandle = null;
+    if (pumpCancel === null) return;
+    pumpCancel();
+    pumpCancel = null;
   };
 
-  const chunkCycles = (): number => {
-    if (speed === "max") return MAX_CHUNK_CYCLES;
+  // Cycles to advance this tick. Finite speed is wall-clock paced: run exactly the
+  // cycles owed for the real time elapsed since the last tick (fractional cycles
+  // carry in `pumpResidualCycles`), so simulated time tracks real time and does
+  // not drift with timer jitter; catch-up is capped at MAX_CATCHUP_MS. "max" speed
+  // ignores the clock and runs a fixed chunk, rescheduling via the immediate
+  // scheduler to approach the engine ceiling.
+  const pumpCycles = (): number => {
+    if (speed === "max") return MAX_PUMP_CYCLES;
+    const nowMs = now();
+    let elapsed = nowMs - lastPumpHostMs;
+    lastPumpHostMs = nowMs;
+    if (!(elapsed > 0)) elapsed = 0;
+    else if (elapsed > MAX_CATCHUP_MS) elapsed = MAX_CATCHUP_MS;
     const clockHz = avr.status().clockHz;
-    const cycles = Math.ceil((clockHz * speed * CHUNK_MS) / 1000);
-    return Math.max(1, Math.min(cycles, MAX_CHUNK_CYCLES));
+    const owed = pumpResidualCycles + (elapsed / 1000) * clockHz * speed;
+    const toRun = Math.floor(owed);
+    pumpResidualCycles = owed - toRun;
+    return toRun;
   };
 
-  const pump = (): void => {
+  const runPump = (): void => {
+    pumpCancel = null;
     if (!running || paused) return;
-    try {
-      avr.runCycles(chunkCycles());
-    } catch (error) {
-      running = false;
-      paused = false;
-      cancelPump();
-      stopFrameTimer();
-      post({ type: "error", message: String(error), status: status() });
-      return;
+    const cycles = pumpCycles();
+    if (cycles >= 1) {
+      try {
+        avr.runCycles(cycles);
+      } catch (error) {
+        running = false;
+        paused = false;
+        cancelPump();
+        stopFrameTimer();
+        post({ type: "error", message: String(error), status: status() });
+        return;
+      }
     }
     schedulePump();
   };
@@ -402,6 +485,7 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     running = true;
     paused = false;
     ensureFrameTimer();
+    resetPacing();
     schedulePump();
     postStatus();
   };
@@ -421,6 +505,7 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     }
     paused = false;
     ensureFrameTimer();
+    resetPacing();
     schedulePump();
     postStatus();
   };
@@ -523,6 +608,11 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
         case "setSpeed":
           speed = command.speed;
           avr.setSpeed(command.speed);
+          if (running && !paused) {
+            cancelPump();
+            resetPacing();
+            schedulePump();
+          }
           postStatus();
           return;
         case "setInput":

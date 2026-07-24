@@ -73,7 +73,8 @@ Not machine-checked; keep in sync with the implementation by review.
   conversion on ADC noise-reduction sleep entry, keeps asynchronous Timer2
   running in power-save / extended-standby, reapplies gating after
   snapshot/restore, and adds the 4-cycle base interrupt wake latency.
-  Library-level low-power validation remains Phase 7 work.
+  A compiled LowPower-style watchdog sleep fixture validates repeated
+  power-down wake cycles and snapshot/restore (`test/lowpower-wdt.test.ts`).
 
 ## Permanent non-goals
 

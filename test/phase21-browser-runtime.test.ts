@@ -42,12 +42,21 @@ class FakeClientWorker implements WorkerLike {
   }
 }
 
+interface FakeTimer {
+  id: number;
+  handler: () => void;
+  interval: boolean;
+  active: boolean;
+  delay: number;
+}
+
 class FakeWorkerScope implements WorkerScopeLike {
   readonly events: AVRWorkerEvent[] = [];
   onmessage: ((event: MessageEvent<AVRWorkerCommand>) => void) | null = null;
   private nextTimerId = 1;
-  private readonly timerQueue: Array<{ id: number; handler: () => void; interval: boolean; active: boolean }> = [];
-  private readonly timers = new Map<number, { id: number; handler: () => void; interval: boolean; active: boolean }>();
+  private virtualNowMs = 0;
+  private readonly timerQueue: Array<FakeTimer> = [];
+  private readonly timers = new Map<number, FakeTimer>();
 
   postMessage(message: AVRWorkerEvent): void {
     this.events.push(message);
@@ -57,20 +66,29 @@ class FakeWorkerScope implements WorkerScopeLike {
     this.onmessage?.({ data: command } as MessageEvent<AVRWorkerCommand>);
   }
 
-  setTimeout(handler: () => void): ReturnType<typeof setTimeout> {
-    return this.addTimer(handler, false);
+  now(): number {
+    return this.virtualNowMs;
+  }
+
+  setTimeout(handler: () => void, timeout = 0): ReturnType<typeof setTimeout> {
+    return this.addTimer(handler, false, timeout);
   }
 
   clearTimeout(handle: ReturnType<typeof setTimeout>): void {
     this.clearTimer(handle);
   }
 
-  setInterval(handler: () => void): ReturnType<typeof setInterval> {
-    return this.addTimer(handler, true);
+  setInterval(handler: () => void, timeout = 0): ReturnType<typeof setInterval> {
+    return this.addTimer(handler, true, timeout);
   }
 
   clearInterval(handle: ReturnType<typeof setInterval>): void {
     this.clearTimer(handle);
+  }
+
+  scheduleImmediate(handler: () => void): () => void {
+    const id = this.addTimer(handler, false, 0);
+    return () => this.clearTimer(id);
   }
 
   runTimers(limit = 20): void {
@@ -78,14 +96,17 @@ class FakeWorkerScope implements WorkerScopeLike {
       const timer = this.timerQueue.shift();
       if (!timer) return;
       if (!timer.active) continue;
+      // Advance the virtual clock by the timer's delay so wall-clock pacing sees
+      // deterministic time pass across synchronous `runTimers` bursts.
+      this.virtualNowMs += timer.delay;
       if (!timer.interval) this.timers.delete(timer.id);
       timer.handler();
       if (timer.interval && timer.active) this.timerQueue.push(timer);
     }
   }
 
-  private addTimer(handler: () => void, interval: boolean): ReturnType<typeof setTimeout> {
-    const timer = { id: this.nextTimerId++, handler, interval, active: true };
+  private addTimer(handler: () => void, interval: boolean, delay: number): ReturnType<typeof setTimeout> {
+    const timer = { id: this.nextTimerId++, handler, interval, active: true, delay };
     this.timers.set(timer.id, timer);
     this.timerQueue.push(timer);
     return timer.id as unknown as ReturnType<typeof setTimeout>;

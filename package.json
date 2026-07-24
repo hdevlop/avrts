@@ -1,12 +1,59 @@
 {
   "name": "avrts",
-  "module": "src/index.ts",
+  "version": "0.1.0",
+  "description": "ATmega328P simulator with chip-level timing, peripheral, bootloader, and browser-worker support",
   "type": "module",
-  "private": true,
+  "main": "./dist/public/index.js",
+  "module": "./dist/public/index.js",
+  "types": "./dist/types/public/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/public/index.d.ts",
+      "import": "./dist/public/index.js",
+      "default": "./dist/public/index.js"
+    },
+    "./browser": {
+      "types": "./dist/types/public/browser.d.ts",
+      "import": "./dist/public/browser.js",
+      "default": "./dist/public/browser.js"
+    },
+    "./advanced": {
+      "types": "./dist/types/public/advanced.d.ts",
+      "import": "./dist/public/advanced.js",
+      "default": "./dist/public/advanced.js"
+    },
+    "./browser-worker": "./dist/public/browser-worker.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "sideEffects": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "packageManager": "bun@1.3.14",
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run scripts/dev.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "clean:dist": "bun run scripts/clean-dist.ts",
+    "build:lib:js": "bun build src/public/index.ts src/public/browser.ts src/public/advanced.ts src/public/browser-worker.ts --outdir dist --root src --target browser --format esm --splitting --sourcemap=external",
+    "build:lib:types": "tsc -p tsconfig.build.json && bun run scripts/fix-declaration-imports.ts",
+    "build:lib": "bun run clean:dist && bun run build:lib:js && bun run build:lib:types",
+    "build": "bun run build:lib",
+    "verify": "bun run typecheck && bun run check:fast-core && bun test",
+    "package:smoke": "bun run scripts/package-smoke.ts",
+    "release:check": "bun run verify && bun run build:demo && bun run test:e2e && bun run build:lib && bun run package:smoke",
+    "prepack": "bun run build:lib",
+    "prepublishOnly": "bun run release:check",
     "bench": "bun run scripts/benchmark.ts",
     "bench:compare": "bun run scripts/benchmark-compare.ts",
     "bench:result": "bun run scripts/benchmark-results.ts",
@@ -32,10 +79,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@types/bun": "latest",
-    "avr8js": "^0.21.0"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "^1.3.14",
+    "avr8js": "^0.21.0",
+    "typescript": "^5.9.3"
   }
 }

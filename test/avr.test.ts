@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { AVR, DDRB, IntelHexError, PINB, PORTB, TXEN0, UCSR0B, UDR0 } from "../src";
 import { DEFAULT_USART_FRAME_CYCLES } from "./helpers";
 
+const BLINK_HEX_PATH = "examples/blink/blink.hex";
+
 function transmitByte(avr: ReturnType<typeof AVR>, byte: number): void {
   avr.cpu.writeData(UDR0, byte);
   avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
@@ -18,6 +20,25 @@ test("AVR() constructs with ATmega328P defaults", () => {
 test("AVR(string) records a loaded program", () => {
   const avr = AVR(":00000001FF");
   expect(avr.status().programLoaded).toBe(true);
+});
+
+test("AVR(string) can load a HEX file path with the default 16 MHz clock", () => {
+  const avr = AVR(BLINK_HEX_PATH);
+  expect(avr.cpu.flash[0]).toBe(0xe200);
+  expect(avr.status().programLoaded).toBe(true);
+  expect(avr.status().clockHz).toBe(16_000_000);
+});
+
+test("AVR(options) accepts hexPath and path program sources", () => {
+  const byHexPath = AVR({ hexPath: BLINK_HEX_PATH });
+  const byPath = AVR({ path: new URL("../examples/blink/blink.hex", import.meta.url) });
+
+  expect(byHexPath.cpu.flash[0]).toBe(0xe200);
+  expect(byPath.cpu.flash[0]).toBe(0xe200);
+});
+
+test("AVR(options) rejects ambiguous program sources", () => {
+  expect(() => AVR({ hex: ":00000001FF", path: BLINK_HEX_PATH })).toThrow("one program source");
 });
 
 test("AVR(options) applies chip and clock", () => {
@@ -236,6 +257,9 @@ test("load aliases, reload, clearProgram, and loadFile cover UI loading flows", 
 
   avr.load({ hex: second });
   expect(avr.cpu.flash[0]).toBe(0xe034);
+
+  avr.loadHexFile(BLINK_HEX_PATH);
+  expect(avr.cpu.flash[0]).toBe(0xe200);
 
   avr.clearProgram();
   expect(avr.cpu.flash[0]).toBe(0);

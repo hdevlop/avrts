@@ -1,9 +1,7 @@
 /**
- * avrts — a TypeScript ATmega328P (Arduino Uno/Nano) simulator.
- * Public API leads with the AVR(...) facade; advanced exports follow.
+ * Internal source barrel used by repository tests and examples.
+ * Published consumers use src/public/index.ts and the explicit package subpaths.
  */
-import { AVR } from "./avr";
-
 export * from "./avr";
 export * from "./browser-runtime";
 export * from "./cpu";
@@ -14,8 +12,3 @@ export * from "./circuit";
 export * from "./component-bus";
 export * from "./adapters";
 export type * from "./snapshot";
-
-// Minimal dev entry: `bun run src/index.ts` prints a readiness line.
-if (import.meta.main) {
-  console.log("avrts ready —", AVR().status());
-}

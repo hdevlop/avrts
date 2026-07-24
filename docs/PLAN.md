@@ -1,6 +1,6 @@
 # Review Fix Plan
 
-## Implementation status (2026-07-02)
+## Implementation status (through 2026-07-13)
 
 - [x] Item 1: host loop lifecycle fixed and covered for interval, raf, and restore paths.
 - [x] Item 2: `useHex()` / `reload()` now parse before mutating runtime state.
@@ -9,12 +9,13 @@
       stays raw, partial sequences are dropped on `clear()`/`reset()`/`restore()`,
       invalid bytes decode to U+FFFD.
 - [x] Item 5: `CPU.udivmodsi4RegionMode` now has a per-instance selector defaulting from the static value.
-- [ ] Item 6: packaging remains deferred. The cpu.ts split is done (2026-07-02):
-      fast blocks extracted to `src/cpu/fast-blocks.ts`, cpu.ts keeps the
-      per-PC kind cache + dispatch skeleton.
+- [x] Item 6: packaging completed (2026-07-13): `0.1.0` ESM/declaration output,
+      explicit root/browser/advanced exports, packed Node/Bun/browser consumer
+      smoke tests, and CI gates. The cpu.ts split was completed on 2026-07-02.
 
-Findings from the 2026-07-02 library review, ordered by priority. Items 1–3 are
-code fixes with tests; items 4–6 are smaller/deferred.
+Findings from the 2026-07-02 library review, ordered by priority. Items 1–3
+started as code fixes and items 4–6 as smaller/deferred work; all are now
+closed, with packaging completed by the 2026-07-13 production review.
 
 ---
 
@@ -221,10 +222,14 @@ One benchmark script flipping it affects every CPU instance in the process.
 Move to an instance field defaulting from the static (keeps the benchmark
 lever), or a constructor option. Low risk, mechanical.
 
-## 6. Deferred / structural
+## 6. Packaging / structural
 
-- **Packaging:** package.json is `private: true`, no `exports` map, no build
-  output. Needed before any external consumption; skip while demo-only.
+- **Packaging (completed 2026-07-13):** `package.json` now builds ESM plus
+  declarations, defines `avrts`, `avrts/browser`, and `avrts/advanced` exports,
+  restricts tarball contents, and runs a real `npm pack` -> install -> Node/Bun
+  import -> browser bundle smoke test. `prepublishOnly` runs the release gate.
+- **Release ownership still required:** licensing and canonical repository/npm
+  publishing credentials are owner decisions recorded in `RELEASING.md`.
 - **cpu.ts size:** ~2,000 lines and growing one fast block per perf commit.
   Extract the classifier/guard/runner triples into `src/cpu/fast-blocks.ts`
   (or fold more into the generator) before it hits 3,000. Pure move, no

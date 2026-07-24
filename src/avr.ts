@@ -161,6 +161,10 @@ export type AVRTiming = "fast" | "cycle-exact";
 
 export interface AVROptions {
   hex?: string;
+  /** Filesystem path to an Intel HEX file. Node/Bun-only; browsers should use loadFile(...). */
+  hexPath?: string | URL;
+  /** Alias for hexPath, for the common `AVR({ path: "sketch.hex" })` shape. */
+  path?: string | URL;
   chip?: AVRChip;
   clockHz?: number;
   timing?: AVRTiming;
@@ -318,10 +322,12 @@ export interface AVR {
   useFuses(fuses: AVRFuseConfig): this;
   fuses(): AVRFuseBytes;
   useHex(hex: string): this;
+  useHexFile(path: string | URL): this;
   useTiming(timing: AVRTiming): this;
   setEventCoalescing(options: AVREventCoalescingOptions): this;
   load(options: AVROptions): this;
   loadHex(hex: string): this;
+  loadHexFile(path: string | URL): this;
   loadFile(fileLike: { text(): Promise<string> }): Promise<this>;
   clearProgram(): this;
   chipErase(): this;
@@ -700,12 +706,21 @@ class AVRRuntime implements AVR {
   }
 
   use(options: AVROptions): this {
+    const programSources =
+      (options.hex !== undefined ? 1 : 0) +
+      (options.hexPath !== undefined ? 1 : 0) +
+      (options.path !== undefined ? 1 : 0);
+    if (programSources > 1) {
+      throw new Error(`AVR(options) accepts one program source: "hex", "hexPath", or "path".`);
+    }
     if (options.chip) this.useChip(options.chip);
     if (options.clockHz !== undefined) this.useClock(options.clockHz);
     if (options.timing) this.useTiming(options.timing);
     if (options.fuses) this.useFuses(options.fuses);
     if (options.eventCoalescing) this.setEventCoalescing(options.eventCoalescing);
-    if (options.hex) this.useHex(options.hex);
+    if (options.hex !== undefined) this.useHex(options.hex);
+    if (options.hexPath !== undefined) this.useHexFile(options.hexPath);
+    if (options.path !== undefined) this.useHexFile(options.path);
     return this;
   }
 
@@ -764,12 +779,20 @@ class AVRRuntime implements AVR {
     return this;
   }
 
+  useHexFile(path: string | URL): this {
+    return this.useHex(readHexFileSync(path));
+  }
+
   load(options: AVROptions): this {
     return this.use(options);
   }
 
   loadHex(hex: string): this {
     return this.useHex(hex);
+  }
+
+  loadHexFile(path: string | URL): this {
+    return this.useHexFile(path);
   }
 
   async loadFile(fileLike: { text(): Promise<string> }): Promise<this> {
@@ -1352,17 +1375,82 @@ class AVRRuntime implements AVR {
  * (for fluent setup):
  *
  *   AVR(hexText)
+ *   AVR("sketch.hex")
  *   AVR({ hex, chip, clockHz })
- *   AVR().useChip("atmega328p").useClock(16_000_000).useHex(hexText)
+ *   AVR({ path: "sketch.hex" })
+ *   AVR().useHexFile("sketch.hex")
  */
 export function AVR(input?: string | AVROptions): AVR {
   const runtime = new AVRRuntime();
   if (typeof input === "string") {
-    runtime.useHex(input);
+    runtime.useHex(resolveHexTextOrPath(input));
   } else if (input) {
     runtime.use(input);
   }
   return runtime;
+}
+
+function resolveHexTextOrPath(input: string): string {
+  if (looksLikeHexText(input)) return input;
+  if (looksLikeHexPath(input)) return readHexFileSync(input);
+  return input;
+}
+
+function looksLikeHexText(input: string): boolean {
+  return input.trimStart().startsWith(":");
+}
+
+function looksLikeHexPath(input: string): boolean {
+  const text = input.trim();
+  if (text === "" || /[\r\n]/.test(input)) return false;
+  return /\.i?hex$/i.test(text) || /[\\/]/.test(text) || /^file:/i.test(text);
+}
+
+type ReadFileSync = (path: string | URL, encoding: BufferEncoding) => string;
+
+function readHexFileSync(path: string | URL): string {
+  const readFileSync = runtimeReadFileSync();
+  const display = path instanceof URL ? path.href : path;
+  if (!readFileSync) {
+    throw new Error(
+      `Cannot read HEX file "${display}" because this runtime has no synchronous filesystem API. ` +
+        `Pass HEX text directly or use await avr.loadFile(file) in the browser.`,
+    );
+  }
+  try {
+    return readFileSync(normalizeFilePath(path), "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to read HEX file "${display}": ${message}`);
+  }
+}
+
+function normalizeFilePath(path: string | URL): string | URL {
+  if (typeof path === "string" && /^file:/i.test(path)) return new URL(path);
+  return path;
+}
+
+function runtimeReadFileSync(): ReadFileSync | null {
+  const processWithBuiltins = (globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }).process;
+  const fsFromProcess =
+    processWithBuiltins?.getBuiltinModule?.("node:fs") ?? processWithBuiltins?.getBuiltinModule?.("fs");
+  const fromProcess = readFileSyncFrom(fsFromProcess);
+  if (fromProcess) return fromProcess;
+
+  try {
+    const requireFn = Function("return typeof require === 'function' ? require : undefined")() as
+      | ((id: string) => unknown)
+      | undefined;
+    const fsFromRequire = requireFn?.("node:fs") ?? requireFn?.("fs");
+    return readFileSyncFrom(fsFromRequire);
+  } catch {
+    return null;
+  }
+}
+
+function readFileSyncFrom(moduleLike: unknown): ReadFileSync | null {
+  const readFileSync = (moduleLike as { readFileSync?: unknown } | undefined)?.readFileSync;
+  return typeof readFileSync === "function" ? (readFileSync.bind(moduleLike) as ReadFileSync) : null;
 }
 
 function defaultFuses(): AVRFuseBytes {
