@@ -78,9 +78,7 @@ import { createAVRWorkerRuntime } from "avrts/browser";
 import { CPU, Decoder, PORTB } from "avrts/advanced";
 ```
 
-The `0.1.0` manifest is currently a release candidate and is marked
-`UNLICENSED`. The package owner must choose a license before granting
-third-party use rights; see [RELEASING.md](RELEASING.md).
+avrts is released under the [MIT License](LICENSE).
 
 ## Quick Start
 

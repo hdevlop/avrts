@@ -2,10 +2,8 @@
 
 ## One-time owner decisions
 
-- Replace `UNLICENSED` in `package.json` and add the chosen license file before
-  allowing third-party use. Selecting a license is an owner/legal decision.
-- Add `repository`, `homepage`, and `bugs` metadata after the canonical hosting
-  URL is known.
+- Done: the package is MIT-licensed (`LICENSE`), and `repository`, `homepage`,
+  and `bugs` point at https://github.com/hdevlop/avrts.
 - Configure the npm package owner and publishing authentication. Prefer npm
   trusted publishing/provenance when the canonical CI repository exists.
 

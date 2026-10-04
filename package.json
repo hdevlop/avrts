@@ -32,7 +32,23 @@
     "SECURITY.md"
   ],
   "sideEffects": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hdevlop/avrts.git"
+  },
+  "homepage": "https://github.com/hdevlop/avrts#readme",
+  "bugs": {
+    "url": "https://github.com/hdevlop/avrts/issues"
+  },
+  "keywords": [
+    "avr",
+    "atmega328p",
+    "arduino",
+    "simulator",
+    "emulator",
+    "microcontroller"
+  ],
   "engines": {
     "node": ">=22"
   },

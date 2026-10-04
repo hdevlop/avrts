@@ -3,10 +3,11 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-10-04
 
 ### Added
 
+- First public release, under the MIT License.
 - Function-first `AVR(...)` package facade for ATmega328P simulation.
 - Timed CPU, interrupt, GPIO, timer, ADC, EEPROM, watchdog, USART, SPI, TWI,
   sleep/wake, fuse, lock-bit, self-programming, and Optiboot behavior.
@@ -56,5 +57,3 @@ Semantic Versioning once a version is published.
 - Electrical analog behavior, debugWIRE, exact power consumption, flash wear,
   and other documented non-goals remain out of scope. See
   `docs/limitations.md` in the repository.
-- Package licensing is intentionally `UNLICENSED` until the owner selects a
-  license for third-party distribution.
