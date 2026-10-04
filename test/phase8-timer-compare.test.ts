@@ -76,6 +76,8 @@ describe("timer compare-match interrupts", () => {
 
     avr.step();
 
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(TIMER0_COMPA_VECTOR);
     expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(0);
     expect(cpu.readData(TIFR0) & (1 << OCF0B)).toBe(1 << OCF0B);
@@ -98,6 +100,8 @@ describe("timer compare-match interrupts", () => {
 
     avr.step();
 
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(TIMER1_COMPA_VECTOR);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
     expect(cpu.readData(TIFR1) & (1 << OCF1B)).toBe(1 << OCF1B);
@@ -118,6 +122,8 @@ describe("timer compare-match interrupts", () => {
 
     avr.step();
 
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(TIMER2_COMPA_VECTOR);
     expect(cpu.readData(TIFR2) & (1 << OCF2A)).toBe(0);
     expect(cpu.readData(TIFR2) & (1 << OCF2B)).toBe(1 << OCF2B);

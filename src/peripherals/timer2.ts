@@ -152,6 +152,7 @@ export class Timer2 implements PwmSource {
   @OnWrite(TIFR2)
   onWriteTifr2(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     this.cpu.data[TIFR2] = oldValue & ~(value & TIMER2_FLAG_MASK);
+    this.onWriteTimsk2();
   }
 
   @OnWrite(TCNT2)
@@ -410,7 +411,10 @@ export class Timer2 implements PwmSource {
     const vector = channel === "A" ? TIMER2_COMPA_VECTOR : TIMER2_COMPB_VECTOR;
     const flag = (this.cpu.data[TIFR2]! & (1 << flagBit)) !== 0;
     const enabled = (this.cpu.data[TIMSK2]! & (1 << enableBit)) !== 0;
-    if (!flag || !enabled) return;
+    if (!flag || !enabled) {
+      this.cpu.clearInterrupt(vector);
+      return;
+    }
     this.cpu.requestInterrupt(vector, () => {
       this.cpu.data[TIFR2] = this.cpu.data[TIFR2]! & ~(1 << flagBit);
     });
@@ -419,7 +423,10 @@ export class Timer2 implements PwmSource {
   private requestOverflowIfEnabled(): void {
     const overflowFlag = (this.cpu.data[TIFR2]! & (1 << TOV2)) !== 0;
     const overflowEnabled = (this.cpu.data[TIMSK2]! & (1 << TOIE2)) !== 0;
-    if (!overflowFlag || !overflowEnabled) return;
+    if (!overflowFlag || !overflowEnabled) {
+      this.cpu.clearInterrupt(TIMER2_OVF_VECTOR);
+      return;
+    }
     this.cpu.requestInterrupt(TIMER2_OVF_VECTOR, () => {
       this.cpu.data[TIFR2] = this.cpu.data[TIFR2]! & ~(1 << TOV2);
     });

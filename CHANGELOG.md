@@ -22,6 +22,18 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- `SEI` and `RETI` permit the following instruction before pending interrupts,
+  including in the generated and profiled CPU cores.
+- Clearing timer interrupt flags or disabling their masks withdraws pending
+  Timer0/Timer1/Timer2 requests; CPU reset also clears its interrupt queue.
+- Snapshots synchronize timer counters before capturing CPU registers.
+- Interrupt-only watchdog mode keeps firing without rearming `WDIE`; `WDIF`
+  latches until acknowledgement or a write-one-to-clear operation. Combined
+  interrupt/reset mode clears `WDIE` when its interrupt is acknowledged.
+- Worker snapshots restore running/paused state and speed using a single
+  worker-owned execution loop.
+- Intel HEX records with high extended linear addresses are rejected before
+  signed arithmetic can bypass flash bounds checking.
 - The program counter wraps at the flash boundary like the chip's 14-bit PC.
   Real Arduino Uno fuses (BOOTRST programmed) with an application-only HEX now
   slide through the empty boot section into the sketch instead of crashing.

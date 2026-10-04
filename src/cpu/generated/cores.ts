@@ -456,10 +456,12 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if (opcode === 0x9518) {
         cpu.pc = cpu.popWord();
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
+        cpu.deferInterrupts();
         cpu.cycles += 4;
       }
       else if (opcode === 0x9478) {
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
+        cpu.deferInterrupts();
         cpu.pc += 1;
         cpu.cycles += 1;
       }
@@ -1441,10 +1443,12 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       else if (opcode === 0x9518) {
         cpu.pc = cpu.popWord();
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
+        cpu.deferInterrupts();
         cpu.cycles += 4;
       }
       else if (opcode === 0x9478) {
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
+        cpu.deferInterrupts();
         cpu.pc += 1;
         cpu.cycles += 1;
       }

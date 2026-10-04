@@ -150,6 +150,7 @@ export class CPU {
   private readonly pendingCycleListenerRemovalDepths = new Map<CycleListener, number>();
   private cycleListenerDispatchDepth = 0;
   private readonly pendingInterrupts: PendingInterrupt[] = [];
+  private interruptDeferred = false;
   private programMemoryReadHook: ProgramMemoryReadHook | undefined;
   private spmInstructionHook: SpmInstructionHook | undefined;
   // Sparse, indexed by data-space address; peripherals install hooks here.
@@ -228,6 +229,8 @@ export class CPU {
     this.interruptVectorBase = 0;
     this.cycles = 0;
     this.sleeping = false;
+    this.pendingInterrupts.length = 0;
+    this.interruptDeferred = false;
     this.data.fill(0);
     this.SP = RAMEND;
     // Flash may have been (re)loaded just before reset(); drop stale handlers.
@@ -458,6 +461,17 @@ export class CPU {
     if (this.pendingInterrupts.some((pending) => pending.vector === vector)) return;
     this.pendingInterrupts.push({ vector, acknowledge });
     this.pendingInterrupts.sort((a, b) => a.vector - b.vector);
+  }
+
+  /** Withdraw a peripheral request whose flag or enable bit has been cleared. */
+  clearInterrupt(vector: number): void {
+    const index = this.pendingInterrupts.findIndex((pending) => pending.vector === vector);
+    if (index >= 0) this.pendingInterrupts.splice(index, 1);
+  }
+
+  /** @internal SEI/RETI must finish without dispatching an interrupt. */
+  deferInterrupts(): void {
+    this.interruptDeferred = true;
   }
 
   // --- I/O-space access: IN/OUT address A maps to data[A + 0x20] ---
@@ -837,6 +851,10 @@ export class CPU {
    */
   /** @internal generated-core surface (see generated/cores.ts). */
   serviceInterrupts(): void {
+    if (this.interruptDeferred) {
+      this.interruptDeferred = false;
+      return;
+    }
     // The `cycles += 4` in serviceNextInterrupt goes through the setter, which
     // already fires cycle listeners at the configured granularity. No extra
     // notifyCycles call is needed here.
@@ -902,6 +920,7 @@ export class CPU {
       flash: new Uint16Array(this.flash),
       pendingInterrupts: this.pendingInterrupts.map((p) => p.vector),
       interruptVectorBase: this.interruptVectorBase,
+      interruptDeferred: this.interruptDeferred,
     };
   }
 
@@ -915,6 +934,7 @@ export class CPU {
     this.interruptVectorBase = snap.interruptVectorBase ?? 0;
     this._cycles = snap.cycles;
     this.sleeping = snap.sleeping;
+    this.interruptDeferred = snap.interruptDeferred ?? false;
     this.data.set(snap.data);
     this.flash.set(snap.flash);
     this.invalidateDecodeCache(); // restored flash may differ from the cached program

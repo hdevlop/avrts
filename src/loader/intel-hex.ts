@@ -109,12 +109,12 @@ function verifyChecksum(bytes: number[], lineNo: number): void {
 }
 
 function writeFlashByte(flash: Uint16Array, byteAddress: number, value: number, lineNo: number): void {
-  const word = byteAddress >> 1;
-  if (word >= flash.length) {
+  if (byteAddress < 0 || byteAddress >= flash.length * 2) {
     throw new IntelHexError(
       `Line ${lineNo}: address 0x${byteAddress.toString(16)} is beyond flash (${flash.length} words)`,
     );
   }
+  const word = Math.floor(byteAddress / 2);
   if ((byteAddress & 1) === 0) {
     flash[word] = (flash[word]! & 0xff00) | value; // low byte
   } else {

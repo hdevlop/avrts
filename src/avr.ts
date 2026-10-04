@@ -61,6 +61,7 @@ import {
   UCSR0A,
   USART_TX_VECTOR,
   WDRF,
+  WDT_VECTOR,
 } from "./cpu";
 import type { IoWriteHook } from "./cpu";
 import { IntelHexError, parseHex } from "./loader";
@@ -1001,6 +1002,11 @@ class AVRRuntime implements AVR {
   }
 
   snapshot(): AVRSnapshot {
+    // Timer counters are synchronized lazily. Do this before copying CPU data
+    // so the register image and peripheral remainders describe the same cycle.
+    const timer0 = this.timer0.snapshot();
+    const timer1 = this.timer1.snapshot();
+    const timer2 = this.timer2.snapshot();
     return {
       version: AVR_SNAPSHOT_VERSION,
       cpu: this.cpu.snapshot(),
@@ -1020,9 +1026,9 @@ class AVRRuntime implements AVR {
         timeBaseCycles: this.timeBaseCycles,
       },
       gpio: this.gpioPeripheral.snapshot(),
-      timer0: this.timer0.snapshot(),
-      timer1: this.timer1.snapshot(),
-      timer2: this.timer2.snapshot(),
+      timer0,
+      timer1,
+      timer2,
       usart0: this.usart0.snapshot(),
       adc: this.adc.snapshot(),
       eeprom: this.eepromDevice.snapshot(),
@@ -1096,6 +1102,8 @@ class AVRRuntime implements AVR {
 
   private acknowledgeForVector(vector: number): (() => void) | undefined {
     switch (vector) {
+      case WDT_VECTOR:
+        return () => this.watchdog.acknowledgeInterrupt();
       case TIMER0_COMPA_VECTOR:
         return () => {
           this.cpu.data[TIFR0] = this.cpu.readData(TIFR0) & ~(1 << OCF0A);

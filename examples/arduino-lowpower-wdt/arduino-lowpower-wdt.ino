@@ -6,8 +6,8 @@
 // LowPower-library-style validation fixture. The canonical Arduino low-power
 // pattern (Rocket Scream's LowPower, Adafruit SleepyDog, etc.) is: arm the
 // watchdog for a timeout *interrupt* (not a reset), drop into SLEEP_MODE_PWR_DOWN,
-// and let the WDT wake the MCU each period. Because WDIE self-clears on every
-// timeout, the loop re-arms it before each sleep — the exact hand-off this
+// and let the WDT wake the MCU each period. The loop configures a fresh timeout
+// window before each sleep — the exact hand-off this
 // sketch exercises end to end. The result block at SRAM 0x0300 counts wakeups so
 // a host test can watch the MCU sleep and wake without any I/O pins.
 
@@ -38,7 +38,7 @@ void setup() {
 }
 
 void loop() {
-  watchdogInterrupt(0); // re-arm: WDIE self-cleared on the previous timeout.
+  watchdogInterrupt(0); // Start a fresh 16 ms timeout window.
 
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   sleep_enable();

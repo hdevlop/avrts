@@ -533,6 +533,25 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
     return id;
   };
 
+  const restoreSnapshot = (snapshot: AVRSnapshot): void => {
+    // The worker owns pacing. Restoring a facade host loop here would create
+    // a second execution loop outside the worker's pause/stop controls.
+    avr.restore({
+      ...snapshot,
+      runtime: { ...snapshot.runtime, running: false, paused: false },
+    });
+    cancelPump();
+    stopFrameTimer();
+    running = snapshot.runtime.running;
+    paused = running && snapshot.runtime.paused;
+    speed = snapshot.runtime.speed;
+    resetPacing();
+    if (running) ensureFrameTimer();
+    schedulePump();
+    emitFrame();
+    postStatus();
+  };
+
   const bindAvrEvents = (): void => {
     avr.pins.onChange((event) => {
       pendingPins.set(event.pin, pinFrame(event));
@@ -609,8 +628,8 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
           postStatus();
           return;
         case "setSpeed":
-          speed = command.speed;
           avr.setSpeed(command.speed);
+          speed = command.speed;
           if (running && !paused) {
             cancelPump();
             resetPacing();
@@ -635,6 +654,9 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
           return;
         case "snapshot": {
           const snapshot = avr.snapshot();
+          snapshot.runtime.running = running;
+          snapshot.runtime.paused = paused;
+          snapshot.runtime.speed = speed;
           const snapshotId = recordSnapshot(snapshot);
           post({
             type: "snapshot",
@@ -645,17 +667,13 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
         }
         case "restore":
           if (command.snapshot) {
-            avr.restore(command.snapshot);
-            emitFrame();
-            postStatus();
+            restoreSnapshot(command.snapshot);
             return;
           }
           if (command.snapshotId) {
             const snapshot = snapshots.get(command.snapshotId);
             if (snapshot) {
-              avr.restore(snapshot);
-              emitFrame();
-              postStatus();
+              restoreSnapshot(snapshot);
             } else {
               postError(`unknown snapshot id: ${command.snapshotId}`);
             }

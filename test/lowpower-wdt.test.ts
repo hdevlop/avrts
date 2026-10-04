@@ -3,7 +3,7 @@ import { AVR } from "../src";
 
 // Phase 7 Arduino validation: a LowPower-library-style sketch that sleeps in
 // SLEEP_MODE_PWR_DOWN and wakes on the watchdog timeout interrupt each 16 ms
-// period, re-arming WDIE before every sleep (WDIE self-clears on each timeout).
+// period, reconfiguring the watchdog before every sleep.
 // Running the compiled `.ino.hex` exercises the full sleep/wake path — SLEEP
 // entry, WDT-clocked timeout during power-down, WDT_vect dispatch, and the
 // return to sleep — end to end. Result block at 0x0300 is

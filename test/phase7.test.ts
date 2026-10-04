@@ -174,6 +174,8 @@ describe("USART0", () => {
     cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << UDRIE0));
 
     avr.step();
+    expect(cpu.pc).toBe(1); // SEI permits the following instruction first.
+    avr.step();
 
     expect(cpu.pc).toBe(USART_UDRE_VECTOR);
   });
@@ -188,9 +190,13 @@ describe("USART0", () => {
     cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << UDRIE0));
 
     avr.step();
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(USART_UDRE_VECTOR);
 
-    avr.step(); // RETI returns, then UDRE is requested and serviced again.
+    avr.step(); // RETI returns to the main program before dispatching again.
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(USART_UDRE_VECTOR);
   });
 
@@ -205,6 +211,8 @@ describe("USART0", () => {
 
     const restored = AVR();
     restored.restore(source.snapshot());
+    restored.step();
+    expect(restored.cpu.pc).toBe(1);
     restored.step();
 
     expect(restored.cpu.pc).toBe(USART_UDRE_VECTOR);

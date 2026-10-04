@@ -307,7 +307,7 @@ describe("sleep", () => {
 });
 
 describe("watchdog", () => {
-  test("WDIE timeout fires the WDT interrupt and self-clears WDIE", () => {
+  test("WDIE timeout fires the WDT interrupt and preserves interrupt-only mode", () => {
     const avr = AVR().useClock(16_000_000);
     const cpu = avr.cpu;
     cpu.flash[0] = 0xcfff; // rjmp -1 (main loop, keeps pc bounded)
@@ -315,7 +315,7 @@ describe("watchdog", () => {
     cpu.sreg.I = true;
     cpu.writeData(WDTCSR, 1 << WDIE); // WDP=0 -> 16 ms -> 256000 cycles
     avr.runCycles(300_000);
-    expect((cpu.readData(WDTCSR) >> WDIE) & 1).toBe(0);
+    expect((cpu.readData(WDTCSR) >> WDIE) & 1).toBe(1);
   });
 
   test("WDR keeps the watchdog from timing out", () => {
@@ -343,7 +343,7 @@ describe("watchdog", () => {
     restored.restore(source.snapshot());
     restored.runCycles(300_000);
 
-    expect((restored.cpu.readData(WDTCSR) >> WDIE) & 1).toBe(0);
+    expect((restored.cpu.readData(WDTCSR) >> WDIE) & 1).toBe(1);
     expect(restored.cpu.pc).toBe(WDT_VECTOR);
   });
 });

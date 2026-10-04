@@ -91,13 +91,15 @@ describe("Timer0", () => {
     cpu.writeData(TCNT0, 0xff);
     cpu.writeData(TIMSK0, 1);
 
-    avr.step(); // sei, Timer0 ticks once and queues overflow, interrupt services
+    avr.step(); // SEI queues the overflow but permits the following instruction.
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(TIMER0_OVF_VECTOR);
     expect(cpu.sreg.I).toBe(false);
     expect(cpu.readData(TIFR0) & 1).toBe(0);
 
     avr.step(); // reti
-    expect(cpu.pc).toBe(1);
+    expect(cpu.pc).toBe(2); // NOP after SEI executed before the interrupt.
     expect(cpu.sreg.I).toBe(true);
   });
 

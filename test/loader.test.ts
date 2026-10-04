@@ -47,4 +47,10 @@ describe("Intel HEX loader", () => {
     const flash = parseHex("\n  :020000000C945E  \n\n:00000001FF\n");
     expect(flash[0]).toBe(0x940c);
   });
+
+  test("rejects extended linear addresses across the signed 32-bit boundary", () => {
+    for (const upper of [":020000047FFF7C", ":0200000480007A", ":02000004FFFFFC"]) {
+      expect(() => parseHex(`${upper}\n:0100000042BD\n:00000001FF`)).toThrow(/beyond flash/);
+    }
+  });
 });

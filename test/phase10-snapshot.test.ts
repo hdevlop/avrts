@@ -39,9 +39,11 @@ import {
   SPSR,
   TCCR0B,
   TCCR1B,
+  TCCR2B,
   TCNT0,
   TCNT1H,
   TCNT1L,
+  TCNT2,
   TIMER0_COMPA_VECTOR,
   TIMSK0,
   TXC0,
@@ -390,6 +392,27 @@ describe("Phase 10 — snapshot / restore (Serial)", () => {
 });
 
 describe("Phase 10 — snapshot / restore (Timers)", () => {
+  for (const [name, control, counter, select] of [
+    ["Timer0", TCCR0B, TCNT0, 3],
+    ["Timer2", TCCR2B, TCNT2, 4],
+  ] as const) {
+    test(`${name} snapshot synchronizes counters before capturing CPU data`, () => {
+      const avr = AVR();
+      avr.cpu.writeData(control, select); // /64; snapshot between scheduled events.
+      avr.runCycles(100);
+      const snapshot = avr.snapshot(); // No prior TCNT read to synchronize it.
+      expect(snapshot.cpu.data[counter]).toBe(1);
+      expect(avr.snapshot()).toEqual(snapshot);
+
+      const restored = AVR().restore(snapshot);
+      expect(restored.cpu.readData(counter)).toBe(1);
+      avr.runCycles(64);
+      restored.runCycles(64);
+      expect(restored.cpu.readData(counter)).toBe(avr.cpu.readData(counter));
+      expect(restored.cpu.readData(counter)).toBe(2);
+    });
+  }
+
   test("Timer0 continues from a restored prescaler remainder", () => {
     const avr = AVR();
     // Configure Timer0 with prescaler /8 so 1 timer tick = 8 CPU cycles.

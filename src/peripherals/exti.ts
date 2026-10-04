@@ -143,7 +143,7 @@ export class ExternalInterrupts {
   /**
    * Level-mode re-evaluation. Fires after every instruction so the interrupt is
    * continuously requested while the pin is LOW (matching real AVR behavior —
-   * the ISR is taken again as soon as RETI re-enables interrupts).
+   * the ISR is taken again after RETI and one main-program instruction).
    */
   private evaluateLevelMode(): void {
     for (const cfg of CONFIGS) {

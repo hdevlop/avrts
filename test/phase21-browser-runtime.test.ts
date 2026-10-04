@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
+  AVR,
   createAVRWorkerRuntime,
   decodeLogicChunk,
   installAVRWorker,
@@ -89,6 +90,10 @@ class FakeWorkerScope implements WorkerScopeLike {
   scheduleImmediate(handler: () => void): () => void {
     const id = this.addTimer(handler, false, 0);
     return () => this.clearTimer(id);
+  }
+
+  activeTimerCount(): number {
+    return this.timers.size;
   }
 
   runTimers(limit = 20): void {
@@ -208,6 +213,70 @@ describe("Phase 21 - browser worker runtime client", () => {
 });
 
 describe("Phase 21 - browser worker host", () => {
+  for (const state of ["running", "paused", "stopped"] as const) {
+    for (const restoreBy of ["payload", "id"] as const) {
+      test(`${restoreBy} restore recovers worker speed and ${state} scheduling`, () => {
+        const scope = new FakeWorkerScope();
+        installAVRWorker(scope);
+        scope.send({ type: "loadHex", hex: BLINK_HEX });
+        scope.send({ type: "setSpeed", speed: 2 });
+        if (state !== "stopped") scope.send({ type: "start" });
+        if (state === "paused") scope.send({ type: "pause" });
+        scope.send({ type: "snapshot", includeData: true });
+        const saved = scope.events.findLast((event) => event.type === "snapshot")!;
+        expect(saved.snapshot!.runtime.running).toBe(state !== "stopped");
+        expect(saved.snapshot!.runtime.paused).toBe(state === "paused");
+        expect(saved.snapshot!.runtime.speed).toBe(2);
+
+        scope.send({ type: "setSpeed", speed: 0.5 });
+        scope.send({ type: "start" }); // Restore over an already active pump.
+        scope.send(restoreBy === "payload"
+          ? { type: "restore", snapshot: saved.snapshot }
+          : { type: "restore", snapshotId: saved.snapshotId });
+        const restored = scope.events.findLast((event) => event.type === "status")!;
+        expect(restored.status.speed).toBe(2);
+        expect(restored.status.running).toBe(state !== "stopped");
+        expect(restored.status.paused).toBe(state === "paused");
+        expect(scope.activeTimerCount()).toBe(state === "running" ? 2 : state === "paused" ? 1 : 0);
+
+        const before = restored.status.cycles;
+        scope.runTimers(10);
+        scope.send({ type: "readRegisters" });
+        const registers = scope.events.findLast((event) => event.type === "registers")!;
+        if (state === "running") expect(registers.cycles).toBeGreaterThan(before);
+        else expect(registers.cycles).toBe(before);
+
+        if (state === "paused") {
+          scope.send({ type: "resume" });
+          expect(scope.activeTimerCount()).toBe(2);
+        }
+        scope.send({ type: "stop" });
+        expect(scope.activeTimerCount()).toBe(0);
+      });
+    }
+  }
+
+  test("restoring a running facade snapshot never starts a second host loop", () => {
+    const scope = new FakeWorkerScope();
+    installAVRWorker(scope);
+    const snapshot = AVR(BLINK_HEX).snapshot();
+    snapshot.runtime.running = true;
+    snapshot.runtime.speed = "max";
+    const interval = spyOn(globalThis, "setInterval").mockImplementation(() => {
+      throw new Error("unexpected facade host loop");
+    });
+    try {
+      scope.send({ type: "restore", snapshot });
+      expect(interval).not.toHaveBeenCalled();
+      expect(scope.events.some((event) => event.type === "error")).toBe(false);
+      expect(scope.activeTimerCount()).toBe(2);
+      scope.send({ type: "stop" });
+      expect(scope.activeTimerCount()).toBe(0);
+    } finally {
+      interval.mockRestore();
+    }
+  });
+
   test("loads HEX, runs in chunks, emits frames, and stops", async () => {
     const scope = new FakeWorkerScope();
     installAVRWorker(scope);

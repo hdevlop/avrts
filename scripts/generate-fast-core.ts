@@ -764,12 +764,12 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   {
     name: "reti",
     guard: "opcode === 0x9518",
-    body: ["this.pc = this.popWord();", "data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.cycles += 4;"],
+    body: ["this.pc = this.popWord();", "data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.deferInterrupts();", "this.cycles += 4;"],
   },
   {
     name: "sei",
     guard: "opcode === 0x9478",
-    body: ["data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.pc += 1;", "this.cycles += 1;"],
+    body: ["data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;", "this.deferInterrupts();", "this.pc += 1;", "this.cycles += 1;"],
   },
   {
     name: "cli",

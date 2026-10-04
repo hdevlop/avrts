@@ -355,6 +355,7 @@ export const WDE = 3;
 export const WDCE = 4;
 export const WDP3 = 5;
 export const WDIE = 6;
+export const WDIF = 7;
 export const SPM_READY_VECTOR = 0x0032;
 
 // --- Analog comparator (data-space addresses) ---

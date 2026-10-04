@@ -226,7 +226,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
     expect(cpu.isSleeping).toBe(false);
     expect(cpu.pc).toBe(WDT_VECTOR);
-    expect((cpu.readData(WDTCSR) >> WDIE) & 1).toBe(0);
+    expect((cpu.readData(WDTCSR) >> WDIE) & 1).toBe(1);
   });
 
   test("sleep wake adds four cycles beyond normal interrupt entry", () => {

@@ -511,12 +511,14 @@ export class InstructionSet {
   reti(cpu: CPU): void {
     cpu.pc = cpu.popWord();
     cpu.sreg.I = true;
+    cpu.deferInterrupts();
     cpu.cycles += 4;
   }
 
   @Op("SEI", 0xffff, 0x9478)
   sei(cpu: CPU): void {
     cpu.sreg.I = true;
+    cpu.deferInterrupts();
     cpu.pc += 1;
     cpu.cycles += 1;
   }

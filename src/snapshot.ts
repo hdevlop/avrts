@@ -173,6 +173,8 @@ export interface ExternalInterruptsSnapshot {
 
 export interface CpuSnapshot {
   pc: number;
+  /** SEI/RETI deferral when captured before the instruction's dispatch boundary. */
+  interruptDeferred?: boolean;
   /** Boot-vector offset applied to pending interrupt vectors. */
   interruptVectorBase?: number;
   cycles: number;

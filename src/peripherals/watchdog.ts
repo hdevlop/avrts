@@ -1,5 +1,5 @@
 import { OnWrite } from "../core";
-import { MCUSR, WDE, WDIE, WDP3, WDRF, WDT_VECTOR, WDTCSR } from "../cpu";
+import { MCUSR, WDE, WDIE, WDIF, WDP3, WDRF, WDT_VECTOR, WDTCSR } from "../cpu";
 import type { CPU } from "../cpu";
 import type { WatchdogSnapshot } from "../snapshot";
 
@@ -10,8 +10,8 @@ const PERIOD_MS = [16, 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000] as const;
  * Watchdog timer (Phase 7 event-driven). Instead of being ticked every
  * instruction, it schedules a single CPU clock event at its timeout cycle and
  * re-arms on `WDR`, `WDTCSR` writes, and clock changes. On timeout it either
- * fires the WDT interrupt (WDIE mode, clearing WDIE so a second timeout would
- * reset) or resets the CPU (WDE mode).
+ * fires the WDT interrupt (WDIE mode) or resets the CPU (WDE mode). Only the
+ * combined interrupt/reset mode clears WDIE when its interrupt is serviced.
  */
 export class Watchdog {
   private scheduled = false;
@@ -52,9 +52,28 @@ export class Watchdog {
   }
 
   @OnWrite(WDTCSR)
-  onWriteWdtcsr(): void {
+  onWriteWdtcsr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+    // WDIF belongs to hardware and is write-one-to-clear.
+    this.cpu.data[WDTCSR] = (value & ~(1 << WDIF)) | (oldValue & ~value & (1 << WDIF));
     this.forceWdeIfNeeded();
+    this.updateInterrupt();
     this.reschedule(); // reconfiguring restarts the timeout window
+  }
+
+  /** Hardware acknowledgement, also used to rebuild pending snapshot callbacks. */
+  acknowledgeInterrupt(): void {
+    const control = this.cpu.data[WDTCSR]!;
+    const cleared = (1 << WDIF) | ((control & (1 << WDE)) !== 0 ? 1 << WDIE : 0);
+    this.cpu.data[WDTCSR] = control & ~cleared;
+  }
+
+  private updateInterrupt(): void {
+    const required = (1 << WDIE) | (1 << WDIF);
+    if ((this.cpu.data[WDTCSR]! & required) === required) {
+      this.cpu.requestInterrupt(WDT_VECTOR, () => this.acknowledgeInterrupt());
+    } else {
+      this.cpu.clearInterrupt(WDT_VECTOR);
+    }
   }
 
   /** Drop any pending event and, if enabled, arm a fresh timeout window. */
@@ -76,14 +95,13 @@ export class Watchdog {
 
   private fire(): boolean {
     const wdtcsr = this.cpu.data[WDTCSR]!;
-    if (this.alwaysOn()) {
+    if (this.alwaysOn() || ((wdtcsr & (1 << WDE)) !== 0 && (wdtcsr & (1 << WDIF)) !== 0)) {
       this.onSystemReset();
       return true;
     }
     if ((wdtcsr & (1 << WDIE)) !== 0) {
-      this.cpu.requestInterrupt(WDT_VECTOR);
-      // Interrupt-and-reset mode: hardware clears WDIE after the interrupt fires.
-      this.cpu.data[WDTCSR] = wdtcsr & ~(1 << WDIE);
+      this.cpu.data[WDTCSR] = wdtcsr | (1 << WDIF);
+      this.updateInterrupt();
     } else if ((wdtcsr & (1 << WDE)) !== 0) {
       this.onSystemReset();
       return true;

@@ -118,7 +118,9 @@ describe("Timer1 counting + overflow", () => {
     cpu.writeData(TCCR1B, 1 << CS10); // prescaler /1
     cpu.writeData(TIMSK1, 1 << TOIE1);
 
-    avr.step(); // sei -> Timer1 ticks once -> overflow -> interrupt serviced
+    avr.step(); // SEI queues the overflow but permits the following instruction.
+    expect(cpu.pc).toBe(1);
+    avr.step();
     expect(cpu.pc).toBe(TIMER1_OVF_VECTOR);
   });
 });
