@@ -88,10 +88,10 @@ try {
   const hex = ":0200000000E21C\n:00000001FF\n";
   writeFileSync(join(tempRoot, "firmware.hex"), hex);
   const smokeSource = `
-import * as root from "avrts";
-import { AVR } from "avrts";
-import * as browser from "avrts/browser";
-import * as advanced from "avrts/advanced";
+import * as root from "@hdevlop/avrts";
+import { AVR } from "@hdevlop/avrts";
+import * as browser from "@hdevlop/avrts/browser";
+import * as advanced from "@hdevlop/avrts/advanced";
 
 const direct = AVR(${JSON.stringify(hex)});
 const fromPath = AVR({ path: new URL("./firmware.hex", import.meta.url) });
@@ -120,8 +120,8 @@ process.stdout.write(JSON.stringify({
   }
 
   const browserEntry = `
-import { AVR } from "avrts";
-import { createAVRWorkerRuntime } from "avrts/browser";
+import { AVR } from "@hdevlop/avrts";
+import { createAVRWorkerRuntime } from "@hdevlop/avrts/browser";
 export { AVR, createAVRWorkerRuntime };
 `;
   writeFileSync(join(tempRoot, "browser-entry.ts"), browserEntry);
@@ -135,15 +135,15 @@ export { AVR, createAVRWorkerRuntime };
   if (!readFileSync(browserBundle, "utf8").includes("browser-worker.js")) {
     throw new Error("Browser consumer bundle lost the packaged worker URL");
   }
-  if (!existsSync(join(tempRoot, "node_modules", "avrts", "dist", "public", "browser-worker.js"))) {
+  if (!existsSync(join(tempRoot, "node_modules", "@hdevlop/avrts", "dist", "public", "browser-worker.js"))) {
     throw new Error("Installed package is missing its browser worker asset");
   }
-  assertWorkerUrlsResolve(join(tempRoot, "node_modules", "avrts", "dist"));
+  assertWorkerUrlsResolve(join(tempRoot, "node_modules", "@hdevlop/avrts", "dist"));
 
   const typeSmoke = `
-import { AVR, type AVRStatus } from "avrts";
-import type { AVRWorkerRuntime } from "avrts/browser";
-import { CPU } from "avrts/advanced";
+import { AVR, type AVRStatus } from "@hdevlop/avrts";
+import type { AVRWorkerRuntime } from "@hdevlop/avrts/browser";
+import { CPU } from "@hdevlop/avrts/advanced";
 
 const avr = AVR(":00000001FF");
 const status: AVRStatus = avr.status();

@@ -53,8 +53,8 @@ analog-comparator capture - avrts is the simulator for that layer.
 After the package is published:
 
 ```bash
-npm install avrts
-# or: bun add avrts
+npm install @hdevlop/avrts
+# or: bun add @hdevlop/avrts
 ```
 
 For development in this repository:
@@ -67,15 +67,15 @@ bun test
 The stable package root contains the function-first facade:
 
 ```ts
-import { AVR } from "avrts";
+import { AVR } from "@hdevlop/avrts";
 ```
 
 Browser/circuit APIs and low-level internals use explicit subpaths so they do
 not accidentally become part of the minimal root contract:
 
 ```ts
-import { createAVRWorkerRuntime } from "avrts/browser";
-import { CPU, Decoder, PORTB } from "avrts/advanced";
+import { createAVRWorkerRuntime } from "@hdevlop/avrts/browser";
+import { CPU, Decoder, PORTB } from "@hdevlop/avrts/advanced";
 ```
 
 avrts is released under the [MIT License](LICENSE).
@@ -86,7 +86,7 @@ Load a local Intel HEX file in Node/Bun. The default chip clock is 16 MHz,
 matching an Arduino Uno/Nano ATmega328P.
 
 ```ts
-import { AVR } from "avrts";
+import { AVR } from "@hdevlop/avrts";
 
 const avr = AVR("blink.hex");
 
@@ -431,7 +431,7 @@ instance.
 
 ## Browser Runtime
 
-Import worker/circuit helpers from `avrts/browser`. The packaged runtime includes
+Import worker/circuit helpers from `@hdevlop/avrts/browser`. The packaged runtime includes
 `browser-worker.js`; bundlers that do not preserve package-relative worker URLs
 can pass an explicitly constructed `Worker` through the `worker` option, as the
 demo does.
