@@ -18,6 +18,18 @@ async function openDebug(page: Page): Promise<void> {
   await expect(page.locator(".inspector-registers .reg-cell").first()).toBeVisible();
 }
 
+/**
+ * Pause only once the worker reports it is running, then wait for the worker to
+ * confirm the pause. Clicking Pause before the program starts is a no-op, and a
+ * snapshot taken then would restore into a running simulator.
+ */
+async function pauseRunningSimulator(page: Page): Promise<void> {
+  const controls = page.locator(".controls-widget");
+  await expect(controls).toHaveAttribute("data-runtime", "running");
+  await page.getByRole("button", { name: "Pause" }).click();
+  await expect(controls).toHaveAttribute("data-runtime", "paused");
+}
+
 test("loads with workspace, board pins and CPU inspector", async ({ page }) => {
   await expect(page).toHaveTitle("avrts browser simulator");
   await expect(page.locator(".workspace")).toBeVisible();
@@ -51,7 +63,7 @@ test("program changes keep the simulator running", async ({ page }) => {
 
 test("single-step advances the program counter", async ({ page }) => {
   await openDebug(page);
-  await page.getByRole("button", { name: "Pause" }).click();
+  await pauseRunningSimulator(page);
   const status = page.locator(".inspector-status");
   const before = await status.textContent();
   await page.locator(".inspector-widget .step-btn").click();
@@ -60,7 +72,7 @@ test("single-step advances the program counter", async ({ page }) => {
 
 test("snapshot then restore rewinds CPU state", async ({ page }) => {
   await openDebug(page);
-  await page.getByRole("button", { name: "Pause" }).click();
+  await pauseRunningSimulator(page);
   const status = page.locator(".inspector-status");
   await page.getByRole("button", { name: "Snapshot" }).click();
   const snapped = await status.textContent();

@@ -1301,17 +1301,27 @@ function indentLines(lines: readonly string[], spaces: number): string[] {
   return lines.map((line) => (line.length === 0 ? line : `${prefix}${line}`));
 }
 
+/**
+ * Read a generated file for `--check`, normalizing CRLF: Git with
+ * `core.autocrlf` (the Windows default, including CI runners) checks files out
+ * with CRLF, which is not drift.
+ */
+async function readGenerated(url: URL): Promise<string> {
+  const text = await Bun.file(url).text().catch(() => "");
+  return text.replace(/\r\n/g, "\n");
+}
+
 async function main(): Promise<void> {
   const check = Bun.argv.includes("--check");
   const metadataSource = generateFastCoreSource();
   const coresSource = generateCoresFile();
   if (check) {
-    const existingMetadata = await Bun.file(GENERATED_FAST_CORE_URL).text().catch(() => "");
+    const existingMetadata = await readGenerated(GENERATED_FAST_CORE_URL);
     if (existingMetadata !== metadataSource) {
       console.error("Generated fast core metadata is stale. Run `bun run generate:fast-core`.");
       process.exit(1);
     }
-    const existingCores = await Bun.file(GENERATED_CORES_URL).text().catch(() => "");
+    const existingCores = await readGenerated(GENERATED_CORES_URL);
     if (existingCores !== coresSource) {
       console.error("Generated cores module is stale. Run `bun run generate:fast-core`.");
       process.exit(1);
