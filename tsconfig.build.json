@@ -3,12 +3,20 @@
   "compilerOptions": {
     "allowJs": false,
     "declaration": true,
-    "declarationMap": true,
+    // src/ is not published, so declaration maps would point at missing files.
+    "declarationMap": false,
     "emitDeclarationOnly": true,
     "noEmit": false,
+    // Keep `@internal` generated-core/fast-block members out of the public types.
+    "stripInternal": true,
     "outDir": "./dist/types",
     "rootDir": "./src"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "test", "examples", "scripts"]
+  // Only what the package entry points reach; internal tooling (compile/,
+  // instruction-coverage, the repo barrel) is not part of the published types.
+  "files": [
+    "src/public/index.ts",
+    "src/public/browser.ts",
+    "src/public/advanced.ts"
+  ]
 }

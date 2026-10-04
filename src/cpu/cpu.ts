@@ -358,6 +358,16 @@ export class CPU {
     (this.writeHooks[addr] ??= []).push(hook);
   }
 
+  /** Remove a hook added with `installWriteHook` (no-op if absent). */
+  removeWriteHook(addr: number, hook: IoWriteHook): void {
+    const hooks = this.writeHooks[addr];
+    const index = hooks?.indexOf(hook) ?? -1;
+    if (index < 0) return;
+    hooks!.splice(index, 1);
+    // Unhooked addresses must read as `undefined` so the fast paths stay fast.
+    if (hooks!.length === 0) this.writeHooks[addr] = undefined;
+  }
+
   /** Register a peripheral hook consulted when `addr` is read (via readData/IN/LD...). */
   installReadHook(addr: number, hook: IoReadHook): void {
     (this.readHooks[addr] ??= []).push(hook);
@@ -460,8 +470,12 @@ export class CPU {
 
   // --- Stack (grows downward; SP points at the next free byte) ---
   pushByte(value: number): void {
-    this.data[this.SP] = value & 0xff;
-    this.SP = (this.SP - 1) & 0xffff;
+    const sp = this.SP;
+    // Stack writes are data writes too: watchpoints (and, on stack overflow
+    // into IO space, peripheral hooks) must observe them.
+    if (this.writeHooks[sp] === undefined) this.data[sp] = value & 0xff;
+    else this.writeData(sp, value);
+    this.SP = (sp - 1) & 0xffff;
   }
 
   popByte(): number {
@@ -529,6 +543,12 @@ export class CPU {
       // `executor.execute()` so the rich UnknownOpcodeError is still thrown.
       let handler = this.decodeCache[pc];
       if (handler === undefined) {
+        // Out-of-flash PCs are never cached, so the wrap check costs nothing on
+        // the hot path. Re-enter so the wrapped PC gets the breakpoint check.
+        if (this.wrapProgramCounter()) {
+          this.tick();
+          return;
+        }
         handler = executor.handlerFor(opcode);
         if (handler === undefined) {
           executor.execute(this, opcode); // throws UnknownOpcodeError
@@ -555,19 +575,28 @@ export class CPU {
     }
   }
 
+  /**
+   * @internal generated-core surface (see generated/cores.ts).
+   * Wrap a PC that ran off either end of flash, as the chip's 14-bit PC does
+   * (e.g. sliding through an empty boot section back to the application at 0).
+   * Returns true when the PC was out of range and has been wrapped.
+   */
+  wrapProgramCounter(): boolean {
+    const pc = this.pc;
+    const words = this.flash.length;
+    if (pc >= 0 && pc < words) return false;
+    this.pc = ((pc % words) + words) % words;
+    return true;
+  }
+
   /** Run until at least `maxCycles` additional cycles have elapsed or a debug stop fires. */
   run(maxCycles: number): void {
     this._breakpointHit = false;
     const target = this._cycles + maxCycles;
-    if (this.canUseFastRun()) {
-      runGeneratedFastCore(this, target);
-      return;
-    }
-    while (this._cycles < target) {
-      this.tick();
-      if (this._breakpointHit) return;
-      if (this._error !== null) return;
-    }
+    if (this.canUseFastRun()) runGeneratedFastCore(this, target);
+    else this.runTicksUntil(target);
+    // Observers (debugger, snapshots) only ever see an in-flash PC.
+    this.wrapProgramCounter();
   }
 
   /**

@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(import.meta.dir, "..");
 const tempRoot = mkdtempSync(join(tmpdir(), "avrts-package-smoke-"));
@@ -10,6 +11,26 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 interface CommandResult {
   stdout: string;
   stderr: string;
+}
+
+/**
+ * Every packaged `new URL("./x.js", import.meta.url)` must point at a file that
+ * exists relative to the module that contains it - wherever the bundler put
+ * that module (entry or shared chunk).
+ */
+function assertWorkerUrlsResolve(distRoot: string): void {
+  const pattern = /new URL\(\s*["'](\.\.?\/[^"']+)["']\s*,\s*import\.meta\.url\s*\)/g;
+  let found = 0;
+  for (const file of new Bun.Glob("**/*.js").scanSync({ cwd: distRoot, absolute: true })) {
+    for (const match of readFileSync(file, "utf8").matchAll(pattern)) {
+      found += 1;
+      const target = fileURLToPath(new URL(match[1]!, pathToFileURL(file)));
+      if (!existsSync(target)) {
+        throw new Error(`${file} references ${match[1]}, which resolves to missing ${target}`);
+      }
+    }
+  }
+  if (found === 0) throw new Error("Packaged runtime has no default worker URL to verify");
 }
 
 function run(command: string, args: string[], cwd: string): CommandResult {
@@ -117,6 +138,7 @@ export { AVR, createAVRWorkerRuntime };
   if (!existsSync(join(tempRoot, "node_modules", "avrts", "dist", "public", "browser-worker.js"))) {
     throw new Error("Installed package is missing its browser worker asset");
   }
+  assertWorkerUrlsResolve(join(tempRoot, "node_modules", "avrts", "dist"));
 
   const typeSmoke = `
 import { AVR, type AVRStatus } from "avrts";

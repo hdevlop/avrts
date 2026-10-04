@@ -300,6 +300,10 @@ avr.serial.write("good packet\n");
 avr.runFor(50);
 ```
 
+Snapshots are plain data and carry a format `version`, so they can be stored
+(for example in IndexedDB) and restored by later releases; `restore()` rejects
+snapshots from a newer format with a clear error.
+
 ### Debugging And Watchpoints
 
 Use breakpoints and data watchpoints for register-level tests and UI inspectors:

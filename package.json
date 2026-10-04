@@ -45,7 +45,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "clean:dist": "bun run scripts/clean-dist.ts",
-    "build:lib:js": "bun build src/public/index.ts src/public/browser.ts src/public/advanced.ts src/public/browser-worker.ts --outdir dist --root src --target browser --format esm --splitting --sourcemap=external",
+    "build:lib:js": "bun build src/public/index.ts src/public/browser.ts src/public/advanced.ts src/public/browser-worker.ts --outdir dist --root src --target browser --format esm --splitting --chunk-naming \"public/[name]-[hash].[ext]\" --sourcemap=external",
     "build:lib:types": "tsc -p tsconfig.build.json && bun run scripts/fix-declaration-imports.ts",
     "build:lib": "bun run clean:dist && bun run build:lib:js && bun run build:lib:types",
     "build": "bun run build:lib",

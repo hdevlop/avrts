@@ -217,7 +217,7 @@ describe("localComponentRuntime", () => {
   test("setInput is observable through readPin and onPinChange", () => {
     const avr = AVR();
     const runtime = localComponentRuntime(avr);
-    let observed: boolean | null = null;
+    let observed = null as boolean | null;
     runtime.onPinChange(2, (o) => (observed = o.high));
     runtime.setInput(2, true);
     expect(runtime.readPin(2)).toBe(true);

@@ -587,10 +587,12 @@ describe("Phase 10 — snapshot shape is plain data", () => {
     avr.serial.write("hi");
 
     const snap = avr.snapshot();
-    for (const [key, value] of Object.entries(snap)) {
+    const { version, ...sections } = snap;
+    expect(typeof version).toBe("number");
+    for (const [key, value] of Object.entries(sections)) {
       expect(typeof value).toBe("object");
       expect(value).not.toBeNull();
-      for (const inner of Object.values(value as Record<string, unknown>)) {
+      for (const inner of Object.values(value as object)) {
         if (typeof inner === "function") {
           throw new Error(`Snapshot field ${key} contains a function`);
         }

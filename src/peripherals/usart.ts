@@ -445,7 +445,7 @@ export class Usart0 {
     }
     if ((status & (1 << TXC0)) !== 0 && (control & (1 << TXCIE0)) !== 0) {
       this.cpu.requestInterrupt(USART_TX_VECTOR, () => {
-        this.cpu.data[UCSR0A] &= ~(1 << TXC0);
+        this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! & ~(1 << TXC0);
       });
     }
   }

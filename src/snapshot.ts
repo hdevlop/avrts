@@ -14,6 +14,9 @@
 import type { AVRChip, AVRSpeed } from "./avr";
 import type { PortName } from "./peripherals";
 
+/** Format version written by `avr.snapshot()`; `restore()` rejects newer ones. */
+export const AVR_SNAPSHOT_VERSION = 1;
+
 /** Per-port GPIO state: the injected PINx byte plus the timer-driven overrides. */
 export interface GpioSnapshot {
   pin: Record<PortName, number>;
@@ -201,10 +204,21 @@ export interface RuntimeSnapshot {
   };
   /** Bitmask of fuse bytes explicitly configured by host code; older snapshots omit it. */
   configuredFuseMask?: number;
+  /**
+   * Simulated time (ms) accumulated up to `timeBaseCycles`, so clock-prescaler
+   * changes do not rescale past time. Older snapshots omit both fields.
+   */
+  timeBaseMs?: number;
+  timeBaseCycles?: number;
 }
 
 /** Top-level snapshot returned by `avr.snapshot()`. */
 export interface AVRSnapshot {
+  /**
+   * Snapshot format version (`AVR_SNAPSHOT_VERSION` when written). Snapshots
+   * from before versioning omit it and are restored as version 0.
+   */
+  version?: number;
   cpu: CpuSnapshot;
   runtime: RuntimeSnapshot;
   gpio: GpioSnapshot;

@@ -12,3 +12,4 @@ export * from "./circuit";
 export * from "./component-bus";
 export * from "./adapters";
 export type * from "./snapshot";
+export { AVR_SNAPSHOT_VERSION } from "./snapshot";

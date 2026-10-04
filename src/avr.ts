@@ -62,7 +62,8 @@ import {
   USART_TX_VECTOR,
   WDRF,
 } from "./cpu";
-import { parseHex } from "./loader";
+import type { IoWriteHook } from "./cpu";
+import { IntelHexError, parseHex } from "./loader";
 import {
   Adc,
   AnalogComparator,
@@ -101,7 +102,7 @@ import type {
   TwiMasterHandle,
   TwiSlave,
 } from "./peripherals";
-import type { AVRSnapshot } from "./snapshot";
+import { AVR_SNAPSHOT_VERSION, type AVRSnapshot } from "./snapshot";
 
 /**
  * Cap on buffered serial chunks before they are folded into the joined cache.
@@ -111,6 +112,8 @@ import type { AVRSnapshot } from "./snapshot";
  * core `AVRRuntime` path.)
  */
 const SERIAL_CHUNK_COMPACT_THRESHOLD = 1024;
+/** Most host time one `start()` loop frame may simulate after a stall. */
+const MAX_LOOP_CATCHUP_MS = 100;
 const FUSE_BYTE_DEFAULT = 0xff;
 const LOW_FUSE_CKDIV8 = 7;
 const LOW_FUSE_SUT0 = 4;
@@ -125,13 +128,11 @@ const FUSE_CONFIG_HIGH = 1 << 1;
 const FUSE_CONFIG_EXTENDED = 1 << 2;
 const FUSE_CONFIG_LOCK_BITS = 1 << 3;
 const BOOT_SECTION_WORDS = [2048, 1024, 512, 256] as const;
+const SUPPORTED_CHIPS: readonly AVRChip[] = ["atmega328p"];
 
 /**
- * Public consumer facade. This is the API surface described in
- * docs/04-consumer-dx.md. Phase 0/1 implements construction, CPU access, reset,
- * and status; running, GPIO, and serial handles are wired up in later phases.
- *
- * Consumers use the `AVR(...)` factory — they should never need `new`.
+ * Public consumer facade: the `avrts` package root. Consumers use the
+ * `AVR(...)` factory — they should never need `new`.
  */
 
 /** Chip presets. Starts with one; future chips extend this union. */
@@ -297,7 +298,7 @@ export interface BreakpointOptions {
   pc: number;
 }
 
-/** The public facade type. Grows toward docs/04-consumer-dx.md. */
+/** The public facade type returned by `AVR(...)`. */
 export interface AVR {
   /** Low-level escape hatch for inspection/debugging. */
   readonly cpu: CPU;
@@ -383,6 +384,10 @@ class AVRRuntime implements AVR {
   private chip: AVRChip = "atmega328p";
   private baseClockHz = DEFAULT_CLOCK_HZ;
   private clockHz = DEFAULT_CLOCK_HZ;
+  // Simulated time is integrated across clock changes: `timeBaseMs` elapsed by
+  // `timeBaseCycles`, plus the cycles since then at the current clock.
+  private timeBaseMs = 0;
+  private timeBaseCycles = 0;
   private fuseBytes: AVRFuseBytes = defaultFuses();
   private configuredFuseMask = 0;
   private speed: AVRSpeed = 1;
@@ -416,8 +421,7 @@ class AVRRuntime implements AVR {
   private readonly textListeners = new Set<(text: string) => void>();
   private readonly components = new Set<AVRComponent>();
   private readonly eventListeners = new Map<AVREventName, Set<AVREventHandler>>();
-  private readonly watchpoints = new Map<number, Set<DataWatchHandler>>();
-  private readonly watchHooksInstalled = new Set<number>();
+  private readonly watchpoints = new Map<number, { handlers: Set<DataWatchHandler>; hook: IoWriteHook }>();
   private serialChunks: string[] = [];
   private serialTextCache = "";
   private serialTextDirty = false;
@@ -641,31 +645,26 @@ class AVRRuntime implements AVR {
 
   watchData(address: number, handler: DataWatchHandler): () => void {
     const addr = address & 0xffff;
-    let set = this.watchpoints.get(addr);
-    if (!set) {
-      set = new Set();
-      this.watchpoints.set(addr, set);
-    }
-    set.add(handler);
-
-    if (!this.watchHooksInstalled.has(addr)) {
-      this.watchHooksInstalled.add(addr);
-      this.cpu.installWriteHook(addr, (_cpu, writeAddr, value, oldValue) => {
-        const handlers = this.watchpoints.get(writeAddr);
-        if (!handlers || handlers.size === 0) return;
-        const event: DataWatchEvent = {
-          address: writeAddr,
-          oldValue,
-          value,
-        };
+    let watch = this.watchpoints.get(addr);
+    if (!watch) {
+      const handlers = new Set<DataWatchHandler>();
+      const hook: IoWriteHook = (_cpu, writeAddr, value, oldValue) => {
+        const event: DataWatchEvent = { address: writeAddr, oldValue, value };
         for (const h of [...handlers]) h(event);
-      });
+      };
+      watch = { handlers, hook };
+      this.watchpoints.set(addr, watch);
+      this.cpu.installWriteHook(addr, hook);
     }
+    watch.handlers.add(handler);
 
     return () => {
-      const s = this.watchpoints.get(addr);
-      if (!s) return;
-      s.delete(handler);
+      const current = this.watchpoints.get(addr);
+      if (!current || !current.handlers.delete(handler)) return;
+      if (current.handlers.size > 0) return;
+      // Last watcher gone: drop the CPU hook so the address returns to the fast path.
+      this.watchpoints.delete(addr);
+      this.cpu.removeWriteHook(addr, current.hook);
     };
   }
 
@@ -834,6 +833,7 @@ class AVRRuntime implements AVR {
     this.cpu.clearBreakpointHit();
     this.cpu.clearError();
     this.cpu.tick();
+    this.cpu.wrapProgramCounter();
     this.reportDebugState();
     return this;
   }
@@ -960,6 +960,7 @@ class AVRRuntime implements AVR {
     }
     this.cpu.reset();
     if (options.preserveCycles) this.cpu.cycles = preservedCycles;
+    else this.resetTimeBase();
     this.cpu.pc = this.resetVectorWord();
     this.cpu.data[MCUSR] = mcusrFlags & 0xff;
     this.timer0.reset();
@@ -990,7 +991,7 @@ class AVRRuntime implements AVR {
     return {
       running: this.running,
       paused: this.paused,
-      timeMs: (this.cpu.cycles / this.clockHz) * 1000,
+      timeMs: this.elapsedMs(),
       cycles: this.cpu.cycles,
       speed: this.speed,
       chip: this.chip,
@@ -1001,6 +1002,7 @@ class AVRRuntime implements AVR {
 
   snapshot(): AVRSnapshot {
     return {
+      version: AVR_SNAPSHOT_VERSION,
       cpu: this.cpu.snapshot(),
       runtime: {
         clockHz: this.clockHz,
@@ -1014,6 +1016,8 @@ class AVRRuntime implements AVR {
         timing: this.cpu.timing,
         fuses: this.fuses(),
         configuredFuseMask: this.configuredFuseMask,
+        timeBaseMs: this.timeBaseMs,
+        timeBaseCycles: this.timeBaseCycles,
       },
       gpio: this.gpioPeripheral.snapshot(),
       timer0: this.timer0.snapshot(),
@@ -1035,6 +1039,7 @@ class AVRRuntime implements AVR {
   }
 
   restore(snap: AVRSnapshot): this {
+    validateSnapshot(snap);
     const wasRunning = this.running;
 
     this.cpu.restore(snap.cpu, (vector) => this.acknowledgeForVector(vector));
@@ -1066,6 +1071,9 @@ class AVRRuntime implements AVR {
     this.pcint.restore(snap.pcint);
     this.exti.restore(snap.exti);
     this.setSerialText(snap.runtime.serialText);
+    // After the peripheral restores, which may re-apply the clock divider.
+    this.timeBaseMs = snap.runtime.timeBaseMs ?? 0;
+    this.timeBaseCycles = snap.runtime.timeBaseCycles ?? 0;
 
     // Running/paused: cancel any active loop, then restart if the snapshot says so.
     this.running = false;
@@ -1173,7 +1181,7 @@ class AVRRuntime implements AVR {
       port: info.port,
       bit: info.bit,
       cycles: this.cpu.cycles,
-      timeMs: (this.cpu.cycles / this.clockHz) * 1000,
+      timeMs: this.elapsedMs(),
     };
   }
 
@@ -1245,7 +1253,9 @@ class AVRRuntime implements AVR {
         return;
       }
       const now = typeof timestamp === "number" ? timestamp : this.nowMs();
-      const deltaMs = Math.max(0, now - this.lastHostFrameMs);
+      // Clamp so a throttled/backgrounded tab never replays minutes of missed
+      // time in one blocking frame (the worker runtime applies the same cap).
+      const deltaMs = Math.min(MAX_LOOP_CATCHUP_MS, Math.max(0, now - this.lastHostFrameMs));
       this.lastHostFrameMs = now;
       try {
         if (!this.paused) this.frame(deltaMs);
@@ -1352,8 +1362,20 @@ class AVRRuntime implements AVR {
     return 1 << Math.min(clkps, 8);
   }
 
+  private elapsedMs(): number {
+    return this.timeBaseMs + ((this.cpu.cycles - this.timeBaseCycles) / this.clockHz) * 1000;
+  }
+
+  private resetTimeBase(): void {
+    this.timeBaseMs = 0;
+    this.timeBaseCycles = 0;
+  }
+
   private applyClockDivider(divider: number): void {
     const normalized = Number.isFinite(divider) && divider > 0 ? divider : 1;
+    // Bank the time elapsed at the old clock before switching rates.
+    this.timeBaseMs = this.elapsedMs();
+    this.timeBaseCycles = this.cpu.cycles;
     this.clockHz = this.baseClockHz / normalized;
     this.watchdog.setClock(this.clockHz);
   }
@@ -1393,7 +1415,11 @@ export function AVR(input?: string | AVROptions): AVR {
 function resolveHexTextOrPath(input: string): string {
   if (looksLikeHexText(input)) return input;
   if (looksLikeHexPath(input)) return readHexFileSync(input);
-  return input;
+  const preview = input.length > 40 ? `${input.slice(0, 40)}...` : input;
+  throw new IntelHexError(
+    `AVR(string) expects Intel HEX text (records start with ':') or a path to a .hex file; ` +
+      `got "${preview}". For a path without a .hex extension or directory, use AVR({ path }).`,
+  );
 }
 
 function looksLikeHexText(input: string): boolean {
@@ -1451,6 +1477,23 @@ function runtimeReadFileSync(): ReadFileSync | null {
 function readFileSyncFrom(moduleLike: unknown): ReadFileSync | null {
   const readFileSync = (moduleLike as { readFileSync?: unknown } | undefined)?.readFileSync;
   return typeof readFileSync === "function" ? (readFileSync.bind(moduleLike) as ReadFileSync) : null;
+}
+
+/** Reject snapshots this build cannot restore before any state is touched. */
+function validateSnapshot(snap: AVRSnapshot): void {
+  if (!snap || typeof snap !== "object" || !snap.cpu || !snap.runtime) {
+    throw new Error("restore(snapshot) expects an object returned by avr.snapshot().");
+  }
+  const version = snap.version ?? 0;
+  if (!Number.isInteger(version) || version < 0 || version > AVR_SNAPSHOT_VERSION) {
+    throw new Error(
+      `restore(snapshot) got snapshot version ${String(snap.version)}; ` +
+        `this avrts build supports versions 0-${AVR_SNAPSHOT_VERSION}.`,
+    );
+  }
+  if (!SUPPORTED_CHIPS.includes(snap.runtime.chip)) {
+    throw new Error(`restore(snapshot) got a snapshot for unsupported chip "${String(snap.runtime.chip)}".`);
+  }
 }
 
 function defaultFuses(): AVRFuseBytes {

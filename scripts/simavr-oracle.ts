@@ -853,7 +853,7 @@ function comparableTimingResult(outcome: TimingOutcome, normalizations: string[]
     result[30] = 0;
     // simavr does not report UDRE0 in the RX status snapshot the same way as
     // avrts after the TX poll; RXC0/data are the signals under comparison here.
-    result[32] &= ~(1 << UDRE0);
+    result[32] = result[32]! & ~(1 << UDRE0);
     // Native simavr's UART input IRQ uses a 64-byte host FIFO and does not
     // reproduce the ATmega328P two-byte receive-buffer DOR condition. The
     // fixture still records avrts DOR behavior; native comparison starts at the
@@ -1187,8 +1187,8 @@ function spiSlaveResultComplete(result: number[]): boolean {
   return (
     result[0] === 0xa7 &&
     result[3] === SPI_SLAVE_INPUT_BYTE &&
-    (result[4] & 0x80) !== 0 &&
-    (result[5] & 0x80) === 0 &&
+    (result[4]! & 0x80) !== 0 &&
+    (result[5]! & 0x80) === 0 &&
     result[6] === 0x40 &&
     result[7] === SPI_SLAVE_INPUT_BYTE &&
     result[14] === SPI_SLAVE_READY &&

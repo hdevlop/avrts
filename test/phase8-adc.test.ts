@@ -121,7 +121,7 @@ describe("ADC", () => {
 
     const restored = AVR();
     restored.restore(source.snapshot());
-    restored.cpu.data[TIFR0] |= 1 << TOV0;
+    restored.cpu.data[TIFR0] = restored.cpu.data[TIFR0]! | (1 << TOV0);
     restored.runCycles(27);
 
     expect(restored.cpu.readData(ADCL) | (restored.cpu.readData(ADCH) << 8)).toBe(321);

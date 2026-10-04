@@ -970,6 +970,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else {
         let handler = decodeCache[pc];
         if (handler === undefined) {
+          if (cpu.wrapProgramCounter()) continue;
           handler = executor.handlerFor(opcode);
           if (handler === undefined) {
             executor.execute(cpu, opcode);
@@ -1956,6 +1957,7 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       else {
         let handler = decodeCache[pc];
         if (handler === undefined) {
+          if (cpu.wrapProgramCounter()) continue;
           handler = executor.handlerFor(opcode);
           if (handler === undefined) {
             executor.execute(cpu, opcode);

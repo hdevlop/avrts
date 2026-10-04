@@ -294,6 +294,34 @@ describe("Phase 11 — watchpoints (avr.watchData)", () => {
     expect(a).toEqual([]);
     expect(b).toEqual([0x77]);
   });
+
+  test("stack pushes are firmware writes and fire watchpoints", () => {
+    // ldi r16, 0x5a ; push r16 ; rjmp -1  (SP starts at RAMEND = 0x08ff)
+    const PUSH_R16 = 0x930f;
+    const avr = AVR(record([ldi(16, 0x5a), PUSH_R16, RJMP_SELF]) + "\n" + EOF);
+    const events: DataWatchEvent[] = [];
+    avr.watchData(0x08ff, (e) => events.push({ ...e }));
+
+    avr.runCycles(3);
+    expect(events).toEqual([{ address: 0x08ff, oldValue: 0, value: 0x5a }]);
+  });
+
+  test("removing the last watcher drops the CPU hook", () => {
+    const avr = AVR();
+    const unsubA = avr.watchData(0x0200, () => {});
+    const unsubB = avr.watchData(0x0200, () => {});
+    expect(avr.cpu.writeHooks[0x0200]).toHaveLength(1);
+
+    unsubA();
+    expect(avr.cpu.writeHooks[0x0200]).toHaveLength(1);
+    unsubB();
+    expect(avr.cpu.writeHooks[0x0200]).toBeUndefined();
+
+    // Peripheral hooks on a watched IO register survive the watcher leaving.
+    const before = avr.cpu.writeHooks[PORTB]!.length;
+    avr.watchData(PORTB, () => {})();
+    expect(avr.cpu.writeHooks[PORTB]).toHaveLength(before);
+  });
 });
 
 describe("Phase 11 — debugger integration", () => {

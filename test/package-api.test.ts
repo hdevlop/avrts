@@ -11,4 +11,5 @@ test("browser and advanced APIs require explicit subpaths", () => {
   expect(typeof browserApi.createAVRWorkerRuntime).toBe("function");
   expect(typeof advancedApi.CPU).toBe("function");
   expect(advancedApi.AVR).toBe(packageRoot.AVR);
+  expect(advancedApi.AVR_SNAPSHOT_VERSION).toBe(packageRoot.AVR().snapshot().version!);
 });

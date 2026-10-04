@@ -241,7 +241,9 @@ function createImmediateScheduler(
 }
 
 export function createAVRWorkerRuntime(options: AVRWorkerRuntimeOptions = {}): AVRWorkerRuntime {
-  const worker = options.worker ?? new Worker(new URL("./browser-worker.js", import.meta.url), { type: "module" });
+  // Resolved relative to whichever bundle module holds this line: build:lib:js
+  // emits shared chunks beside public/browser-worker.js so it always resolves.
+  const worker: WorkerLike = options.worker ?? new Worker(new URL("./browser-worker.js", import.meta.url), { type: "module" });
   const listeners = new Map<AVRWorkerEventType, Set<AVRWorkerEventHandler>>();
   let latestStatus: AVRStatus | null = null;
 
@@ -333,10 +335,11 @@ export function installAVRWorker(scope: WorkerScopeLike): void {
   let captureId = "capture";
   const MAX_EDGE_BUFFER = 8192;
 
-  const setTimer = scope.setTimeout?.bind(scope) ?? setTimeout;
-  const clearTimer = scope.clearTimeout?.bind(scope) ?? clearTimeout;
-  const setEvery = scope.setInterval?.bind(scope) ?? setInterval;
-  const clearEvery = scope.clearInterval?.bind(scope) ?? clearInterval;
+  // Typed to the scope signatures so host (Node/Bun/DOM) timer handle types never mix.
+  const setTimer: NonNullable<WorkerScopeLike["setTimeout"]> = scope.setTimeout?.bind(scope) ?? setTimeout;
+  const clearTimer: NonNullable<WorkerScopeLike["clearTimeout"]> = scope.clearTimeout?.bind(scope) ?? clearTimeout;
+  const setEvery: NonNullable<WorkerScopeLike["setInterval"]> = scope.setInterval?.bind(scope) ?? setInterval;
+  const clearEvery: NonNullable<WorkerScopeLike["clearInterval"]> = scope.clearInterval?.bind(scope) ?? clearInterval;
   const now = scope.now?.bind(scope) ?? createDefaultNow();
   const scheduleImmediate: ImmediateScheduler =
     scope.scheduleImmediate?.bind(scope) ?? createImmediateScheduler(setTimer, clearTimer);

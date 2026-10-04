@@ -1285,6 +1285,7 @@ function generateFallbackLines(variant: LadderVariant): string[] {
   return [
     "let handler = decodeCache[pc];",
     "if (handler === undefined) {",
+    "  if (this.wrapProgramCounter()) continue;",
     "  handler = executor.handlerFor(opcode);",
     "  if (handler === undefined) {",
     ...indentLines(unknownTail, 4),

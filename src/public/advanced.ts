@@ -6,3 +6,4 @@ export * from "../core";
 export * from "../loader";
 export * from "../peripherals";
 export type * from "../snapshot";
+export { AVR_SNAPSHOT_VERSION } from "../snapshot";

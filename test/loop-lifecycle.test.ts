@@ -27,11 +27,13 @@ function forceElapsed(avr: unknown): void {
   (avr as RuntimeInternals).lastHostFrameMs = -10;
 }
 
+type RafGlobals = {
+  requestAnimationFrame?: (callback: RafCallback) => number;
+  cancelAnimationFrame?: (handle: number) => void;
+};
+
 function withStubbedInterval(run: (harness: IntervalHarness) => void): void {
-  const globals = globalThis as typeof globalThis & {
-    requestAnimationFrame?: (callback: RafCallback) => number;
-    cancelAnimationFrame?: (handle: number) => void;
-  };
+  const globals = globalThis as unknown as RafGlobals;
   const originalRaf = globals.requestAnimationFrame;
   const originalCancelRaf = globals.cancelAnimationFrame;
   const originalSetInterval = globalThis.setInterval;
@@ -69,10 +71,7 @@ function withStubbedInterval(run: (harness: IntervalHarness) => void): void {
 }
 
 function withStubbedRaf(run: (harness: RafHarness) => void): void {
-  const globals = globalThis as typeof globalThis & {
-    requestAnimationFrame?: (callback: RafCallback) => number;
-    cancelAnimationFrame?: (handle: number) => void;
-  };
+  const globals = globalThis as unknown as RafGlobals;
   const originalRaf = globals.requestAnimationFrame;
   const originalCancelRaf = globals.cancelAnimationFrame;
   const callbacks: Array<{ handle: number; callback: RafCallback }> = [];
@@ -171,6 +170,21 @@ describe("AVR host loop lifecycle", () => {
 
       avr.stop();
       expect(raf.activeCount()).toBe(0);
+    });
+  });
+
+  test("a long host stall replays at most 100 ms in one frame", () => {
+    withStubbedRaf((raf) => {
+      const avr = AVR(`${record([RJMP_SELF])}\n${EOF}`).useClock(1_000_000);
+      avr.start();
+      (avr as unknown as RuntimeInternals).lastHostFrameMs = 0;
+
+      raf.tick(60_000); // tab was hidden for a minute
+      // 100 ms at 1 MHz, plus at most one instruction of overshoot.
+      expect(avr.status().cycles).toBeGreaterThanOrEqual(100_000);
+      expect(avr.status().cycles).toBeLessThan(100_000 + 4);
+
+      avr.stop();
     });
   });
 
