@@ -41,12 +41,14 @@ function captureViaTick(testCase: BenchmarkCase): RuntimeSignature {
 
 describe("generated fast core", () => {
   test("committed output is fresh", async () => {
-    const generated = await Bun.file(GENERATED_FAST_CORE_PATH).text();
+    // Windows checkouts (core.autocrlf) get CRLF; that is not drift.
+    const readLf = async (path: string | URL) => (await Bun.file(path).text()).replace(/\r\n/g, "\n");
+    const generated = await readLf(GENERATED_FAST_CORE_PATH);
     expect(generated).toBe(generateFastCoreSource());
     // The generated cores module (fast ladder, profiled ladder, and the
     // __udivmodsi4 CFG block) must match the generator verbatim — this is what
     // makes the single-sourced cores impossible to drift apart.
-    const coresSource = await Bun.file(GENERATED_CORES_PATH).text();
+    const coresSource = await readLf(GENERATED_CORES_PATH);
     expect(coresSource).toBe(generateCoresFile());
   });
 
