@@ -89,8 +89,8 @@ Timer1's TEMP byte-access protocol and OCR buffering were added in the
 the preceding review; current release checks are in [release evidence](release-0.1.1.md).
 
 See `docs/limitations.md`. Remaining deliberate approximations include
-Timer1 fast-PWM overflow phase relative to the native oracle, free-running timer
-divider phase on clock-select changes, Timer2's wake-time
+Timer1 fast-PWM overflow phase relative to the native oracle, Timer2's divider
+phase on clock-select changes and wake-time
 read/interrupt synchronization, external T0/T1 clocks, byte serial/bus wiring, floating GPIO/pull-ups, immediate
 EEPROM operations, analog settling, and full oscillator/wake-source timing. The
 regression matrix does not claim these details have passed physical hardware acceptance.
@@ -109,3 +109,7 @@ for the status/data acknowledgement sequence.
 The [register bit ownership follow-up](register-bit-ownership.md) masks reserved
 control/address bits, protects ADC results, removes fictitious PC7 levels and
 preserves reset causes until firmware clears them.
+
+The [shared prescaler follow-up](timer-prescaler-phase.md) retains Timer0/Timer1's
+free-running divider through stopped counters, CS changes and staggered starts,
+and restores the common phase with sleep and GTCCR gates.

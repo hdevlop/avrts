@@ -18,6 +18,7 @@ export * from "./watchdog";
 export * from "./power-reduction";
 export * from "./sleep-control";
 export * from "./timer-sync";
+export * from "./timer-prescaler";
 export * from "./attach";
 export * from "./pin-map";
 export type * from "./types";

@@ -9,6 +9,8 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Share Timer0/Timer1's free-running prescaler phase across clock-select changes,
+  staggered starts, counter gates and snapshots; retain GTCCR reset/hold and sleep gating.
 - Mask reserved timer, interrupt, ADC, address and GPIO bits; prevent unsupported
   UBRR0H bits from changing USART frame time and remove fictitious PC7 levels.
 - Ignore ADC data-register writes while retaining read locking; preserve reset

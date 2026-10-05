@@ -26,6 +26,8 @@ export interface GpioSnapshot {
 
 export interface Timer0Snapshot {
   prescalerRemainder: number;
+  /** Full divider phase for independently constructed Timer0 instances. */
+  prescalerPhase?: number;
   countingDown?: boolean;
   activeOcrA?: number;
   activeOcrB?: number;
@@ -34,6 +36,8 @@ export interface Timer0Snapshot {
 
 export interface Timer1Snapshot {
   count: number;
+  /** Full divider phase for independently constructed Timer1 instances. */
+  prescalerPhase?: number;
   /** Shared high-byte TEMP latch, including incomplete CPU accesses. */
   tempHigh?: number;
   /** Active comparator words; CPU data retains the pending PWM buffers. */
@@ -260,6 +264,8 @@ export interface AVRSnapshot {
   timer0: Timer0Snapshot;
   timer1: Timer1Snapshot;
   timer2: Timer2Snapshot;
+  /** Shared free-running Timer0/1 divider phase; absent in older snapshots. */
+  timerPrescaler?: { phase: number };
   usart0: Usart0Snapshot;
   adc: AdcSnapshot;
   eeprom: EepromSnapshot;

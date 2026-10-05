@@ -67,12 +67,14 @@ Not machine-checked; keep in sync with the implementation by review.
   modeled. ICR1 is unbuffered and writable only when it defines TOP; lowering
   it below the counter can miss TOP until the counter wraps.
   Timer0/Timer1 external T0/T1 clock inputs are not wired.
-- **Timer prescaler phase** uses per-timer remainders. Synchronous clock-select
-  changes reset the local phase, and stopped counters do not keep a shared
-  free-running Timer0/Timer1 divider. GTCCR reset/hold behavior is modeled, but
-  arbitrary staggered starts and divisor changes do not reproduce the shared
-  divider described in datasheet section 16.2. Timer2's asynchronous source
-  phase is retained; its divider taps are not a complete free-running model.
+- **Timer prescaler phase** models a shared free-running ten-bit Timer0/Timer1
+  divider, with CS-independent phase, GTCCR reset/hold, sleep clock gating and
+  snapshots. Counter PRR gates leave the common divider running. The exact
+  silicon clock-mux startup pipeline is not modeled; timer counts use the
+  simulator's selected tap boundaries. Older snapshots retain their saved next
+  counter edges, but cannot reconstruct a shared phase absent from the file.
+  Timer2's asynchronous source phase is retained; its divider taps are not a
+  complete free-running model.
 - **Timer0/Timer2** model normal/CTC and fixed/variable-TOP fast/phase-correct
   PWM (WGM 0/1/2/3/5/7), OCR buffers transferred at BOTTOM or TOP, both counting
   slopes, endpoint duties, OCnA toggle and force-compare strobes. Reserved WGM

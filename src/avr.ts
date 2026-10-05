@@ -91,6 +91,7 @@ import {
   Timer0,
   Timer1,
   Timer2,
+  TimerPrescaler,
   TimerSync,
   Twi,
   Usart0,
@@ -407,6 +408,7 @@ class AVRRuntime implements AVR {
   private lastHostFrameMs = 0;
   private readonly gpioPeripheral: Gpio;
   private readonly timer0: Timer0;
+  private readonly timerPrescaler: TimerPrescaler;
   private readonly timer1: Timer1;
   private readonly timer2: Timer2;
   private readonly usart0: Usart0;
@@ -445,8 +447,9 @@ class AVRRuntime implements AVR {
     this.cpu = new CPU();
     this.cpu.setExecutor(new Decoder());
     this.gpioPeripheral = new Gpio(this.cpu);
-    this.timer0 = new Timer0(this.cpu, this.gpioPeripheral);
-    this.timer1 = new Timer1(this.cpu, this.gpioPeripheral);
+    this.timerPrescaler = new TimerPrescaler(this.cpu);
+    this.timer0 = new Timer0(this.cpu, this.gpioPeripheral, this.timerPrescaler);
+    this.timer1 = new Timer1(this.cpu, this.gpioPeripheral, this.timerPrescaler);
     this.timer2 = new Timer2(this.cpu, this.gpioPeripheral);
     this.usart0 = new Usart0(this.cpu);
     this.adc = new Adc(this.cpu);
@@ -1041,6 +1044,7 @@ class AVRRuntime implements AVR {
       timer0,
       timer1,
       timer2,
+      timerPrescaler: { phase: this.timerPrescaler.phase() },
       usart0: this.usart0.snapshot(),
       adc: this.adc.snapshot(),
       eeprom: this.eepromDevice.snapshot(),
@@ -1070,6 +1074,8 @@ class AVRRuntime implements AVR {
     this.programSource = snap.runtime.programSource;
     this.cpu.timing = snap.runtime.timing;
     this.gpioPeripheral.restore(snap.gpio);
+    this.timerPrescaler.restore(snap.timerPrescaler?.phase
+      ?? Math.max(snap.timer0.prescalerRemainder, snap.timer1.prescalerRemainder));
     this.timer0.restore(snap.timer0);
     this.timer1.restore(snap.timer1);
     this.timer2.restore(snap.timer2, this.clockHz);

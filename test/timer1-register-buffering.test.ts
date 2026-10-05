@@ -247,7 +247,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       expect(avr.cpu.readData(A.TIFR1) & (bit(A.ICF1) | bit(A.TOV1))).toBe(bit(A.ICF1) | bit(A.TOV1));
     });
 
-    test("pending buffers and clock phase survive snapshot and PRR", () => {
+    test("pending buffers survive snapshot and PRR while the shared divider runs", () => {
       const avr = setup(14, 10);
       avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12) | bit(A.CS11));
       avr.runCycles(7 * 8 + 3);
@@ -259,7 +259,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         expect(counter(chip)).toBe(7);
         expect(chip.pwm(10).read().value).toBe(2);
         chip.cpu.writeData(A.PRR, 0);
-        chip.runCycles(28);
+        // The shared divider advances while Timer1's counter is gated.
+        chip.runCycles(24);
         expect(counter(chip)).toBe(10);
         expect(chip.pwm(10).read().value).toBe(2);
         chip.runCycles(1);

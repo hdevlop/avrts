@@ -14,13 +14,16 @@ The SPI status follow-up preserves unread completion/collision flags when a
 new master or slave byte starts.
 The register ownership follow-up masks reserved bits, protects ADC results and
 preserves reset causes across non-power-on resets.
+The shared prescaler follow-up retains Timer0/Timer1's free-running phase through
+clock-select changes, stopped counters, staggered starts and snapshots.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
 [the timer boundary follow-up](timer-boundary-correctness.md),
 [the Timer2 asynchronous follow-up](timer2-async-transfers.md),
 [the SPI status follow-up](spi-status-sequence.md),
-[the register ownership follow-up](register-bit-ownership.md), and
+[the register ownership follow-up](register-bit-ownership.md),
+[the shared prescaler follow-up](timer-prescaler-phase.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -32,10 +35,10 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,656 passed, zero failed; 10,725 assertions across 65 files |
+| Complete Bun source suite | 1,746 passed, zero failed; 11,067 assertions across 66 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
-| Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 82 packed files |
+| Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
 | Frozen-lockfile install | Passed; no dependency changes |
 | Native simavr result fixtures | All four passed |
 | Native simavr timing fixtures | All five passed |
@@ -81,16 +84,22 @@ measured -4.4%; both measurements are retained, with the final GPIO change and
 measurement variation documented separately. This is a three-workload source
 comparison rather than a repeat of the full historical matrix.
 
+[The shared prescaler comparison](timer-prescaler-performance.md) uses
+`44a5def` as its baseline. Focused throughput changed by +3.2% for Arduino PWM,
++0.8% for peripheral-mix and +1.5% for ISR-heavy. These source measurements
+include host/runtime variation and changed timer phase; they do not establish
+a general speed improvement.
+
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-82 files, is 281,278 bytes packed, and 1,506,958 bytes unpacked.
+83 files, is 282,980 bytes packed, and 1,518,829 bytes unpacked.
 
 SHA-256:
 
 ```text
-9617d227fa492ec42701b45ea1d3ffb99bc4a0a07acd1de450edb833dd898207
+eb1b26a771daf85adff5cd509ee3abdc83462348a1d387560cdcd255701aa3e3
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`
