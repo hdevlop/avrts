@@ -9,6 +9,8 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Preserve unread SPI completion/collision flags and pending interrupts when
+  another master or slave byte starts; retain the required acknowledgement sequence.
 - Transfer Timer2 asynchronous writes through separate temporary registers after
   two TOSC edges; expose temporary control/OCR reads and the running TCNT value.
 - Retain independent Timer2 busy deadlines and oscillator phase across clock

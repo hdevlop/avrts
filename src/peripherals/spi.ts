@@ -99,7 +99,6 @@ export class Spi {
     this.pendingMosi = byte;
     this.pendingMode = "master";
     this.cpu.data[SPDR] = byte;
-    this.cpu.data[SPSR] = this.cpu.data[SPSR]! & ~((1 << SPIF) | (1 << WCOL));
     this.updateInterrupt();
     this.scheduleTransfer(this.transferCycles());
   }
@@ -162,7 +161,6 @@ export class Spi {
     const miso = this.cpu.data[SPDR]! & 0xff;
     this.pendingMosi = byte & 0xff;
     this.pendingMode = "slave";
-    this.cpu.data[SPSR] = this.cpu.data[SPSR]! & ~((1 << SPIF) | (1 << WCOL));
     this.updateInterrupt();
     this.scheduleTransfer(this.transferCycles());
     return miso;

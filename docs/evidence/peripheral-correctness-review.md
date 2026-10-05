@@ -100,3 +100,7 @@ delay. It also fixes an I/O sampling-order mismatch in generated SBIC/SBIS.
 
 The [Timer2 asynchronous follow-up](timer2-async-transfers.md) models separate
 two-edge write transfers, temporary-register reads and independent busy flags.
+
+The [SPI status follow-up](spi-status-sequence.md) removes transfer-start clears
+of unread completion/collision flags and records a native simavr disagreement
+for the status/data acknowledgement sequence.

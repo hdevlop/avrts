@@ -10,11 +10,14 @@ Timer0/Timer2 PWM buffers and both slopes, all-timer CTC periods/ordinary flag
 delays, force-compare strobes and generated SBIC/SBIS I/O sampling order.
 The Timer2 asynchronous follow-up adds separate temporary-register transfers,
 two-edge busy deadlines, and source phase through clock changes and restore.
+The SPI status follow-up preserves unread completion/collision flags when a
+new master or slave byte starts.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
 [the timer boundary follow-up](timer-boundary-correctness.md),
-[the Timer2 asynchronous follow-up](timer2-async-transfers.md), and
+[the Timer2 asynchronous follow-up](timer2-async-transfers.md),
+[the SPI status follow-up](spi-status-sequence.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -26,7 +29,7 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,530 passed, zero failed; 9,981 assertions across 63 files |
+| Complete Bun source suite | 1,580 passed, zero failed; 10,215 assertions across 64 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 82 packed files |
@@ -38,6 +41,8 @@ are in [the correctness review](peripheral-correctness-review.md),
 
 Native comparisons retain the documented normalizations described in the
 correctness review; their results do not prove every silicon timing detail.
+The new SPI status probe separately records a native simavr disagreement and
+is not included among those passing fixtures.
 Local command output is retained under ignored `logs/` paths. GitHub CI runs the
 package checks on Ubuntu Node 22/24 and Windows Node 22, plus Chromium integration
 on Ubuntu; its result is associated with the pushed preparation commit in Actions.
@@ -70,12 +75,12 @@ variation, and the preceding ten-workload matrix was not repeated for this batch
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-82 files, is 279,632 bytes packed, and 1,499,032 bytes unpacked.
+82 files, is 279,265 bytes packed, and 1,498,746 bytes unpacked.
 
 SHA-256:
 
 ```text
-81bd65b7cc47de627ae5fb0223fb0f82b9d76c8b635637074479427c71d430b3
+427baf1180cf871ab664d9f1163939fe5932b799ae005eadb9eebc05de616f8c
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`

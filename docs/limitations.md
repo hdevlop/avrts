@@ -30,8 +30,10 @@ Not machine-checked; keep in sync with the implementation by review.
   SS-fault behavior are modeled, and `SPIF` supports the documented
   read-SPSR-then-access-SPDR clear sequence. Wire bit order (`DORD`) is exposed
   as transfer metadata but individual bits are not serialized.
-  Starting a new byte also clears stale SPIF/WCOL as an existing compatibility
-  behavior; silicon requires the status/data access or interrupt clear sequence.
+  New bytes preserve unread status flags. The local native simavr probe clears
+  SPIF on unarmed SPDR access and does not report the tested write collisions;
+  this flag behavior is not native-oracle equivalent. See the
+  [SPI status evidence](evidence/spi-status-sequence.md).
 - **TWI** models master and slave modes (TWAR/TWAMR address match, general
   call, host-side `twi.master()` handle). Multi-master arbitration loss is
   reachable only via host injection, not from real wire contention. START/STOP

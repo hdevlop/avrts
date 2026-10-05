@@ -61,7 +61,7 @@ describe("SPI slave mode", () => {
     expect((cpu.data[SPSR]! >> SPIF) & 1).toBe(0);
   });
 
-  test("SPDR write remains a fallback clear for stale SPIF/WCOL", () => {
+  test("SPDR write preserves stale SPIF/WCOL without a preceding SPSR read", () => {
     const avr = AVR();
     const cpu = avr.cpu;
 
@@ -69,8 +69,8 @@ describe("SPI slave mode", () => {
     cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     cpu.data[SPSR] = (1 << SPIF) | (1 << WCOL);
     cpu.writeData(SPDR, 0x22);
-    expect((cpu.data[SPSR]! >> SPIF) & 1).toBe(0);
-    expect((cpu.data[SPSR]! >> WCOL) & 1).toBe(0);
+    expect((cpu.data[SPSR]! >> SPIF) & 1).toBe(1);
+    expect((cpu.data[SPSR]! >> WCOL) & 1).toBe(1);
   });
 
   test("DORD is exposed as transfer metadata without serializing bit order", () => {

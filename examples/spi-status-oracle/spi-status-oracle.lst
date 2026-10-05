@@ -1,0 +1,114 @@
+
+examples/spi-status-oracle/spi-status-oracle.elf:     file format elf32-avr
+
+
+Disassembly of section .text:
+
+00000000 <__vectors>:
+   0:	0c 94 34 00 	jmp	0x68	; 0x68 <__ctors_end>
+   4:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+   8:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+   c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  10:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  14:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  18:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  1c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  20:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  24:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  28:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  2c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  30:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  34:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  38:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  3c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  40:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  44:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  48:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  4c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  50:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  54:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  58:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  5c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  60:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  64:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+
+00000068 <__ctors_end>:
+  68:	11 24       	eor	r1, r1
+  6a:	1f be       	out	0x3f, r1	; 63
+  6c:	cf ef       	ldi	r28, 0xFF	; 255
+  6e:	d8 e0       	ldi	r29, 0x08	; 8
+  70:	de bf       	out	0x3e, r29	; 62
+  72:	cd bf       	out	0x3d, r28	; 61
+  74:	0e 94 a1 00 	call	0x142	; 0x142 <main>
+  78:	0c 94 e1 00 	jmp	0x1c2	; 0x1c2 <_exit>
+
+0000007c <__bad_interrupt>:
+  7c:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
+
+00000080 <wait_byte>:
+	...
+ 140:	08 95       	ret
+
+00000142 <main>:
+ 142:	e0 e0       	ldi	r30, 0x00	; 0
+ 144:	f3 e0       	ldi	r31, 0x03	; 3
+
+00000146 <.L3>:
+ 146:	11 92       	st	Z+, r1
+ 148:	e8 30       	cpi	r30, 0x08	; 8
+ 14a:	83 e0       	ldi	r24, 0x03	; 3
+ 14c:	f8 07       	cpc	r31, r24
+ 14e:	d9 f7       	brne	.-10     	; 0x146 <.L3>
+ 150:	87 ea       	ldi	r24, 0xA7	; 167
+ 152:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <_end+0x200>
+ 156:	84 e0       	ldi	r24, 0x04	; 4
+ 158:	84 b9       	out	0x04, r24	; 4
+ 15a:	80 e5       	ldi	r24, 0x50	; 80
+ 15c:	8c bd       	out	0x2c, r24	; 44
+ 15e:	1d bc       	out	0x2d, r1	; 45
+ 160:	81 e1       	ldi	r24, 0x11	; 17
+ 162:	8e bd       	out	0x2e, r24	; 46
+ 164:	0e 94 40 00 	call	0x80	; 0x80 <wait_byte>
+ 168:	8e b5       	in	r24, 0x2e	; 46
+ 16a:	82 e2       	ldi	r24, 0x22	; 34
+ 16c:	8e bd       	out	0x2e, r24	; 46
+ 16e:	8d b5       	in	r24, 0x2d	; 45
+ 170:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <_end+0x201>
+ 174:	8e b5       	in	r24, 0x2e	; 46
+ 176:	0e 94 40 00 	call	0x80	; 0x80 <wait_byte>
+ 17a:	8e b5       	in	r24, 0x2e	; 46
+ 17c:	8d b5       	in	r24, 0x2d	; 45
+ 17e:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <_end+0x202>
+ 182:	83 e3       	ldi	r24, 0x33	; 51
+ 184:	8e bd       	out	0x2e, r24	; 46
+ 186:	84 e4       	ldi	r24, 0x44	; 68
+ 188:	8e bd       	out	0x2e, r24	; 46
+ 18a:	8d b5       	in	r24, 0x2d	; 45
+ 18c:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <_end+0x203>
+ 190:	0e 94 40 00 	call	0x80	; 0x80 <wait_byte>
+ 194:	8e b5       	in	r24, 0x2e	; 46
+ 196:	8d b5       	in	r24, 0x2d	; 45
+ 198:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <_end+0x204>
+ 19c:	85 e5       	ldi	r24, 0x55	; 85
+ 19e:	8e bd       	out	0x2e, r24	; 46
+ 1a0:	86 e6       	ldi	r24, 0x66	; 102
+ 1a2:	8e bd       	out	0x2e, r24	; 46
+ 1a4:	0e 94 40 00 	call	0x80	; 0x80 <wait_byte>
+ 1a8:	87 e7       	ldi	r24, 0x77	; 119
+ 1aa:	8e bd       	out	0x2e, r24	; 46
+ 1ac:	8d b5       	in	r24, 0x2d	; 45
+ 1ae:	80 93 05 03 	sts	0x0305, r24	; 0x800305 <_end+0x205>
+ 1b2:	8e b5       	in	r24, 0x2e	; 46
+ 1b4:	8d b5       	in	r24, 0x2d	; 45
+ 1b6:	80 93 06 03 	sts	0x0306, r24	; 0x800306 <_end+0x206>
+ 1ba:	8c e5       	ldi	r24, 0x5C	; 92
+ 1bc:	80 93 07 03 	sts	0x0307, r24	; 0x800307 <_end+0x207>
+
+000001c0 <.L4>:
+ 1c0:	ff cf       	rjmp	.-2      	; 0x1c0 <.L4>
+
+000001c2 <_exit>:
+ 1c2:	f8 94       	cli
+
+000001c4 <__stop_program>:
+ 1c4:	ff cf       	rjmp	.-2      	; 0x1c4 <__stop_program>
