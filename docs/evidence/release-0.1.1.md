@@ -1,6 +1,11 @@
-# 0.1.1 release preparation
+# 0.1.1 release evidence
 
 Date: 2026-10-05. Package: `@hdevlop/avrts@0.1.1`.
+
+Published publicly to npm on 2026-10-05. The `latest` tag resolves to `0.1.1`.
+Publication used the validated archive from source commit
+`a1b20d2aa364e8fe24847c03c0c250c3cf0f12d6`, with all four
+[CI jobs passing](https://github.com/hdevlop/avrts/actions/runs/37376549794).
 
 This patch corrects peripheral flags, interrupt requests, conversion state,
 clock gating, and snapshot transitions. It also adds Timer1's shared TEMP access
@@ -126,3 +131,32 @@ or build output changes. npm publication is a separate step and was not run as
 part of preparation. Timer1 fast-PWM overflow phase differs from native simavr;
 Timer2 asynchronous interrupt/wake pipelines, PSRASY handshake and electrical timer inputs
 remain outside this preparation, as recorded in the limitations.
+
+## Publication verification
+
+`npm publish ./hdevlop-avrts-0.1.1.tgz --ignore-scripts --access public --tag latest`
+published the exact prepared artifact without rebuilding it. The preceding
+release checks and CI validated its source; `--ignore-scripts` preserves that
+archive rather than rerunning its build during publication.
+
+The registry initially returned 404 while npm processed the new version.
+After propagation, `npm view @hdevlop/avrts@0.1.1 version dist dist-tags --json`
+confirmed version `0.1.1`, public availability and `latest: 0.1.1`.
+The registry reports 83 files and 1,529,779 unpacked bytes. Its SHA-1 is
+`603e50345f8856325fdb29dd18df60d6bd641f57`, matching the prepared archive.
+The registry and downloaded package also match the archive's SHA-512 integrity:
+
+```text
+sha512-d78lBJ5aHkQnsSuHoa+Cr6Q2uqfpZtnssJLAhujN8K2izOuowVBH69bde4jKGZH7HvxXDVnZm1pCkvPh2xWh1Q==
+```
+
+A fresh consumer fetched the published version with `npm pack`, checked that
+integrity and installed it in an isolated temporary directory. The established
+package smoke checks passed against that registry artifact: root/browser/advanced
+imports under Node 24.16.0 and Bun 1.3.14, direct HEX and file loading, TypeScript
+declarations, browser bundling, packaged worker assets and their relative URLs.
+The temporary consumer was removed after verification; output is retained in
+ignored `logs/release-0.1.1-*` files.
+
+Install the published package with `npm install @hdevlop/avrts@0.1.1`.
+See [the npm version page](https://www.npmjs.com/package/@hdevlop/avrts/v/0.1.1).
