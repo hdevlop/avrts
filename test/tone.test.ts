@@ -30,6 +30,10 @@ describe("Arduino tone() sketch", () => {
 
   test("toggles pin 8 at 1 kHz (500 us half-period)", async () => {
     const { avr, edges } = await loadTone();
+    // Exclude startup pin changes and a previously latched Timer2 flag while
+    // tone() reconfigures the Arduino timer; measure the established waveform.
+    avr.runCycles(50_000);
+    edges.length = 0;
     avr.runCycles(200_000); // ~12.5 ms: many square-wave edges.
 
     expect(edges.length).toBeGreaterThanOrEqual(10);

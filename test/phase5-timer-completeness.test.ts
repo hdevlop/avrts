@@ -116,6 +116,8 @@ describe("Phase 5 timer completeness", () => {
 
     avr.runCycles(4);
 
+    expect(readTcnt1(avr)).toBe(4);
+    avr.runCycles(1); // CTC holds TOP for one timer clock.
     expect(readTcnt1(avr)).toBe(0);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
     expect(cpu.readData(TIFR1) & (1 << OCF1B)).toBe(1 << OCF1B);
@@ -147,9 +149,11 @@ describe("Phase 5 timer completeness", () => {
     avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(2);
     expect(avr.pin(9).read()).toBe(false);
+    expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
+    avr.runCycles(1);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
 
-    avr.runCycles(3);
+    avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(5); // TOP is held for a timer clock.
     expect(avr.pin(9).read()).toBe(false);
     avr.runCycles(1);
@@ -185,19 +189,23 @@ describe("Phase 5 timer completeness", () => {
     avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(2);
     expect(avr.pin(9).read()).toBe(false);
+    expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
+    avr.runCycles(1);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
 
     cpu.writeData(TIFR1, (1 << OCF1A) | (1 << TOV1));
-    avr.runCycles(2);
+    avr.runCycles(1);
     expect(readTcnt1(avr)).toBe(4);
     expect(cpu.readData(TIFR1) & (1 << TOV1)).toBe(0);
 
     avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(2);
     expect(avr.pin(9).read()).toBe(true);
+    expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
+    avr.runCycles(1);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
 
-    avr.runCycles(2);
+    avr.runCycles(1);
     expect(readTcnt1(avr)).toBe(0);
     expect(cpu.readData(TIFR1) & (1 << TOV1)).toBe(1 << TOV1);
   });

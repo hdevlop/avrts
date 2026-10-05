@@ -150,7 +150,7 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
     expect(overflowCycle).toBe(2048);
   });
 
-  test("Timer0 compare-match A fires at exact cycle of OCR0A (prescaler /1)", () => {
+  test("Timer0 compare flag A follows equality by one /1 timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
     avr.cpu.writeData(TCCR0A, 1 << WGM01); // CTC mode
     avr.cpu.writeData(TCCR0B, 1 << CS00); // /1
@@ -166,10 +166,10 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
     });
 
     avr.runCycles(150);
-    expect(compareCycle).toBe(100);
+    expect(compareCycle).toBe(101); // OCF follows equality by one timer clock.
   });
 
-  test("Timer0 compare-match A fires at exact cycle when prescaler /8", () => {
+  test("Timer0 compare flag A follows equality by one /8 timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
     avr.cpu.writeData(TCCR0A, 1 << WGM01); // CTC mode
     avr.cpu.writeData(TCCR0B, 1 << CS01); // /8
@@ -185,12 +185,12 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
     });
 
     avr.runCycles(500);
-    expect(compareCycle).toBe(400); // 50 ticks * 8 cycles = 400
+    expect(compareCycle).toBe(408); // (50 + 1) ticks * 8 cycles.
   });
 });
 
 describe("Phase 12 — Timer1/Timer2 cycle-exact boundaries", () => {
-  test("Timer1 compare-match A fires at the exact OCR1A cycle", () => {
+  test("Timer1 compare flag A follows equality by one timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
     avr.cpu.writeData(TCCR1B, (1 << WGM12) | (1 << CS10)); // CTC, /1
     avr.cpu.writeData(OCR1AH, 0);
@@ -205,10 +205,10 @@ describe("Phase 12 — Timer1/Timer2 cycle-exact boundaries", () => {
     });
 
     avr.runCycles(80);
-    expect(compareCycle).toBe(50);
+    expect(compareCycle).toBe(51);
   });
 
-  test("Timer2 compare-match A fires at the exact OCR2A cycle", () => {
+  test("Timer2 compare flag A follows equality by one timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
     avr.cpu.writeData(TCCR2A, 1 << WGM21); // CTC
     avr.cpu.writeData(TCCR2B, 1 << CS20); // /1
@@ -223,7 +223,7 @@ describe("Phase 12 — Timer1/Timer2 cycle-exact boundaries", () => {
     });
 
     avr.runCycles(80);
-    expect(compareCycle).toBe(50);
+    expect(compareCycle).toBe(51);
   });
 });
 

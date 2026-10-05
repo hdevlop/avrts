@@ -48,10 +48,14 @@ const TIMER0_PRESCALER: Readonly<Record<number, number | undefined>> = {
 const TIMER0_FLAG_MASK = (1 << TOV0) | (1 << OCF0A) | (1 << OCF0B);
 
 /**
- * Timer0 normal-mode foundation. It models the clock prescaler, TCNT0 overflow,
- * TOV0 flag, TOIE0 enable bit, interrupt request, and TIFR0 write-1-to-clear.
+ * Timer0: normal/CTC, fixed and OCR0A-TOP fast/phase-correct PWM, double-buffered
+ * compare words, counter-write compare blocking, and delayed compare flags.
  */
 export class Timer0 implements PwmSource {
+  private countingDown = false;
+  private activeOcrA = 0;
+  private activeOcrB = 0;
+  private compareBlocked = false;
   private prescalerRemainder = 0;
   private lastCycle = 0;
   private powerReduced = false;
@@ -78,11 +82,17 @@ export class Timer0 implements PwmSource {
       tccrB: TCCR0B,
       wgm2Bit: WGM02,
       max: 255,
-      ocrValue: (channel) => this.cpu.readData(channel === "A" ? OCR0A : OCR0B),
+      topValue: () => this.modeTop(),
+      mode: () => this.pwmMode(),
+      ocrValue: (channel) => this.ocrValue(channel),
     };
   }
 
   reset(): void {
+    this.countingDown = false;
+    this.activeOcrA = 0;
+    this.activeOcrB = 0;
+    this.compareBlocked = false;
     this.powerReduced = false;
     this.prescalerHeld = false;
     this.sleepPaused = false;
@@ -126,16 +136,25 @@ export class Timer0 implements PwmSource {
   }
 
   @OnWrite(TCNT0)
-  onWriteTcnt0(): void {
-    this.prescalerRemainder = 0;
+  onWriteTcnt0(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.syncWithOldRegister(addr, oldValue);
+    this.compareBlocked = true;
     this.lastCycle = this.cpu.cycles;
     this.scheduleClockEvent();
   }
 
   @OnWrite(TCCR0B)
   onWriteTccr0b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
-    this.syncWithOldRegister(addr, oldValue);
-    this.prescalerRemainder = 0;
+    const oldMode = this.syncWithOldRegister(addr, oldValue);
+    // FOC strobes read as zero and never set flags or clear CTC.
+    const strobes = this.cpu.data[TCCR0B]! & 0xc0;
+    this.cpu.data[TCCR0B] = this.cpu.data[TCCR0B]! & 0x0f;
+    this.updateWaveformMode(oldMode);
+    if (!this.isPwmMode()) {
+      if ((strobes & 0x80) !== 0) this.handleCompareOutput("A");
+      if ((strobes & 0x40) !== 0) this.handleCompareOutput("B");
+    }
+    if (((oldValue ^ this.cpu.data[TCCR0B]!) & 7) !== 0) this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
     this.scheduleClockEvent();
@@ -152,24 +171,21 @@ export class Timer0 implements PwmSource {
 
   @OnWrite(TCCR0A)
   onWriteTccr0a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
-    this.syncWithOldRegister(addr, oldValue);
+    const oldMode = this.syncWithOldRegister(addr, oldValue);
+    this.updateWaveformMode(oldMode);
     this.scheduleClockEvent();
     this.notifyPwm("A");
     this.notifyPwm("B");
   }
 
   @OnWrite(OCR0A)
-  onWriteOcr0a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
-    this.syncWithOldRegister(addr, oldValue);
-    this.scheduleClockEvent();
-    this.notifyPwm("A");
-  }
-
   @OnWrite(OCR0B)
-  onWriteOcr0b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+  onWriteOcr0(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
     this.syncWithOldRegister(addr, oldValue);
-    this.scheduleClockEvent();
-    this.notifyPwm("B");
+    if (!this.isPwmMode()) {
+      this.updateCompareBuffers();
+      this.scheduleClockEvent();
+    }
   }
 
   @OnRead(TCNT0)
@@ -179,6 +195,7 @@ export class Timer0 implements PwmSource {
   }
 
   readPwm(channel: PwmChannel): PwmSignal {
+    this.syncToCpuCycle();
     return pwmSignal(this.cpu, this.pwmConfig, channel);
   }
 
@@ -238,17 +255,65 @@ export class Timer0 implements PwmSource {
   }
 
   private incrementCounter(): void {
-    const next = (this.cpu.data[TCNT0]! + 1) & 0xff;
-    this.cpu.data[TCNT0] = next;
-    if (next === 0) this.handleBottom();
-    this.handleCompare(next);
-    if (this.isCtcMode() && next === this.cpu.data[OCR0A]!) {
-      this.cpu.data[TCNT0] = 0;
-      this.handleBottom();
+    const counter = this.cpu.data[TCNT0]!;
+    const mode = this.waveformMode();
+    const top = this.modeTop();
+    // Equality is sampled before counting: OCF appears on the following clock.
+    const blocked = this.compareBlocked;
+    this.assertCompareFlags(counter, blocked);
+    this.compareBlocked = false;
+    if (mode === 1 || mode === 5) {
+      if (top === 0) {
+        this.cpu.data[TCNT0] = 0;
+        this.updateCompareBuffers();
+        this.handleBottom();
+        this.setOverflowFlag();
+        return;
+      }
+      const next = (counter + (this.countingDown ? -1 : 1)) & 0xff;
+      this.cpu.data[TCNT0] = next;
+      this.handleCompare(next, this.countingDown ? "down" : "up");
+      if (this.countingDown && next === 0) {
+        this.countingDown = false;
+        this.handleBottom();
+        this.setOverflowFlag();
+      } else if (!this.countingDown && next === top) {
+        this.countingDown = true;
+        this.updateCompareBuffers();
+        // A new duty after a full-duty period must start the falling slope low.
+        this.syncPwmAtTop("A");
+        this.syncPwmAtTop("B");
+      }
       return;
     }
-    if (next !== 0) return;
 
+    if ((mode === 2 || mode === 3 || mode === 7) && counter === top && (!blocked || mode === 3)) {
+      this.cpu.data[TCNT0] = 0;
+      if (mode !== 2) {
+        this.updateCompareBuffers();
+        this.handleBottom();
+        // The 8-bit fast-PWM overflow edge is TOP -> BOTTOM (timing diagrams).
+        this.setOverflowFlag();
+      } else if (counter === 0xff) this.setOverflowFlag();
+      this.handleCompare(0);
+      return;
+    }
+
+    const next = (counter + 1) & 0xff;
+    this.cpu.data[TCNT0] = next;
+    if (next === 0) {
+      if (this.isPwmMode()) this.updateCompareBuffers();
+      this.handleBottom();
+      if (mode !== 3 && mode !== 7) this.setOverflowFlag();
+    }
+    if (counter === 0 && !blocked && (mode === 3 || mode === 7)) {
+      if (this.activeOcrA === 0) this.handleCompareOutput("A");
+      if (this.activeOcrB === 0) this.handleCompareOutput("B");
+    }
+    this.handleCompare(next);
+  }
+
+  private setOverflowFlag(): void {
     this.cpu.setInterruptFlag(TIFR0, 1 << TOV0);
     this.requestOverflowIfEnabled();
   }
@@ -258,11 +323,11 @@ export class Timer0 implements PwmSource {
     while (remaining > 0) {
       const untilEvent = this.stepsUntilNextEvent();
       if (untilEvent > remaining) {
-        this.cpu.data[TCNT0] = (this.cpu.data[TCNT0]! + remaining) & 0xff;
+        this.cpu.data[TCNT0] = (this.cpu.data[TCNT0]! + (this.countingDown ? -remaining : remaining)) & 0xff;
         return;
       }
       if (untilEvent > 1) {
-        this.cpu.data[TCNT0] = (this.cpu.data[TCNT0]! + untilEvent - 1) & 0xff;
+        this.cpu.data[TCNT0] = (this.cpu.data[TCNT0]! + (this.countingDown ? 1 - untilEvent : untilEvent - 1)) & 0xff;
         remaining -= untilEvent - 1;
       }
       this.incrementCounter();
@@ -284,11 +349,13 @@ export class Timer0 implements PwmSource {
     if (steps > 0) this.advanceCounter(steps);
   }
 
-  private syncWithOldRegister(addr: number, oldValue: number): void {
+  private syncWithOldRegister(addr: number, oldValue: number): number {
     const current = this.cpu.data[addr]!;
     this.cpu.data[addr] = oldValue & 0xff;
+    const mode = this.waveformMode();
     this.syncToCpuCycle();
     this.cpu.data[addr] = current;
+    return mode;
   }
 
   private scheduleClockEvent(): void {
@@ -305,24 +372,39 @@ export class Timer0 implements PwmSource {
 
   private stepsUntilNextEvent(): number {
     const counter = this.cpu.data[TCNT0]!;
+    const mode = this.waveformMode();
+    if (this.compareBlocked || counter === this.activeOcrA || counter === this.activeOcrB) return 1;
+    if ((mode === 2 || this.isPwmMode()) && (counter === this.modeTop() || counter === 0)) return 1;
+    if ((mode === 1 || mode === 5) && this.countingDown) {
+      return Math.min(
+        counter,
+        this.activeOcrA < counter ? counter - this.activeOcrA : counter,
+        this.activeOcrB < counter ? counter - this.activeOcrB : counter,
+      );
+    }
     return Math.min(
-      stepsUntil8BitValue(counter, this.cpu.data[OCR0A]!),
-      stepsUntil8BitValue(counter, this.cpu.data[OCR0B]!),
+      stepsUntil8BitValue(counter, this.activeOcrA),
+      stepsUntil8BitValue(counter, this.activeOcrB),
+      stepsUntil8BitValue(counter, this.modeTop()),
       stepsUntil8BitValue(counter, 0),
     );
   }
 
-  private handleCompare(counter: number): void {
-    if (counter === this.cpu.data[OCR0A]!) {
-      this.handleCompareOutput("A");
+  private assertCompareFlags(counter: number, blocked: boolean): void {
+    if (blocked) return;
+    if (counter === this.activeOcrA) {
       this.cpu.setInterruptFlag(TIFR0, 1 << OCF0A);
       this.requestCompareIfEnabled("A");
     }
-    if (counter === this.cpu.data[OCR0B]!) {
-      this.handleCompareOutput("B");
+    if (counter === this.activeOcrB) {
       this.cpu.setInterruptFlag(TIFR0, 1 << OCF0B);
       this.requestCompareIfEnabled("B");
     }
+  }
+
+  private handleCompare(counter: number, direction: "up" | "down" = "up"): void {
+    if (counter === this.activeOcrA) this.handleCompareOutput("A", direction);
+    if (counter === this.activeOcrB) this.handleCompareOutput("B", direction);
   }
 
   private requestCompareIfEnabled(channel: PwmChannel): void {
@@ -362,14 +444,47 @@ export class Timer0 implements PwmSource {
     this.cachedPrescaler = this.prescaler();
   }
 
-  private isCtcMode(): boolean {
-    const low = this.cpu.data[TCCR0A]! & ((1 << WGM01) | (1 << WGM00));
-    const high = ((this.cpu.data[TCCR0B]! >> WGM02) & 1) << 2;
-    return (high | low) === 0b010;
+  private waveformMode(): number {
+    return ((this.cpu.data[TCCR0B]! >> WGM02) & 1) << 2 | (this.cpu.data[TCCR0A]! & 3);
+  }
+
+  private modeTop(): number {
+    const mode = this.waveformMode();
+    return mode === 2 || mode === 5 || mode === 7 ? this.activeOcrA : 255;
+  }
+
+  private pwmMode(): PwmSignal["mode"] {
+    const mode = this.waveformMode();
+    return mode === 1 || mode === 5 ? "phase-correct-pwm"
+      : mode === 3 || mode === 7 ? "fast-pwm" : mode === 0 ? "off" : "other";
+  }
+
+  private ocrValue(channel: PwmChannel): number {
+    return channel === "A" ? this.activeOcrA : this.activeOcrB;
+  }
+
+  private updateWaveformMode(oldMode: number): void {
+    if (oldMode === this.waveformMode()) return;
+    if (this.waveformMode() !== 1 && this.waveformMode() !== 5) this.countingDown = false;
+    if (!this.isPwmMode()) this.updateCompareBuffers();
+  }
+
+  private updateCompareBuffers(): void {
+    const nextA = this.cpu.data[OCR0A]!;
+    const nextB = this.cpu.data[OCR0B]!;
+    if (nextA === this.activeOcrA && nextB === this.activeOcrB) return;
+    this.activeOcrA = nextA;
+    this.activeOcrB = nextB;
+    this.emitPwm("A");
+    this.emitPwm("B");
   }
 
   private notifyPwm(channel: PwmChannel): void {
     this.syncOutput(channel);
+    this.emitPwm(channel);
+  }
+
+  private emitPwm(channel: PwmChannel): void {
     this.pwm.emit(channel, this.readPwm(channel));
   }
 
@@ -379,9 +494,9 @@ export class Timer0 implements PwmSource {
     this.syncPwmOutput("B", "bottom");
   }
 
-  private handleCompareOutput(channel: PwmChannel): void {
+  private handleCompareOutput(channel: PwmChannel, direction: "up" | "down" = "up"): void {
     if (this.isPwmMode()) {
-      this.syncPwmOutput(channel, "compare");
+      this.syncPwmOutput(channel, "compare", direction);
       return;
     }
 
@@ -398,20 +513,52 @@ export class Timer0 implements PwmSource {
 
   private syncOutput(channel: PwmChannel): void {
     if (this.isPwmMode()) {
-      this.syncPwmOutput(channel, "bottom");
-    } else if (this.compareMode(channel) === 0) {
-      this.driveOutput(channel, undefined);
-    }
+      const compare = this.compareMode(channel);
+      if (compare === 0 || (compare === 1 && !this.pwmToggleEnabled(channel))) this.driveOutput(channel, undefined);
+      else if (this.cpu.data[TCNT0] === 0) this.syncPwmOutput(channel, "bottom");
+    } else if (this.compareMode(channel) === 0) this.driveOutput(channel, undefined);
   }
 
-  private syncPwmOutput(channel: PwmChannel, edge: "bottom" | "compare"): void {
+  private syncPwmOutput(channel: PwmChannel, edge: "bottom" | "compare", direction: "up" | "down" = "up"): void {
     const mode = this.compareMode(channel);
+    if (mode === 1 && this.pwmToggleEnabled(channel)) {
+      if (edge === "compare") {
+        const pin = this.outputPin(channel);
+        this.driveOutput(channel, !this.gpio?.readPin(pin.port, pin.bit));
+      }
+      return;
+    }
     if (!this.isPwmMode() || mode < 2) {
       this.driveOutput(channel, undefined);
       return;
     }
-    const inverted = mode === 3;
-    this.driveOutput(channel, edge === "bottom" ? !inverted : inverted);
+    if (this.syncPwmExtremes(channel)) return;
+    if (edge === "compare" && this.pwmMode() === "fast-pwm" && this.ocrValue(channel) === 0 && this.cpu.data[TCNT0] === 0) return;
+    this.driveOutput(channel, edge === "bottom" || direction === "down" ? mode !== 3 : mode === 3);
+  }
+
+  private syncPwmAtTop(channel: PwmChannel): void {
+    if (this.compareMode(channel) < 2 || this.syncPwmExtremes(channel) || this.ocrValue(channel) > this.modeTop()) return;
+    this.driveOutput(channel, this.compareMode(channel) === 3);
+  }
+
+  private syncPwmExtremes(channel: PwmChannel): boolean {
+    const mode = this.compareMode(channel);
+    if (mode < 2) return false;
+    if (this.ocrValue(channel) === this.modeTop()) {
+      this.driveOutput(channel, mode !== 3);
+      return true;
+    }
+    if (this.ocrValue(channel) === 0 && this.pwmMode() === "phase-correct-pwm") {
+      this.driveOutput(channel, mode === 3);
+      return true;
+    }
+    return false;
+  }
+
+  private pwmToggleEnabled(channel: PwmChannel): boolean {
+    const mode = this.waveformMode();
+    return channel === "A" && (mode === 5 || mode === 7);
   }
 
   private compareMode(channel: PwmChannel): number {
@@ -422,10 +569,8 @@ export class Timer0 implements PwmSource {
   }
 
   private isPwmMode(): boolean {
-    const low = this.cpu.data[TCCR0A]! & ((1 << WGM01) | (1 << WGM00));
-    const high = ((this.cpu.data[TCCR0B]! >> WGM02) & 1) << 2;
-    const mode = high | low;
-    return mode === 0b001 || mode === 0b011;
+    const mode = this.waveformMode();
+    return mode === 1 || mode === 3 || mode === 5 || mode === 7;
   }
 
   private outputPin(channel: PwmChannel): { port: PortName; bit: number } {
@@ -441,10 +586,21 @@ export class Timer0 implements PwmSource {
 
   snapshot(): Timer0Snapshot {
     this.syncToCpuCycle();
-    return { prescalerRemainder: this.prescalerRemainder };
+    return {
+      countingDown: this.countingDown,
+      activeOcrA: this.activeOcrA,
+      activeOcrB: this.activeOcrB,
+      compareBlocked: this.compareBlocked,
+      prescalerRemainder: this.prescalerRemainder,
+    };
   }
 
   restore(snap: Timer0Snapshot): void {
+    this.countingDown = snap.countingDown ?? false;
+    this.activeOcrA = (snap.activeOcrA ?? this.cpu.data[OCR0A]!) & 0xff;
+    this.activeOcrB = (snap.activeOcrB ?? this.cpu.data[OCR0B]!) & 0xff;
+    this.compareBlocked = snap.compareBlocked ?? false;
+    this.prescalerHeld = false;
     this.powerReduced = false;
     this.sleepPaused = false;
     this.prescalerRemainder = snap.prescalerRemainder | 0;

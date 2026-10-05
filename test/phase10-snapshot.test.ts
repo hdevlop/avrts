@@ -222,7 +222,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
         avr.cpu.writeData(OCR0A, 1);
         avr.cpu.writeData(TIMSK0, 1 << OCIE0A);
         avr.cpu.writeData(TCCR0B, 1 << CS00);
-        avr.runCycles(1);
+        avr.runCycles(2);
       },
       TIMER0_COMPA_VECTOR,
       0x35,

@@ -65,14 +65,25 @@ Not machine-checked; keep in sync with the implementation by review.
   modeled. ICR1 is unbuffered and writable only when it defines TOP; lowering
   it below the counter can miss TOP until the counter wraps.
   Timer0/Timer1 external T0/T1 clock inputs are not wired.
-- **Timer boundary timing** still simplifies the CTC clear and compare-flag
-  pipeline. CTC clears when the modeled counter reaches TOP instead of holding
-  TOP for the following timer clock; Timer0/Timer2 OCR writes remain immediate
-  rather than using PWM double buffers. Timer1 PWM periods and OCR buffering
-  have separate boundary regressions.
+- **Timer0/Timer2** model normal/CTC and fixed/variable-TOP fast/phase-correct
+  PWM (WGM 0/1/2/3/5/7), OCR buffers transferred at BOTTOM or TOP, both counting
+  slopes, endpoint duties, OCnA toggle and force-compare strobes. Reserved WGM
+  4/6 free-run as an approximation. CTC holds TOP for one timer clock on all
+  three timers; ordinary OCF flags sample equality on the following clock.
+  TCNT-written compare TOP and down-counting BOTTOM miss their boundary until
+  the counter wraps; compare values above TOP do not generate compare pin edges.
+  Timer1 OCR1A-as-TOP PWM has a dedicated TOP flag. PWM facade duty remains a
+  compare-value/TOP description, not a measurement of individual pin pulses.
+  Timer1 fast-PWM TOV1 remains at TOP per the mode description; the local
+  simavr overflow probe observes it at BOTTOM, so this phase is not native-oracle
+  equivalent and has not been checked against physical hardware.
 - **Timer2 asynchronous mode** models `ASSR.AS2` with a simulated 32.768 kHz
   TOSC source and `TCN2UB`/`OCR2xUB`/`TCR2xUB` update-busy flags. External
-  TOSC/EXCLK pin wiring and crystal drift are not modeled.
+  TOSC/EXCLK pin wiring and crystal drift are not modeled. ASSR register writes
+  still apply to the CPU-visible state immediately while busy flags time the
+  synchronization window; the separate TOSC-domain register latch and writes
+  attempted during update-busy are approximated. PWM buffering is modeled
+  independently of that clock-domain synchronization.
 - **OSCCAL, DIDR0, and DIDR1** are plain storage. OSCCAL has no oscillator effect,
   and DIDR bits do not alter the digital/analog pin model.
 - **Fuse / boot tier** stores fuse bytes and lock bits; applies CKDIV8,

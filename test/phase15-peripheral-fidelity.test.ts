@@ -89,7 +89,7 @@ describe("Phase 15 peripheral fidelity", () => {
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE));
     cpu.writeData(TCCR0B, 1 << CS00);
 
-    avr.runCycles(3);
+    avr.runCycles(4);
     expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(1 << OCF0A);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(0);
 

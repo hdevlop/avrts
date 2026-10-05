@@ -1,0 +1,20 @@
+{
+  "frequencyHz": 16000000,
+  "timerPrescaler": 1024,
+  "order": [
+    "marker",
+    "Timer0 fast PWM TCNT at TOV",
+    "Timer2 fast PWM TCNT at TOV",
+    "Timer1 ICR TOP fast PWM TCNT at TOV",
+    "marker"
+  ],
+  "native": {
+    "cycles": 528449,
+    "result": [167, 0, 0, 0, 92]
+  },
+  "avrts": {
+    "cycles": 527524,
+    "result": [167, 0, 0, 3, 92]
+  },
+  "note": "Timer1 phase disagreement is retained; no silicon acceptance claim"
+}

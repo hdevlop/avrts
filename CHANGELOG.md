@@ -9,6 +9,16 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Buffer Timer0/Timer2 OCR writes at TOP/BOTTOM, count both phase-correct slopes,
+  and support OCRnA-TOP PWM modes, endpoint duties, and OCnA toggle outputs.
+- Hold CTC TOP for one clock on all timers and raise ordinary compare flags on
+  the following timer clock; preserve counter-write blocking and prescaler phase.
+- Respect counter-write TOP/BOTTOM misses and avoid artificial phase-correct
+  output edges when a compare value exceeds TOP.
+- Model Timer0/Timer2 force-compare strobes without interrupt or CTC side effects,
+  and restore active PWM values, direction and pending compare blocking.
+- Sample generated SBIC/SBIS I/O before advancing their first cycle, matching
+  the interpreter when a peripheral flag changes during that instruction.
 - Model Timer1's shared TEMP byte, atomic low-byte commits, latched counter/capture
   reads, and the OCR read exception; preserve incomplete accesses through snapshots.
 - Buffer Timer1 OCR updates at each PWM mode's TOP/BOTTOM boundary, retain active

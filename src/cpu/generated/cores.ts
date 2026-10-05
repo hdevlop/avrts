@@ -249,9 +249,10 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1000) {
+        const skip = data[regD5(opcode)]! === data[regR5(opcode)]!;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (data[regD5(opcode)]! === data[regR5(opcode)]!) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -551,9 +552,10 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.cycles += 1;
       }
       else if ((opcode & 0xff00) === 0x9900) {
+        const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -566,9 +568,10 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         }
       }
       else if ((opcode & 0xff00) === 0x9b00) {
+        const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -791,9 +794,10 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         continue;
       }
       else if ((opcode & 0xfe08) === 0xfc00) {
+        const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -806,9 +810,10 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         }
       }
       else if ((opcode & 0xfe08) === 0xfe00) {
+        const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -1230,9 +1235,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1000) {
+        const skip = data[regD5(opcode)]! === data[regR5(opcode)]!;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (data[regD5(opcode)]! === data[regR5(opcode)]!) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -1538,9 +1544,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.cycles += 1;
       }
       else if ((opcode & 0xff00) === 0x9900) {
+        const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -1553,9 +1560,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         }
       }
       else if ((opcode & 0xff00) === 0x9b00) {
+        const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -1780,9 +1788,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         continue;
       }
       else if ((opcode & 0xfe08) === 0xfc00) {
+        const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||
@@ -1795,9 +1804,10 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         }
       }
       else if ((opcode & 0xfe08) === 0xfe00) {
+        const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
         cpu.cycles += 1;
-        if (((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1) {
+        if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
             (nextOpcode & 0xfe0e) === 0x940c ||

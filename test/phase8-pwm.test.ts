@@ -60,6 +60,8 @@ describe("Timer0 PWM", () => {
 
     cpu.writeData(TCCR0A, (1 << WGM01) | (1 << WGM00) | (1 << COM0B1));
     cpu.writeData(OCR0B, 128);
+    cpu.writeData(TCCR0B, 1 << CS00);
+    timer0.tick(256); // CPU write queues the fast-PWM buffer until BOTTOM.
 
     const signal = timer0.readPwm("B");
     expect(signal.enabled).toBe(true);
@@ -76,6 +78,8 @@ describe("Timer0 PWM", () => {
 
     cpu.writeData(TCCR0A, (1 << WGM01) | (1 << WGM00) | (1 << COM0A1) | (1 << COM0A0));
     cpu.writeData(OCR0A, 64);
+    cpu.writeData(TCCR0B, 1 << CS00);
+    timer0.tick(256);
 
     const signal = timer0.readPwm("A");
     expect(signal.enabled).toBe(true);
@@ -93,6 +97,9 @@ describe("Timer0 PWM", () => {
 
     avr.cpu.writeData(TCCR0A, (1 << WGM01) | (1 << WGM00) | (1 << COM0B1));
     avr.cpu.writeData(OCR0B, 191);
+    expect(avr.pwm(5).read().value).toBe(0);
+    avr.cpu.writeData(TCCR0B, 1 << CS00);
+    avr.runCycles(256);
 
     const signal = avr.pwm(5).read();
     expect(signal.enabled).toBe(true);
@@ -136,10 +143,10 @@ describe("Timer0 PWM", () => {
     expect(avr.pin(11).read()).toBe(false);
 
     avr.runCycles(2);
-    expect(avr.cpu.readData(TCNT2)).toBe(0);
+    expect(avr.cpu.readData(TCNT2)).toBe(2);
     expect(avr.pin(11).read()).toBe(true);
 
-    avr.runCycles(2);
+    avr.runCycles(3); // TOP+1 CTC period.
     expect(avr.pin(11).read()).toBe(false);
     expect(seen).toEqual([true, false]);
   });
@@ -174,12 +181,12 @@ describe("Timer0 PWM", () => {
     for (const pin of pins) expect(avr.pin(pin).read()).toBe(false);
 
     avr.runCycles(2);
-    expect(avr.cpu.readData(TCNT0)).toBe(0);
-    expect(avr.cpu.readData(TCNT1L)).toBe(0);
-    expect(avr.cpu.readData(TCNT2)).toBe(0);
+    expect(avr.cpu.readData(TCNT0)).toBe(2);
+    expect(avr.cpu.readData(TCNT1L)).toBe(2);
+    expect(avr.cpu.readData(TCNT2)).toBe(2);
     for (const pin of pins) expect(avr.pin(pin).read()).toBe(true);
 
-    avr.runCycles(2);
+    avr.runCycles(3);
     for (const pin of pins) expect(avr.pin(pin).read()).toBe(false);
   });
 
@@ -218,9 +225,9 @@ describe("Timer0 PWM", () => {
     avr.runCycles(40);
 
     expect(edges.length).toBeGreaterThanOrEqual(8);
-    expect(edges.slice(0, 4).map((edge) => edge.high)).toEqual([true, false, true, false]);
+    expect(edges.slice(1).every((edge, index) => edge.high !== edges[index]!.high)).toBe(true);
     const gaps = edges.slice(1).map((edge, index) => edge.cycles - edges[index]!.cycles);
-    expect(gaps.every((gap) => gap === 4)).toBe(true);
+    expect(gaps.every((gap) => gap === 5)).toBe(true); // OCR2A = 4 gives TOP+1.
   });
 
   test("facade rejects pins that have no PWM output", () => {

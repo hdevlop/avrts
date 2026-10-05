@@ -150,6 +150,11 @@ describe("timer compare-match interrupts", () => {
 
     avr.runCycles(3);
 
+    expect(cpu.readData(TCNT0)).toBe(3);
+    expect(cpu.readData(TCNT1L)).toBe(3);
+    expect(cpu.readData(TCNT2)).toBe(3);
+    expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(0);
+    avr.runCycles(1);
     expect(cpu.readData(TCNT0)).toBe(0);
     expect(cpu.readData(TCNT1L)).toBe(0);
     expect(cpu.readData(TCNT2)).toBe(0);
@@ -226,6 +231,12 @@ describe("timer bulk advance", () => {
     expect(cpu.readData(TCNT0)).toBe(15);
     expect(cpu.readData(TCNT1L)).toBe(15);
     expect(cpu.readData(TCNT2)).toBe(15);
+    expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(0);
+    expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
+    expect(cpu.readData(TIFR2) & (1 << OCF2A)).toBe(0);
+    timer0.tick(1);
+    timer1.tick(1);
+    timer2.tick(1);
     expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(1 << OCF0A);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
     expect(cpu.readData(TIFR2) & (1 << OCF2A)).toBe(1 << OCF2A);
@@ -256,9 +267,9 @@ describe("timer bulk advance", () => {
     timer1.tick(10);
     timer2.tick(10);
 
-    expect(cpu.readData(TCNT0)).toBe(1);
-    expect(cpu.readData(TCNT1L)).toBe(1);
-    expect(cpu.readData(TCNT2)).toBe(1);
+    expect(cpu.readData(TCNT0)).toBe(2);
+    expect(cpu.readData(TCNT1L)).toBe(2);
+    expect(cpu.readData(TCNT2)).toBe(2);
     expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(1 << OCF0A);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
     expect(cpu.readData(TIFR2) & (1 << OCF2A)).toBe(1 << OCF2A);

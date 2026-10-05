@@ -485,6 +485,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.cpu.writeData(A.TCCR0B, 1);
       avr.cpu.sreg.I = true;
       avr.step();
+      expect(avr.cpu.pc).toBe(1);
+      avr.step();
       expect(avr.cpu.pc).toBe(A.TIMER0_COMPA_VECTOR);
       expect(avr.cpu.readData(A.TIFR0) & bit(A.OCF0A)).toBe(0);
       expect(avr.cpu.readData(A.ADCSRA) & bit(A.ADSC)).toBe(bit(A.ADSC));

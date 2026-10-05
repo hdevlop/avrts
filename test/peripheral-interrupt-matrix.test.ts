@@ -48,7 +48,7 @@ for (const timer of [0, 1, 2] as const) {
           avr.cpu.writeData(ocr, 1);
         }
         avr.cpu.writeData(control, 1);
-        avr.runCycles(1);
+        avr.runCycles(kind === "overflow" ? 1 : 2);
         avr.cpu.writeData(control, 0);
       },
       enable(avr, enabled) { avr.cpu.writeData(maskReg, enabled ? bit(flag) : 0); },

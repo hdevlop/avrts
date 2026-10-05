@@ -121,6 +121,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         expect(chip.cpu.readData(A.TIFR1) & (bit(A.OCF1A) | bit(A.OCF1B))).toBe(0);
         writeWord(chip, A.OCR1AL, 4);
         chip.runCycles(8);
+        expect(chip.cpu.readData(A.TIFR1) & bit(A.OCF1A)).toBe(0);
+        chip.runCycles(8); // flag follows the equality by one timer clock.
         expect(chip.cpu.readData(A.TIFR1) & bit(A.OCF1A)).toBe(bit(A.OCF1A));
       }
     });
@@ -131,8 +133,10 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.cpu.writeData(A.TCCR1B, bit(A.CS10));
       avr.cpu.writeData(A.TCNT1H, 0x12);
       avr.runCycles(1);
-      expect(avr.cpu.readData(A.TIFR1) & bit(A.OCF1A)).toBe(bit(A.OCF1A));
+      expect(avr.cpu.readData(A.TIFR1) & bit(A.OCF1A)).toBe(0);
       expect(counter(avr)).toBe(1);
+      avr.runCycles(1);
+      expect(avr.cpu.readData(A.TIFR1) & bit(A.OCF1A)).toBe(bit(A.OCF1A));
     });
   });
 

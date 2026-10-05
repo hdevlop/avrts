@@ -26,6 +26,10 @@ export interface GpioSnapshot {
 
 export interface Timer0Snapshot {
   prescalerRemainder: number;
+  countingDown?: boolean;
+  activeOcrA?: number;
+  activeOcrB?: number;
+  compareBlocked?: boolean;
 }
 
 export interface Timer1Snapshot {
@@ -48,6 +52,10 @@ export interface Timer1Snapshot {
 
 export interface Timer2Snapshot {
   prescalerRemainder: number;
+  countingDown?: boolean;
+  activeOcrA?: number;
+  activeOcrB?: number;
+  compareBlocked?: boolean;
   /** ASSR update-busy bits (TCN2UB..TCR2BUB) still latching. */
   asyncBusyMask?: number;
   /** Remaining cycles until the pending async register updates latch. */

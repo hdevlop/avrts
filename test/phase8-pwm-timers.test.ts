@@ -81,6 +81,9 @@ describe("Timer2 PWM (pins 11, 3)", () => {
     cpu.writeData(TCCR2A, (1 << WGM20) | (1 << COM2A1) | (1 << COM2B1));
     cpu.writeData(OCR2A, 51); // analogWrite(11, 51)
     cpu.writeData(OCR2B, 128); // analogWrite(3, 128)
+    expect(avr.pwm(11).read().value).toBe(0);
+    cpu.writeData(TCCR2B, 1 << CS20);
+    avr.runCycles(255); // phase-correct buffers transfer at TOP.
 
     expect(avr.pwm(11).read().channel).toBe("A");
     expect(avr.pwm(11).read().duty).toBeCloseTo(51 / 255);

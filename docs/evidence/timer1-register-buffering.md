@@ -60,7 +60,8 @@ regressions.
 
 ## Remaining boundaries
 
-`docs/limitations.md` retains external T0/T1 wiring, reserved WGM 13, CTC clear
-timing and the compare-flag pipeline as approximations. Timer0/Timer2 PWM double
-buffering is separate work. This batch does not claim complete timer silicon
-fidelity.
+The [subsequent timer boundary batch](timer-boundary-correctness.md) adds CTC
+TOP+1 periods, delayed ordinary compare flags and Timer0/Timer2 PWM buffers.
+`docs/limitations.md` retains external T0/T1 wiring, reserved WGM modes, the
+Timer2 asynchronous register latch, and Timer1 fast-PWM overflow phase relative
+to simavr as boundaries. This batch does not claim complete timer silicon fidelity.

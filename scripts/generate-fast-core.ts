@@ -287,9 +287,10 @@ function skipArm(name: string, guard: string, condition: string): GeneratedArm {
     name,
     guard,
     body: [
+      `const skip = ${condition};`,
       "this.pc += 1;",
       "this.cycles += 1;",
-      `if (${condition}) {`,
+      "if (skip) {",
       "  const nextOpcode = flash[pc + 1]!;",
       "  const twoWord =",
       "    (nextOpcode & 0xfe0e) === 0x940c ||",

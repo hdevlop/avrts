@@ -220,7 +220,9 @@ export class Timer1 implements PwmSource {
 
   @OnWrite(TIFR1)
   onWriteTifr1(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.cpu.data[TIFR1] = oldValue & ~(value & TIMER1_FLAG_MASK);
+    this.cpu.data[TIFR1] = oldValue;
+    this.syncToCpuCycle();
+    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & ~(value & TIMER1_FLAG_MASK);
     this.onWriteTimsk1();
   }
 
@@ -228,7 +230,7 @@ export class Timer1 implements PwmSource {
   onWriteTccr1b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
     const oldMode = this.syncWithOldRegister(addr, oldValue);
     this.updateWaveformMode(oldMode);
-    this.prescalerRemainder = 0;
+    if (((oldValue ^ this.cpu.data[TCCR1B]!) & 7) !== 0) this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
     this.scheduleClockEvent();
@@ -247,10 +249,12 @@ export class Timer1 implements PwmSource {
 
   @OnWrite(TIMSK1)
   onWriteTimsk1(): void {
+    this.syncToCpuCycle();
     this.requestCompareIfEnabled("A");
     this.requestCompareIfEnabled("B");
     this.requestOverflowIfEnabled();
     this.requestCaptureIfEnabled();
+    this.scheduleClockEvent();
   }
 
   @OnWrite(TCCR1C)
@@ -433,23 +437,28 @@ export class Timer1 implements PwmSource {
     const mode = this.waveformMode();
     const blocked = this.compareBlocked;
     this.compareBlocked = false;
+    this.assertCompareFlags(this.count, blocked);
     if (this.isDualSlopePwmMode(mode)) {
-      this.incrementDualSlope(this.modeTop(mode), mode, blocked);
+      this.incrementDualSlope(this.modeTop(mode), mode);
       return;
     }
 
     const top = this.singleSlopeTop(mode);
     // Fast PWM holds TOP for one clock, giving a TOP+1 period. Its buffered
     // compare values transfer when the following clock reaches BOTTOM.
-    if (this.isFastPwmMode(mode) && this.count === top) {
+    if (top !== undefined && this.count === top && (!blocked || mode === 5 || mode === 6 || mode === 7)) {
       this.count = 0;
-      this.updateCompareBuffers();
-      this.handleBottom();
-      this.handleCompare(0, "up", blocked);
-      if (top === 0) {
-        this.setOverflowFlag();
-        this.setTopFlag(mode);
+      if (this.isFastPwmMode(mode)) {
+        this.updateCompareBuffers();
+        this.handleBottom();
+        if (top === 0) {
+          this.setOverflowFlag();
+          this.setTopFlag(mode);
+        }
       }
+      if (mode === 12 && top === 0) this.setTopFlag(mode);
+      if (!this.isFastPwmMode(mode) && top === 0xffff) this.setOverflowFlag();
+      this.handleCompare(0, "up");
       return;
     }
 
@@ -463,15 +472,13 @@ export class Timer1 implements PwmSource {
       if (this.activeOcrA === 0) this.handleCompareOutput("A");
       if (this.activeOcrB === 0) this.handleCompareOutput("B");
     }
-    this.handleCompare(this.count, "up", blocked);
+    this.handleCompare(this.count, "up");
 
     if (top !== undefined && this.count === top) {
       this.setTopFlag(mode);
       // Fast PWM sets TOV1 at TOP; CTC (modes 4/12) clears without overflow.
       if (this.isFastPwmMode(mode)) {
         this.setOverflowFlag();
-      } else {
-        this.count = 0;
       }
       return;
     }
@@ -480,7 +487,7 @@ export class Timer1 implements PwmSource {
     this.setOverflowFlag();
   }
 
-  private incrementDualSlope(top: number, mode: number, blocked: boolean): void {
+  private incrementDualSlope(top: number, mode: number): void {
     if (top === 0) {
       this.count = 0;
       this.updateCompareBuffers();
@@ -490,8 +497,8 @@ export class Timer1 implements PwmSource {
     }
 
     if (this.countingDown) {
-      this.count = Math.max(0, this.count - 1);
-      this.handleCompare(this.count, "down", blocked);
+      this.count = (this.count - 1) & 0xffff;
+      this.handleCompare(this.count, "down");
       if (this.count === 0) {
         this.countingDown = false;
         if (mode === 8 || mode === 9) this.updateCompareBuffers();
@@ -502,15 +509,25 @@ export class Timer1 implements PwmSource {
     }
 
     this.count = (this.count + 1) & 0xffff;
-    this.handleCompare(this.count, "up", blocked);
+    this.handleCompare(this.count, "up");
     if (this.count === top) {
       this.countingDown = true;
       this.setTopFlag(mode);
-      if (mode !== 8 && mode !== 9) this.updateCompareBuffers();
+      if (mode !== 8 && mode !== 9) {
+        this.updateCompareBuffers();
+        this.syncPwmAtTop("A");
+        this.syncPwmAtTop("B");
+      }
     }
   }
 
   private setTopFlag(mode: number): void {
+    // OCR1A-as-TOP PWM has a dedicated TOP flag, unlike an ordinary compare.
+    if (mode === 9 || mode === 11 || mode === 15) {
+      this.cpu.setInterruptFlag(TIFR1, 1 << OCF1A);
+      this.requestCompareIfEnabled("A");
+      return;
+    }
     if (mode !== 8 && mode !== 10 && mode !== 12 && mode !== 14) return;
     this.cpu.setInterruptFlag(TIFR1, 1 << ICF1);
     this.requestCaptureIfEnabled();
@@ -575,8 +592,23 @@ export class Timer1 implements PwmSource {
 
   private stepsUntilNextEvent(): number {
     const mode = this.waveformMode();
+    // Disconnected CTC outputs need no event merely for reaching equality:
+    // the A flag and counter clear occur together on the following clock.
+    // A latched/masked B flag can also wait until a flag/mask write re-arms it.
+    if (mode === 4 && !this.compareBlocked &&
+        (this.cpu.data[TCCR1A]! & 0xf0) === 0) {
+      const top = this.modeTop(mode);
+      const needsB = (this.cpu.data[TIFR1]! & (1 << OCF1B)) === 0 ||
+        (this.cpu.data[TIMSK1]! & (1 << OCIE1B)) !== 0;
+      return Math.min(
+        this.count === top ? 1 : stepsUntil16BitValue(this.count, top) + 1,
+        needsB ? stepsUntil16BitValue(this.count, (this.activeOcrB + 1) & 0xffff) : Infinity,
+        stepsUntil16BitValue(this.count, 0),
+      );
+    }
     if (this.compareBlocked || this.isDualSlopePwmMode(mode)) return 1;
-    if (this.isFastPwmMode(mode) && (this.count === this.modeTop(mode) || this.count === 0)) return 1;
+    if (this.count === this.activeOcrA || this.count === this.activeOcrB) return 1;
+    if (this.count === this.singleSlopeTop(mode) || (this.isFastPwmMode(mode) && this.count === 0)) return 1;
 
     return Math.min(
       stepsUntil16BitValue(this.count, this.ocrValue("A")),
@@ -586,18 +618,22 @@ export class Timer1 implements PwmSource {
     );
   }
 
-  private handleCompare(counter: number, direction: "up" | "down", blocked = false): void {
+  private assertCompareFlags(counter: number, blocked: boolean): void {
     if (blocked) return;
-    if (counter === this.ocrValue("A")) {
-      this.handleCompareOutput("A", direction);
+    const mode = this.waveformMode();
+    if (counter === this.ocrValue("A") && mode !== 9 && mode !== 11 && mode !== 15) {
       this.cpu.setInterruptFlag(TIFR1, 1 << OCF1A);
       this.requestCompareIfEnabled("A");
     }
     if (counter === this.ocrValue("B")) {
-      this.handleCompareOutput("B", direction);
       this.cpu.setInterruptFlag(TIFR1, 1 << OCF1B);
       this.requestCompareIfEnabled("B");
     }
+  }
+
+  private handleCompare(counter: number, direction: "up" | "down"): void {
+    if (counter === this.activeOcrA) this.handleCompareOutput("A", direction);
+    if (counter === this.activeOcrB) this.handleCompareOutput("B", direction);
   }
 
   private requestCompareIfEnabled(channel: PwmChannel): void {
@@ -648,8 +684,8 @@ export class Timer1 implements PwmSource {
 
   private updateWaveformMode(oldMode: number): void {
     if (oldMode === this.waveformMode()) return;
+    if (!this.isDualSlopePwmMode(this.waveformMode())) this.countingDown = false;
     if (!this.isPwmMode()) {
-      this.countingDown = false;
       this.updateCompareBuffers();
     }
   }
@@ -833,6 +869,11 @@ export class Timer1 implements PwmSource {
       return true;
     }
     return false;
+  }
+
+  private syncPwmAtTop(channel: PwmChannel): void {
+    if (this.compareMode(channel) < 2 || this.syncPwmExtremes(channel) || this.ocrValue(channel) > this.modeTop(this.waveformMode())) return;
+    this.driveOutput(channel, this.compareMode(channel) === 3);
   }
 
   private compareMode(channel: PwmChannel): number {

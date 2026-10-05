@@ -108,7 +108,7 @@ describe("withdrawn timer interrupts", () => {
         avr.cpu.writeData(source.mask, 1 << source.bit);
         avr.cpu.writeData(source.control, 1);
         source.prepare(avr);
-        avr.runCycles(1);
+        avr.runCycles(source.name.includes("compare") ? 2 : 1);
         avr.cpu.writeData(source.control, 0);
         expect(avr.cpu.readData(source.flag) & (1 << source.bit)).toBe(1 << source.bit);
         expect(avr.snapshot().cpu.pendingInterrupts).toContain(source.vector);

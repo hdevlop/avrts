@@ -8,6 +8,7 @@ import {
   generatedFastCoreArmNames,
 } from "../scripts/generate-fast-core";
 import { createBenchmarkCases, type BenchmarkCase } from "../scripts/benchmark";
+import { AVR, TIFR0 } from "../src";
 
 interface RuntimeSignature {
   pc: number;
@@ -40,6 +41,27 @@ function captureViaTick(testCase: BenchmarkCase): RuntimeSignature {
 }
 
 describe("generated fast core", () => {
+  for (const instruction of ["SBIC", "SBIS"] as const) {
+    for (const initial of [0, 1]) {
+      test(`${instruction} samples I/O before a flag changes during its first clock (${initial})`, () => {
+        const setup = () => {
+          const avr = AVR();
+          avr.cpu.flash[0] = (instruction === "SBIC" ? 0x9900 : 0x9b00) | (0x15 << 3);
+          avr.cpu.data[TIFR0] = initial;
+          avr.cpu.addClockEvent(() => { avr.cpu.data[TIFR0] = 1 - initial; }, 1);
+          return avr;
+        };
+        const fast = setup(), handler = setup();
+        fast.cpu.run(1);
+        handler.cpu.tick();
+        const skip = instruction === "SBIC" ? initial === 0 : initial === 1;
+        expect(fast.cpu.pc).toBe(skip ? 2 : 1);
+        expect(fast.cpu.pc).toBe(handler.cpu.pc);
+        expect(fast.cpu.cycles).toBe(handler.cpu.cycles);
+        expect(fast.cpu.data[TIFR0]).toBe(handler.cpu.data[TIFR0]);
+      });
+    }
+  }
   test("committed output is fresh", async () => {
     // Windows checkouts (core.autocrlf) get CRLF; that is not drift.
     const readLf = async (path: string | URL) => (await Bun.file(path).text()).replace(/\r\n/g, "\n");
