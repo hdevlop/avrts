@@ -16,6 +16,8 @@ The register ownership follow-up masks reserved bits, protects ADC results and
 preserves reset causes across non-power-on resets.
 The shared prescaler follow-up retains Timer0/Timer1's free-running phase through
 clock-select changes, stopped counters, staggered starts and snapshots.
+The Timer2 divider follow-up retains its independent full phase in both clock
+domains, keeps reset/release on TOSC edges and bypasses PRTIM2 when AS2 is set.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
@@ -23,7 +25,8 @@ are in [the correctness review](peripheral-correctness-review.md),
 [the Timer2 asynchronous follow-up](timer2-async-transfers.md),
 [the SPI status follow-up](spi-status-sequence.md),
 [the register ownership follow-up](register-bit-ownership.md),
-[the shared prescaler follow-up](timer-prescaler-phase.md), and
+[the shared prescaler follow-up](timer-prescaler-phase.md),
+[the Timer2 divider follow-up](timer2-prescaler-phase.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -35,7 +38,7 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,746 passed, zero failed; 11,067 assertions across 66 files |
+| Complete Bun source suite | 1,883 passed, zero failed; 11,560 assertions across 67 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
@@ -90,16 +93,21 @@ comparison rather than a repeat of the full historical matrix.
 include host/runtime variation and changed timer phase; they do not establish
 a general speed improvement.
 
+[The Timer2 divider comparison](timer2-prescaler-performance.md) uses
+`bdf2848` as its baseline. Focused throughput changed by +4.5% for Arduino PWM,
+-2.4% for peripheral-mix and -1.4% for the Timer2 RTC. These source measurements
+retain measured costs and host/runtime variation, without a general speed claim.
+
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-83 files, is 282,980 bytes packed, and 1,518,829 bytes unpacked.
+83 files, is 284,464 bytes packed, and 1,524,289 bytes unpacked.
 
 SHA-256:
 
 ```text
-eb1b26a771daf85adff5cd509ee3abdc83462348a1d387560cdcd255701aa3e3
+4e44abcd4a8a72760b59faccdc4adb91177b183772e4c7f15686cb5477050691
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`

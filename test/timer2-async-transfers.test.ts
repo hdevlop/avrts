@@ -312,10 +312,12 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     }
 
     for (const gate of ["PRR", "GTCCR"] as const) {
-      test(`${gate} holds the counter while TOSC register transfers continue`, () => {
+      test(`${gate === "PRR" ? "PRR leaves async counting active" : "GTCCR holds the counter"} while TOSC transfers continue`, () => {
         const avr = setup(true);
         if (gate === "PRR") avr.cpu.writeData(A.PRR, bit(A.PRTIM2));
         else avr.cpu.writeData(A.GTCCR, bit(A.TSM) | bit(A.PSRASY));
+        avr.runCycles(10);
+        expect(avr.cpu.readData(A.TCNT2)).toBe(gate === "PRR" ? 1 : 0);
         avr.cpu.writeData(A.TCNT2, 42);
         avr.runCycles(20);
         expect(avr.cpu.readData(A.TCNT2)).toBe(42);

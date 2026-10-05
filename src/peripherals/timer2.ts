@@ -84,6 +84,9 @@ export class Timer2 implements PwmSource {
   private clockHz = DEFAULT_CLOCK_HZ;
   private toscCycleBase = 0;
   private toscPausedAt: number | undefined;
+  // Independent ten-bit divider phase, separate from the oscillator's phase.
+  private dividerCycleBase = 0;
+  private dividerPausedAt: number | undefined;
   private readonly asyncWrites = new Map<number, { value?: number; dueCycle: number }>();
   // Cached prescaler divisor, recomputed only when the CS bits (TCCR2B) change.
   // In async mode (ASSR.AS2) it is scaled by the CPU-cycles-per-TOSC-tick ratio.
@@ -126,6 +129,8 @@ export class Timer2 implements PwmSource {
     this.lastCycle = this.cpu.cycles;
     this.toscCycleBase = this.cpu.cycles;
     this.toscPausedAt = undefined;
+    this.dividerCycleBase = this.cpu.cycles;
+    this.dividerPausedAt = undefined;
     this.asyncWrites.clear();
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.refreshPrescaler();
@@ -143,7 +148,8 @@ export class Timer2 implements PwmSource {
     this.syncToCpuCycle();
     if (this.asyncMode()) {
       const now = this.toscNow();
-      this.prescalerRemainder *= scale;
+      const dividerNow = this.dividerPausedAt ?? this.cpu.cycles;
+      this.dividerCycleBase = dividerNow - (dividerNow - this.dividerCycleBase) * scale;
       this.toscCycleBase = now - (now - this.toscCycleBase) * scale;
       for (const pending of this.asyncWrites.values()) {
         pending.dueCycle = now + (pending.dueCycle - now) * scale;
@@ -156,9 +162,16 @@ export class Timer2 implements PwmSource {
   }
 
   tick(cycles: number): void {
-    if (this.frozen()) return;
+    if (this.cpu.cycles === this.lastCycle && !this.dividerPaused()) this.dividerCycleBase -= cycles;
+    if (this.frozen()) {
+      this.lastCycle = this.cpu.cycles;
+      return;
+    }
     const prescaler = this.cachedPrescaler;
-    if (prescaler === undefined) return;
+    if (prescaler === undefined) {
+      this.lastCycle = this.cpu.cycles;
+      return;
+    }
 
     if (cycles > 1 && prescaler === 1) {
       const total = this.prescalerRemainder + cycles;
@@ -209,6 +222,8 @@ export class Timer2 implements PwmSource {
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.toscCycleBase = this.cpu.cycles;
     this.toscPausedAt = this.sleepPaused ? this.cpu.cycles : undefined;
+    this.dividerCycleBase = this.cpu.cycles;
+    this.dividerPausedAt = this.dividerPaused() ? this.cpu.cycles : undefined;
     this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
@@ -227,7 +242,6 @@ export class Timer2 implements PwmSource {
       if ((strobes & 0x80) !== 0) this.handleCompareOutput("A");
       if ((strobes & 0x40) !== 0) this.handleCompareOutput("B");
     }
-    if (((oldValue ^ this.cpu.data[TCCR2B]!) & 7) !== 0) this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
     this.scheduleClockEvent();
@@ -291,14 +305,11 @@ export class Timer2 implements PwmSource {
 
   setPowerReduced(reduced: boolean): void {
     if (this.powerReduced === reduced) return;
-    if (reduced) {
-      this.syncToCpuCycle();
-      this.powerReduced = true;
-      this.cpu.clearClockEvent(this.onClockEvent);
-      return;
-    }
-    this.powerReduced = false;
+    this.syncToCpuCycle();
+    this.powerReduced = reduced;
+    this.updateDividerPause();
     this.lastCycle = this.cpu.cycles;
+    this.refreshPrescaler();
     this.scheduleClockEvent();
   }
 
@@ -308,18 +319,26 @@ export class Timer2 implements PwmSource {
     if (held) {
       this.syncToCpuCycle();
       this.prescalerHeld = true;
+      this.dividerCycleBase = this.cpu.cycles;
+      this.dividerPausedAt = this.cpu.cycles;
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
     this.prescalerHeld = false;
+    // Release on the existing source grid; holding the divider does not stop TOSC.
+    this.dividerCycleBase = this.cpu.cycles - (this.asyncMode() ? this.toscPhase() : 0);
+    this.dividerPausedAt = this.dividerPaused() ? this.cpu.cycles : undefined;
     this.lastCycle = this.cpu.cycles;
+    this.refreshPrescaler();
     this.scheduleClockEvent();
   }
 
   /** GTCCR PSRASY: reset the timer2 prescaler (counter value untouched). */
   resetPrescaler(): void {
     this.syncToCpuCycle();
-    this.prescalerRemainder = 0;
+    this.dividerCycleBase = (this.dividerPausedAt ?? this.cpu.cycles)
+      - (this.asyncMode() ? this.toscPhase() : 0);
+    this.refreshPrescaler();
     this.scheduleClockEvent();
   }
 
@@ -332,6 +351,7 @@ export class Timer2 implements PwmSource {
         this.toscPausedAt = this.cpu.cycles;
         this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
       }
+      this.updateDividerPause();
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -343,12 +363,34 @@ export class Timer2 implements PwmSource {
       this.toscPausedAt = undefined;
       this.scheduleAsyncUpdate();
     }
+    this.updateDividerPause();
     this.lastCycle = this.cpu.cycles;
+    this.refreshPrescaler();
     this.scheduleClockEvent();
   }
 
   private frozen(): boolean {
-    return this.powerReduced || this.prescalerHeld || this.sleepPaused;
+    return this.dividerPaused();
+  }
+
+  private dividerPaused(): boolean {
+    return (this.powerReduced && !this.asyncMode()) || this.prescalerHeld || this.sleepPaused;
+  }
+
+  private updateDividerPause(): void {
+    if (this.dividerPaused()) {
+      this.dividerPausedAt ??= this.cpu.cycles;
+    } else if (this.dividerPausedAt !== undefined) {
+      this.dividerCycleBase += this.cpu.cycles - this.dividerPausedAt;
+      this.dividerPausedAt = undefined;
+    }
+  }
+
+  /** CPU-cycle phase of all 1024 source clocks, including a partial TOSC period. */
+  private dividerPhase(): number {
+    if (this.prescalerHeld) return 0;
+    return ((this.dividerPausedAt ?? this.cpu.cycles) - this.dividerCycleBase)
+      % (1024 * this.asyncScale());
   }
 
   private asyncMode(): boolean {
@@ -402,7 +444,6 @@ export class Timer2 implements PwmSource {
   private applyAsyncWrites(): void {
     this.syncToCpuCycle();
     const oldMode = this.waveformMode();
-    const oldCs = this.cpu.data[TCCR2B]! & 7;
     let controls = false;
     let counter = false;
     let compare = false;
@@ -422,7 +463,6 @@ export class Timer2 implements PwmSource {
     if (counter) this.compareBlocked = true;
     if (controls) this.updateWaveformMode(oldMode);
     if (compare && !this.isPwmMode()) this.updateCompareBuffers();
-    if (oldCs !== (this.cpu.data[TCCR2B]! & 7)) this.prescalerRemainder = this.toscPhase();
     this.refreshPrescaler();
     if (!this.isPwmMode()) {
       if ((strobes & 0x80) !== 0) this.handleCompareOutput("A");
@@ -634,6 +674,8 @@ export class Timer2 implements PwmSource {
   private refreshPrescaler(): void {
     const base = this.prescaler();
     this.cachedPrescaler = base === undefined ? undefined : base * this.asyncScale();
+    this.prescalerRemainder = this.cachedPrescaler === undefined ? 0
+      : this.dividerPhase() % this.cachedPrescaler;
   }
 
   private waveformMode(): number {
@@ -786,6 +828,7 @@ export class Timer2 implements PwmSource {
       activeOcrB: this.activeOcrB,
       compareBlocked: this.compareBlocked,
       prescalerRemainder: this.prescalerRemainder,
+      dividerPhase: this.dividerPhase(),
       asyncBusyMask: this.cpu.data[ASSR]! & ASSR_BUSY_MASK,
       asyncBusyRemaining: this.cpu.clockEventRemainingCycles(this.onAsyncUpdateEvent),
       toscPhase: this.toscPhase(),
@@ -808,6 +851,8 @@ export class Timer2 implements PwmSource {
     this.lastCycle = this.cpu.cycles;
     this.toscCycleBase = this.cpu.cycles - (snap.toscPhase ?? 0);
     this.toscPausedAt = undefined;
+    this.dividerCycleBase = this.cpu.cycles - (snap.dividerPhase ?? snap.prescalerRemainder ?? 0);
+    this.dividerPausedAt = undefined;
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.asyncWrites.clear();
     if (snap.asyncWrites !== undefined) {

@@ -56,7 +56,8 @@ Not machine-checked; keep in sync with the implementation by review.
 - **PRR** gates the modeled peripheral clocks for ADC, USART0, SPI, TWI, and
   timers 0/1/2 by pausing scheduled operations and timer counters. The register
   remains readable/writable in simulation while gated; electrical power/current
-  effects are out of scope.
+  effects are out of scope. PRTIM2 gates Timer2 only in synchronous mode; AS2
+  bypasses that gate as documented by the chip.
 - **Timer1** models input capture (`TIMER1_CAPT`, ICR1 latch, ICES1, and the
   4-cycle ICNC1 delay) and all 16 WGM modes: normal, both CTC modes (OCR1A WGM 4,
   ICR1 WGM 12), the fixed 8/9/10-bit fast/phase-correct PWM modes (WGM 1/2/3 and
@@ -73,8 +74,11 @@ Not machine-checked; keep in sync with the implementation by review.
   silicon clock-mux startup pipeline is not modeled; timer counts use the
   simulator's selected tap boundaries. Older snapshots retain their saved next
   counter edges, but cannot reconstruct a shared phase absent from the file.
-  Timer2's asynchronous source phase is retained; its divider taps are not a
-  complete free-running model.
+  Timer2 retains its independent full divider phase across CS changes and stopped
+  counters in both clock domains, including fractional TOSC periods, clock scaling,
+  PRR/sleep/GTCCR gates and restore. TOSC keeps running during a divider hold.
+  Async PSRASY acknowledgement remains immediate in the GTCCR model; the silicon
+  cross-domain reset handshake and exact mux startup pipeline are not modeled.
 - **Timer0/Timer2** model normal/CTC and fixed/variable-TOP fast/phase-correct
   PWM (WGM 0/1/2/3/5/7), OCR buffers transferred at BOTTOM or TOP, both counting
   slopes, endpoint duties, OCnA toggle and force-compare strobes. Reserved WGM

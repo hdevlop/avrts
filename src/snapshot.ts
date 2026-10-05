@@ -56,6 +56,8 @@ export interface Timer1Snapshot {
 
 export interface Timer2Snapshot {
   prescalerRemainder: number;
+  /** Full ten-bit divider phase in CPU cycles, including partial TOSC periods. */
+  dividerPhase?: number;
   countingDown?: boolean;
   activeOcrA?: number;
   activeOcrB?: number;

@@ -62,6 +62,8 @@ Focused same-host throughput measurements are in
 
 This models divider phase within the simulator's timer-clock convention. It
 does not add the silicon clock-mux startup pipeline, external T0/T1 clocks,
-Timer2's free-running divider taps, asynchronous wake-time synchronization or
+asynchronous wake-time synchronization or
 physical clock edges. Timer1 overflow and SPI status disagreements with native
 simavr remain documented. See [limitations](../limitations.md).
+Timer2's independent divider taps are addressed by the subsequent
+[Timer2 divider follow-up](timer2-prescaler-phase.md).

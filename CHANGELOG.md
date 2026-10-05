@@ -9,6 +9,9 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Retain Timer2's full divider phase through clock-select changes, stopped
+  counters, clock scaling and restore; align prescaler resets with TOSC edges
+  and apply PRTIM2 only in synchronous mode.
 - Share Timer0/Timer1's free-running prescaler phase across clock-select changes,
   staggered starts, counter gates and snapshots; retain GTCCR reset/hold and sleep gating.
 - Mask reserved timer, interrupt, ADC, address and GPIO bits; prevent unsupported

@@ -93,4 +93,5 @@ clock-select changes and staggered starts do not share the free-running
 Timer0/Timer1 prescaler phase. That timing change remains separate from this
 register ownership batch. The subsequent
 [shared prescaler follow-up](timer-prescaler-phase.md) addresses Timer0/Timer1;
-Timer2 divider phase remains recorded in the limitations.
+the [Timer2 divider follow-up](timer2-prescaler-phase.md) addresses its separate
+clock domain. Remaining synchronization boundaries are recorded in the limitations.
