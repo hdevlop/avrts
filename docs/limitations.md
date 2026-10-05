@@ -93,14 +93,21 @@ Not machine-checked; keep in sync with the implementation by review.
   equivalent and has not been checked against physical hardware.
 - **Timer2 asynchronous mode** models `ASSR.AS2` with a simulated 32.768 kHz
   TOSC source and separate temporary-register transfers after two source edges.
-  Control/OCR reads expose the temporary value; TCNT reads the running counter.
+  Control/OCR reads expose the temporary value; TCNT reads the running counter
+  except during the asynchronous power-save wake read window. That window
+  retains the pre-sleep CPU-visible value until the next rising TOSC edge,
+  including edges during interrupt entry, clock scaling and snapshots.
+  Host reads while the CPU sleeps still inspect the running counter. Older
+  snapshots cannot reconstruct a pre-sleep value that they did not record.
+  Other sleep modes retain their preceding read behavior; the power-save latch
+  model has not been calibrated against physical hardware.
   Each busy flag clears with its own transfer, independently of PWM buffering.
   Busy writes preserve the first queued value; clock-domain switches discard
   pending writes while retaining destinations. These are deterministic choices
   for hardware-defined corruption risks, not simulations of corrupted values.
   Power-down/standby pause the source and retain state rather than modeling
   oscillator startup instability or possible register loss. External TOSC/EXCLK
-  pin wiring, crystal drift, the wake-time CPU-domain TCNT read latch and the
+  pin wiring, crystal drift and the
   three-CPU-cycle asynchronous interrupt-flag synchronization are not modeled.
 - **OSCCAL** is plain storage and has no oscillator effect. **DIDR0/DIDR1**
   retain only implemented bits; they do not alter the digital/analog pin model.

@@ -66,7 +66,8 @@ Focused same-host throughput measurements are in
 GTCCR still acknowledges an asynchronous PSRASY strobe immediately; silicon
 retains it until its cross-domain reset completes. This follow-up retains source
 edge alignment within that existing reset convention and does not add the
-handshake, mux startup pipeline, asynchronous interrupt synchronization, stale
-wake-time reads, physical oscillator startup or externally supplied TOSC pulses.
+handshake, mux startup pipeline, asynchronous interrupt synchronization,
+physical oscillator startup or externally supplied TOSC pulses. Stale power-save
+wake reads are added by the [subsequent read follow-up](timer2-wake-read.md).
 See [limitations](../limitations.md). Timer1 overflow and SPI status disagreements
 with native simavr remain documented.

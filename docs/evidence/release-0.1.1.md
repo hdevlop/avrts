@@ -18,6 +18,9 @@ The shared prescaler follow-up retains Timer0/Timer1's free-running phase throug
 clock-select changes, stopped counters, staggered starts and snapshots.
 The Timer2 divider follow-up retains its independent full phase in both clock
 domains, keeps reset/release on TOSC edges and bypasses PRTIM2 when AS2 is set.
+The power-save read follow-up retains the asynchronous pre-sleep TCNT2 read
+until the next TOSC edge after wake, including interrupt entry, clock changes
+and snapshots.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
@@ -26,7 +29,8 @@ are in [the correctness review](peripheral-correctness-review.md),
 [the SPI status follow-up](spi-status-sequence.md),
 [the register ownership follow-up](register-bit-ownership.md),
 [the shared prescaler follow-up](timer-prescaler-phase.md),
-[the Timer2 divider follow-up](timer2-prescaler-phase.md), and
+[the Timer2 divider follow-up](timer2-prescaler-phase.md),
+[the power-save read follow-up](timer2-wake-read.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -38,7 +42,7 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,883 passed, zero failed; 11,560 assertions across 67 files |
+| Complete Bun source suite | 1,961 passed, zero failed; 11,936 assertions across 68 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
@@ -98,21 +102,27 @@ a general speed improvement.
 -2.4% for peripheral-mix and -1.4% for the Timer2 RTC. These source measurements
 retain measured costs and host/runtime variation, without a general speed claim.
 
+[The power-save read comparison](timer2-wake-performance.md) uses
+`64aa9d4` as its baseline. Focused throughput changed by -1.5% for Arduino PWM,
+-2.0% for peripheral-mix and +0.8% for the Timer2 RTC. These measurements include
+host/runtime variation; the RTC exercises ordinary awake reads rather than the
+new sleep window. The full historical matrix was not repeated.
+
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-83 files, is 284,464 bytes packed, and 1,524,289 bytes unpacked.
+83 files, is 285,483 bytes packed, and 1,529,779 bytes unpacked.
 
 SHA-256:
 
 ```text
-4e44abcd4a8a72760b59faccdc4adb91177b183772e4c7f15686cb5477050691
+ce3db3ceaa16cad137e0373767a6b14f4a7c39293ebfbf141358f2d75b682af9
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`
 followed by `npm pack --ignore-scripts`; archive hashes may differ if the toolchain
 or build output changes. npm publication is a separate step and was not run as
 part of preparation. Timer1 fast-PWM overflow phase differs from native simavr;
-Timer2 wake-time read/interrupt synchronization and electrical timer inputs
+Timer2 asynchronous interrupt/wake pipelines, PSRASY handshake and electrical timer inputs
 remain outside this preparation, as recorded in the limitations.

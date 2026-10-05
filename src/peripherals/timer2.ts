@@ -84,6 +84,9 @@ export class Timer2 implements PwmSource {
   private clockHz = DEFAULT_CLOCK_HZ;
   private toscCycleBase = 0;
   private toscPausedAt: number | undefined;
+  // CPU-domain counter read latch: stale until the first TOSC edge after wake.
+  private asyncSleepCounter: number | undefined;
+  private asyncWakeReadUntil: number | undefined;
   // Independent ten-bit divider phase, separate from the oscillator's phase.
   private dividerCycleBase = 0;
   private dividerPausedAt: number | undefined;
@@ -102,7 +105,20 @@ export class Timer2 implements PwmSource {
   constructor(
     private readonly cpu: CPU,
     private readonly gpio?: Gpio,
-  ) {}
+  ) {
+    this.cpu.onSleep((mode) => {
+      // Capture the visible value, including a previous wake window if firmware
+      // re-enters power-save before its read synchronizer has caught up.
+      this.asyncSleepCounter = mode === 0b011 && this.asyncMode() ? this.readTcnt2() : undefined;
+      this.asyncWakeReadUntil = undefined;
+    });
+    this.cpu.onWake((wakeCycle) => {
+      if (this.asyncSleepCounter === undefined) return;
+      const period = this.clockHz / TOSC_HZ;
+      const edge = Math.floor((wakeCycle - this.toscCycleBase) / period) + 1;
+      this.asyncWakeReadUntil = this.toscCycleBase + edge * period;
+    });
+  }
 
   private get pwmConfig(): PwmConfig {
     return {
@@ -129,6 +145,8 @@ export class Timer2 implements PwmSource {
     this.lastCycle = this.cpu.cycles;
     this.toscCycleBase = this.cpu.cycles;
     this.toscPausedAt = undefined;
+    this.asyncSleepCounter = undefined;
+    this.asyncWakeReadUntil = undefined;
     this.dividerCycleBase = this.cpu.cycles;
     this.dividerPausedAt = undefined;
     this.asyncWrites.clear();
@@ -153,6 +171,9 @@ export class Timer2 implements PwmSource {
       this.toscCycleBase = now - (now - this.toscCycleBase) * scale;
       for (const pending of this.asyncWrites.values()) {
         pending.dueCycle = now + (pending.dueCycle - now) * scale;
+      }
+      if (this.asyncWakeReadUntil !== undefined) {
+        this.asyncWakeReadUntil = now + (this.asyncWakeReadUntil - now) * scale;
       }
     }
     this.clockHz = clockHz;
@@ -220,6 +241,8 @@ export class Timer2 implements PwmSource {
     this.cpu.data[ASSR] = next & ~ASSR_BUSY_MASK;
     this.asyncWrites.clear();
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
+    this.asyncSleepCounter = undefined;
+    this.asyncWakeReadUntil = undefined;
     this.toscCycleBase = this.cpu.cycles;
     this.toscPausedAt = this.sleepPaused ? this.cpu.cycles : undefined;
     this.dividerCycleBase = this.cpu.cycles;
@@ -282,6 +305,11 @@ export class Timer2 implements PwmSource {
   @OnRead(TCNT2)
   readTcnt2(): number {
     this.syncToCpuCycle();
+    if (this.asyncWakeReadUntil !== undefined) {
+      if (this.cpu.cycles < this.asyncWakeReadUntil) return this.asyncSleepCounter!;
+      this.asyncSleepCounter = undefined;
+      this.asyncWakeReadUntil = undefined;
+    }
     return this.cpu.data[TCNT2]!;
   }
 
@@ -835,6 +863,10 @@ export class Timer2 implements PwmSource {
       asyncWrites: [...this.asyncWrites].map(([register, pending]) => ({
         register, value: pending.value, remainingCycles: pending.dueCycle - this.toscNow(),
       })),
+      asyncSleepCounter: this.asyncWakeReadUntil === undefined || this.asyncWakeReadUntil > this.cpu.cycles
+        ? this.asyncSleepCounter : undefined,
+      asyncWakeReadRemaining: this.asyncWakeReadUntil === undefined ? undefined
+        : Math.max(0, this.asyncWakeReadUntil - this.cpu.cycles),
     };
   }
 
@@ -851,6 +883,9 @@ export class Timer2 implements PwmSource {
     this.lastCycle = this.cpu.cycles;
     this.toscCycleBase = this.cpu.cycles - (snap.toscPhase ?? 0);
     this.toscPausedAt = undefined;
+    this.asyncSleepCounter = snap.asyncSleepCounter;
+    this.asyncWakeReadUntil = snap.asyncSleepCounter !== undefined && (snap.asyncWakeReadRemaining ?? 0) > 0
+      ? this.cpu.cycles + snap.asyncWakeReadRemaining! : undefined;
     this.dividerCycleBase = this.cpu.cycles - (snap.dividerPhase ?? snap.prescalerRemainder ?? 0);
     this.dividerPausedAt = undefined;
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);

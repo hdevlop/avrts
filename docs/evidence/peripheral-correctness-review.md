@@ -90,10 +90,13 @@ the preceding review; current release checks are in [release evidence](release-0
 
 See `docs/limitations.md`. Remaining deliberate approximations include
 Timer1 fast-PWM overflow phase relative to the native oracle, Timer2's cross-domain
-reset handshake and wake-time
-read/interrupt synchronization, external T0/T1 clocks, byte serial/bus wiring, floating GPIO/pull-ups, immediate
+reset handshake and asynchronous interrupt synchronization, external T0/T1 clocks,
+byte serial/bus wiring, floating GPIO/pull-ups, immediate
 EEPROM operations, analog settling, and full oscillator/wake-source timing. The
 regression matrix does not claim these details have passed physical hardware acceptance.
+
+The [power-save read follow-up](timer2-wake-read.md) adds Timer2's stale CPU-domain
+counter read until the next TOSC edge after wake, including snapshots and clock changes.
 
 The [timer boundary follow-up](timer-boundary-correctness.md) adds Timer0/Timer2
 PWM buffers and both slopes, CTC TOP+1 periods, and the ordinary compare-flag

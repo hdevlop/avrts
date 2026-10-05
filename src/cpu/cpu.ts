@@ -160,7 +160,7 @@ export class CPU {
   readonly readHooks: Array<IoReadHook[] | undefined> = [];
   private readonly wdrListeners: Array<() => void> = [];
   private readonly sleepListeners: Array<(mode: number) => void> = [];
-  private readonly wakeListeners: Array<() => void> = [];
+  private readonly wakeListeners: Array<(wakeCycle: number) => void> = [];
   private readonly flagListeners: Array<Array<(raised: number) => void> | undefined> = [];
   // Event-scheduled peripheral clock events (sorted by absolute cycle), plus a
   // small reuse pool. `nextClockEvent === undefined` is the common case (no
@@ -276,8 +276,8 @@ export class CPU {
     };
   }
 
-  /** Register a listener fired when an enabled interrupt wakes the CPU. */
-  onWake(listener: () => void): () => void {
+  /** Fired after wake entry, with the cycle at which wake began, before its cost. */
+  onWake(listener: (wakeCycle: number) => void): () => void {
     this.wakeListeners.push(listener);
     return () => {
       const index = this.wakeListeners.indexOf(listener);
@@ -889,13 +889,15 @@ export class CPU {
     if (!this.sreg.I) {
       if (this.sleeping) {
         this.sleeping = false;
+        const wakeCycle = this.cycles;
         this.cycles += 4;
-        for (const listener of [...this.wakeListeners]) listener();
+        for (const listener of [...this.wakeListeners]) listener(wakeCycle);
       }
       return;
     }
     const interrupt = this.pendingInterrupts.shift()!;
     const wasSleeping = this.sleeping;
+    const wakeCycle = this.cycles;
     this.sleeping = false; // an enabled interrupt wakes the CPU from sleep
     interrupt.acknowledge?.();
     this.pushWord(this.pc);
@@ -903,7 +905,7 @@ export class CPU {
     this.pc = this.interruptVectorBase + interrupt.vector;
     this.cycles += wasSleeping ? 8 : 4;
     if (wasSleeping) {
-      for (const listener of [...this.wakeListeners]) listener();
+      for (const listener of [...this.wakeListeners]) listener(wakeCycle);
     }
   }
 

@@ -9,6 +9,8 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Retain the asynchronous TCNT2 pre-sleep read through power-save wake until
+  the next TOSC edge, including clock changes, interrupt entry and snapshots.
 - Retain Timer2's full divider phase through clock-select changes, stopped
   counters, clock scaling and restore; align prescaler resets with TOSC edges
   and apply PRTIM2 only in synchronous mode.

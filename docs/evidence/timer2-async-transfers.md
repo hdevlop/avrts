@@ -23,8 +23,9 @@ install all due registers and then apply their combined mode/control effects.
 
 CLKPR/host clock changes scale source phase and every remaining deadline.
 Power-save, noise-reduction and extended standby retain the source; power-down
-and standby pause it. PRR and GTCCR holds stop the counter while register
-transfers continue. Snapshots retain phase, pending values and individual
+and standby pause it. GTCCR holds stop the counter while register transfers
+continue. The [later divider follow-up](timer2-prescaler-phase.md) also corrects
+PRTIM2 to gate only synchronous operation. Snapshots retain phase, pending values and individual
 deadlines without changing snapshot version 1. Older snapshots retain their
 already-installed destinations and legacy busy-clear window.
 
@@ -61,8 +62,9 @@ Full checks and the refreshed package archive are in
 Busy writes preserve the first pending value. AS2 switches discard unfinished
 transfers and retain destinations. Deep sleep retains oscillator/register state
 after wake. These deterministic policies do not reproduce corruption or startup
-instability, which silicon leaves unreliable. The wake-time CPU-domain TCNT read
-latch, three-CPU-cycle asynchronous flag synchronization, crystal drift and
+instability, which silicon leaves unreliable. The
+[subsequent read follow-up](timer2-wake-read.md) adds the power-save CPU-domain
+TCNT read latch. Three-CPU-cycle asynchronous flag synchronization, crystal drift and
 external TOSC/EXCLK wiring remain outside this change. See
 [limitations](../limitations.md). The existing Timer1 overflow-phase disagreement
 with native simavr remains unchanged.

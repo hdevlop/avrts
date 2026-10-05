@@ -70,6 +70,10 @@ export interface Timer2Snapshot {
   toscPhase?: number;
   /** Separate register transfers; omitted values preserve legacy busy windows. */
   asyncWrites?: { register: number; value?: number; remainingCycles: number }[];
+  /** CPU-visible TCNT2 retained on asynchronous power-save entry. */
+  asyncSleepCounter?: number;
+  /** Remaining CPU cycles of the post-wake read synchronization window. */
+  asyncWakeReadRemaining?: number;
 }
 
 export interface Usart0Snapshot {
