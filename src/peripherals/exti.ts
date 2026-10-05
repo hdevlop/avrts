@@ -101,12 +101,13 @@ export class ExternalInterrupts {
   @OnWrite(EIFR)
   onWriteEifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     // Flags are write-1-to-clear.
-    this.cpu.data[EIFR] = oldValue & ~value;
+    this.cpu.data[EIFR] = oldValue & 0x03 & ~value;
     this.updateInterrupts();
   }
 
   @OnWrite(EICRA)
   onWriteEicra(): void {
+    this.cpu.data[EICRA] = this.cpu.data[EICRA]! & 0x0f;
     this.refreshLevelModeActive();
     this.updateInterrupts();
     this.scheduleLevelEvent();
@@ -114,6 +115,7 @@ export class ExternalInterrupts {
 
   @OnWrite(EIMSK)
   onWriteEimsk(): void {
+    this.cpu.data[EIMSK] = this.cpu.data[EIMSK]! & 0x03;
     this.refreshLevelModeActive();
     this.updateInterrupts();
     this.scheduleLevelEvent();

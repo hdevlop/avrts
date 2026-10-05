@@ -93,6 +93,11 @@ export class Eeprom {
     this.updateInterrupt();
   }
 
+  @OnWrite(EEARH)
+  onWriteEearh(): void {
+    this.cpu.data[EEARH] = this.cpu.data[EEARH]! & ((EEPROM_SIZE - 1) >> 8);
+  }
+
   /** True while the EEMPE master-write window is still open (4-cycle hardware window). */
   private masterWriteArmed(): boolean {
     return this.masterWriteCycle >= 0 && this.cpu.cycles - this.masterWriteCycle < 4;

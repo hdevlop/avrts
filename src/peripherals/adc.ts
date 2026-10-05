@@ -20,6 +20,7 @@ import {
   ADTS0,
   ADTS1,
   ADTS2,
+  DIDR0,
   EIFR,
   ICF1,
   INTF0,
@@ -238,6 +239,7 @@ export class Adc {
 
   @OnWrite(ADCSRB)
   onWriteAdcsrb(): void {
+    this.cpu.data[ADCSRB] = this.cpu.data[ADCSRB]! & 0x47;
     this.refreshRemainingCycles();
     this.refreshAutoTriggerArmed();
     this.resyncTriggerLatch();
@@ -247,6 +249,7 @@ export class Adc {
 
   @OnWrite(ADMUX)
   onWriteAdmux(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+    this.cpu.data[ADMUX] = value & 0xef;
     if (((value ^ oldValue) & (1 << ADLAR)) !== 0) {
       const result = (oldValue & (1 << ADLAR)) !== 0
         ? (this.cpu.data[ADCH]! << 2) | (this.cpu.data[ADCL]! >> 6)
@@ -254,6 +257,11 @@ export class Adc {
       this.writeResult(result);
     }
     this.resyncTriggerLatch();
+  }
+
+  @OnWrite(DIDR0)
+  onWriteDidr0(): void {
+    this.cpu.data[DIDR0] = this.cpu.data[DIDR0]! & 0x3f;
   }
 
   @OnRead(ADCL)
@@ -266,6 +274,12 @@ export class Adc {
   onReadAdch(): number {
     this.resultLocked = false;
     return this.cpu.data[ADCH]!;
+  }
+
+  @OnWrite(ADCL)
+  @OnWrite(ADCH)
+  onWriteAdcResult(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    this.cpu.data[addr] = oldValue; // Conversion results are read-only.
   }
 
   private startConversion(autoTriggered = false): void {

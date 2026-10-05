@@ -962,6 +962,10 @@ class AVRRuntime implements AVR {
   }
 
   private resetInternal(options: RuntimeResetOptions, mcusrFlags: number): this {
+    // Only power-on clears previous reset causes; other sources accumulate
+    // until firmware clears their MCUSR bits by writing zero.
+    const resetFlags = (mcusrFlags & (1 << PORF)) !== 0
+      ? mcusrFlags : this.cpu.data[MCUSR]! | mcusrFlags;
     const preservedCycles = options.preserveCycles ? this.cpu.cycles : 0;
     if (options.clearProgram) {
       this.programSource = null;
@@ -971,7 +975,7 @@ class AVRRuntime implements AVR {
     if (options.preserveCycles) this.cpu.cycles = preservedCycles;
     else this.resetTimeBase();
     this.cpu.pc = this.resetVectorWord();
-    this.cpu.data[MCUSR] = mcusrFlags & 0xff;
+    this.cpu.data[MCUSR] = resetFlags & 0x0f;
     this.timer0.reset();
     this.timer1.reset();
     this.timer2.reset();

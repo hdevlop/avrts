@@ -67,6 +67,12 @@ Not machine-checked; keep in sync with the implementation by review.
   modeled. ICR1 is unbuffered and writable only when it defines TOP; lowering
   it below the counter can miss TOP until the counter wraps.
   Timer0/Timer1 external T0/T1 clock inputs are not wired.
+- **Timer prescaler phase** uses per-timer remainders. Synchronous clock-select
+  changes reset the local phase, and stopped counters do not keep a shared
+  free-running Timer0/Timer1 divider. GTCCR reset/hold behavior is modeled, but
+  arbitrary staggered starts and divisor changes do not reproduce the shared
+  divider described in datasheet section 16.2. Timer2's asynchronous source
+  phase is retained; its divider taps are not a complete free-running model.
 - **Timer0/Timer2** model normal/CTC and fixed/variable-TOP fast/phase-correct
   PWM (WGM 0/1/2/3/5/7), OCR buffers transferred at BOTTOM or TOP, both counting
   slopes, endpoint duties, OCnA toggle and force-compare strobes. Reserved WGM
@@ -90,8 +96,8 @@ Not machine-checked; keep in sync with the implementation by review.
   oscillator startup instability or possible register loss. External TOSC/EXCLK
   pin wiring, crystal drift, the wake-time CPU-domain TCNT read latch and the
   three-CPU-cycle asynchronous interrupt-flag synchronization are not modeled.
-- **OSCCAL, DIDR0, and DIDR1** are plain storage. OSCCAL has no oscillator effect,
-  and DIDR bits do not alter the digital/analog pin model.
+- **OSCCAL** is plain storage and has no oscillator effect. **DIDR0/DIDR1**
+  retain only implemented bits; they do not alter the digital/analog pin model.
 - **Fuse / boot tier** stores fuse bytes and lock bits; applies CKDIV8,
   WDTON, EESAVE through `avr.chipErase()`, BOOTRST/BOOTSZ, SUT/CKSEL startup
   delay as a cycle-level approximation when the low fuse is explicitly

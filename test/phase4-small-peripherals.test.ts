@@ -116,7 +116,7 @@ describe("Phase 4 small peripherals", () => {
 
     powerOn.resetExternal();
     expect((powerOn.cpu.readData(MCUSR) >> EXTRF) & 1).toBe(1);
-    expect((powerOn.cpu.readData(MCUSR) >> PORF) & 1).toBe(0);
+    expect((powerOn.cpu.readData(MCUSR) >> PORF) & 1).toBe(1);
 
     const watchdog = AVR();
     watchdog.cpu.flash[0] = 0xcfff; // rjmp .-0, keep firmware alive until WDT expires.

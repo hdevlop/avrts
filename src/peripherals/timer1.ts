@@ -222,13 +222,14 @@ export class Timer1 implements PwmSource {
   onWriteTifr1(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     this.cpu.data[TIFR1] = oldValue;
     this.syncToCpuCycle();
-    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & ~(value & TIMER1_FLAG_MASK);
+    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & TIMER1_FLAG_MASK & ~value;
     this.onWriteTimsk1();
   }
 
   @OnWrite(TCCR1B)
   onWriteTccr1b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
     const oldMode = this.syncWithOldRegister(addr, oldValue);
+    this.cpu.data[TCCR1B] = this.cpu.data[TCCR1B]! & 0xdf;
     this.updateWaveformMode(oldMode);
     if (((oldValue ^ this.cpu.data[TCCR1B]!) & 7) !== 0) this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
@@ -241,6 +242,7 @@ export class Timer1 implements PwmSource {
   @OnWrite(TCCR1A)
   onWriteTccr1a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
     const oldMode = this.syncWithOldRegister(addr, oldValue);
+    this.cpu.data[TCCR1A] = this.cpu.data[TCCR1A]! & 0xf3;
     this.updateWaveformMode(oldMode);
     this.scheduleClockEvent();
     this.notifyPwm("A");
@@ -249,6 +251,7 @@ export class Timer1 implements PwmSource {
 
   @OnWrite(TIMSK1)
   onWriteTimsk1(): void {
+    this.cpu.data[TIMSK1] = this.cpu.data[TIMSK1]! & TIMER1_FLAG_MASK;
     this.syncToCpuCycle();
     this.requestCompareIfEnabled("A");
     this.requestCompareIfEnabled("B");

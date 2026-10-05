@@ -166,6 +166,11 @@ export class Twi {
     this.cpu.data[TWSR] = (oldValue & 0xf8) | (value & 0x03);
   }
 
+  @OnWrite(TWAMR)
+  onWriteTwamr(): void {
+    this.cpu.data[TWAMR] = this.cpu.data[TWAMR]! & 0xfe;
+  }
+
   @OnWrite(TWDR)
   onWriteTwdr(_cpu: CPU, _addr: number, _value: number, oldValue: number): void {
     if ((this.cpu.data[TWCR]! & (1 << TWINT)) === 0) {

@@ -14,6 +14,7 @@ import {
   ADCSRB,
   ADEN,
   ADMUX,
+  DIDR1,
   ANALOG_COMP_VECTOR,
   ICF1,
   TIFR1,
@@ -90,6 +91,11 @@ export class AnalogComparator {
   @OnWrite(ADCSRB)
   onWriteAdcsrb(): void {
     this.evaluate();
+  }
+
+  @OnWrite(DIDR1)
+  onWriteDidr1(): void {
+    this.cpu.data[DIDR1] = this.cpu.data[DIDR1]! & 0x03;
   }
 
   private evaluate(): void {

@@ -35,6 +35,7 @@ export class Gpio {
     this.notify("B");
   }
   @OnWrite(PORTC) onWritePortC(): void {
+    this.cpu.data[PORTC] = this.cpu.data[PORTC]! & 0x7f;
     this.notify("C");
   }
   @OnWrite(PORTD) onWritePortD(): void {
@@ -46,6 +47,7 @@ export class Gpio {
     this.notify("B");
   }
   @OnWrite(DDRC) onWriteDdrC(): void {
+    this.cpu.data[DDRC] = this.cpu.data[DDRC]! & 0x7f;
     this.notify("C");
   }
   @OnWrite(DDRD) onWriteDdrD(): void {
@@ -87,9 +89,11 @@ export class Gpio {
 
   /** Inject an external input level onto a pin (writes the PIN register, then notifies). */
   setInput(port: PortName, bit: number, high: boolean): void {
+    const mask = (1 << bit) & (port === "C" ? 0x7f : 0xff);
+    if (mask === 0) return;
     const addr = PIN_ADDR[port];
     const cur = this.cpu.data[addr]!;
-    this.cpu.data[addr] = high ? cur | (1 << bit) : cur & ~(1 << bit);
+    this.cpu.data[addr] = high ? cur | mask : cur & ~mask;
     this.notify(port);
   }
 
@@ -99,7 +103,8 @@ export class Gpio {
    * Pass `undefined` to release the pin back to normal PORT/DDR behavior.
    */
   setPeripheralOutput(port: PortName, bit: number, high: boolean | undefined): void {
-    const mask = 1 << bit;
+    const mask = (1 << bit) & (port === "C" ? 0x7f : 0xff);
+    if (mask === 0) return;
     const before = this.effectivePinByte(port);
     if (high === undefined) {
       this.peripheralMask[port] &= ~mask;
@@ -153,7 +158,7 @@ export class Gpio {
     const inputs = this.cpu.data[PIN_ADDR[port]]!;
     const peripheralMask = this.peripheralMask[port] & ddr;
     const output = (portReg & ~peripheralMask) | (this.peripheralValue[port] & peripheralMask);
-    return ((output & ddr) | (inputs & ~ddr)) & 0xff;
+    return ((output & ddr) | (inputs & ~ddr)) & (port === "C" ? 0x7f : 0xff);
   }
 
   /** Public subscription used by the pin-change-interrupt controller. */
@@ -181,7 +186,7 @@ export class Gpio {
 
   private togglePortFromPinWrite(port: PortName, value: number, oldValue: number): void {
     this.cpu.data[PIN_ADDR[port]] = oldValue;
-    const mask = value & 0xff;
+    const mask = value & (port === "C" ? 0x7f : 0xff);
     if (mask === 0) return;
     this.cpu.writeData(PORT_ADDR[port], this.cpu.readData(PORT_ADDR[port]) ^ mask);
   }
@@ -212,13 +217,15 @@ export class Gpio {
    */
   restore(snap: GpioSnapshot): void {
     this.cpu.data[PINB] = snap.pin.B & 0xff;
-    this.cpu.data[PINC] = snap.pin.C & 0xff;
+    this.cpu.data[PINC] = snap.pin.C & 0x7f;
+    this.cpu.data[PORTC] = this.cpu.data[PORTC]! & 0x7f;
+    this.cpu.data[DDRC] = this.cpu.data[DDRC]! & 0x7f;
     this.cpu.data[PIND] = snap.pin.D & 0xff;
     this.peripheralMask.B = snap.peripheralMask.B & 0xff;
-    this.peripheralMask.C = snap.peripheralMask.C & 0xff;
+    this.peripheralMask.C = snap.peripheralMask.C & 0x7f;
     this.peripheralMask.D = snap.peripheralMask.D & 0xff;
     this.peripheralValue.B = snap.peripheralValue.B & 0xff;
-    this.peripheralValue.C = snap.peripheralValue.C & 0xff;
+    this.peripheralValue.C = snap.peripheralValue.C & 0x7f;
     this.peripheralValue.D = snap.peripheralValue.D & 0xff;
     this.notify("B", true);
     this.notify("C", true);

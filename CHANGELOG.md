@@ -9,6 +9,10 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Mask reserved timer, interrupt, ADC, address and GPIO bits; prevent unsupported
+  UBRR0H bits from changing USART frame time and remove fictitious PC7 levels.
+- Ignore ADC data-register writes while retaining read locking; preserve reset
+  causes across non-power-on resets and allow only firmware clearing of MCUSR flags.
 - Preserve unread SPI completion/collision flags and pending interrupts when
   another master or slave byte starts; retain the required acknowledgement sequence.
 - Transfer Timer2 asynchronous writes through separate temporary registers after

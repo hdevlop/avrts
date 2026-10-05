@@ -180,7 +180,7 @@ export class Timer2 implements PwmSource {
 
   @OnWrite(TIFR2)
   onWriteTifr2(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.cpu.data[TIFR2] = oldValue & ~(value & TIMER2_FLAG_MASK);
+    this.cpu.data[TIFR2] = oldValue & TIMER2_FLAG_MASK & ~value;
     this.onWriteTimsk2();
   }
 
@@ -237,6 +237,7 @@ export class Timer2 implements PwmSource {
 
   @OnWrite(TIMSK2)
   onWriteTimsk2(): void {
+    this.cpu.data[TIMSK2] = this.cpu.data[TIMSK2]! & TIMER2_FLAG_MASK;
     this.requestCompareIfEnabled("A");
     this.requestCompareIfEnabled("B");
     this.requestOverflowIfEnabled();

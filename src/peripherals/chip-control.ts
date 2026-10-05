@@ -1,5 +1,5 @@
 import { OnWrite } from "../core";
-import { BODSE, BODS, IVCE, IVSEL, MCUCR, PUD } from "../cpu";
+import { BODSE, BODS, IVCE, IVSEL, MCUCR, MCUSR, PUD, SMCR } from "../cpu";
 import type { CPU } from "../cpu";
 import type { ChipControlSnapshot } from "../snapshot";
 
@@ -71,6 +71,17 @@ export class ChipControl {
 
     this.cpu.data[MCUCR] = next & 0xff;
     this.applyVectorBase();
+  }
+
+  @OnWrite(MCUSR)
+  onWriteMcusr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+    // Hardware sets reset causes; firmware may only clear them by writing zero.
+    this.cpu.data[MCUSR] = oldValue & value & 0x0f;
+  }
+
+  @OnWrite(SMCR)
+  onWriteSmcr(): void {
+    this.cpu.data[SMCR] = this.cpu.data[SMCR]! & 0x0f;
   }
 
   snapshot(): ChipControlSnapshot {

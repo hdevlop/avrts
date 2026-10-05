@@ -131,7 +131,7 @@ export class Timer0 implements PwmSource {
 
   @OnWrite(TIFR0)
   onWriteTifr0(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.cpu.data[TIFR0] = oldValue & ~(value & TIMER0_FLAG_MASK);
+    this.cpu.data[TIFR0] = oldValue & TIMER0_FLAG_MASK & ~value;
     this.onWriteTimsk0();
   }
 
@@ -164,6 +164,7 @@ export class Timer0 implements PwmSource {
 
   @OnWrite(TIMSK0)
   onWriteTimsk0(): void {
+    this.cpu.data[TIMSK0] = this.cpu.data[TIMSK0]! & TIMER0_FLAG_MASK;
     this.requestCompareIfEnabled("A");
     this.requestCompareIfEnabled("B");
     this.requestOverflowIfEnabled();
@@ -172,6 +173,7 @@ export class Timer0 implements PwmSource {
   @OnWrite(TCCR0A)
   onWriteTccr0a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
     const oldMode = this.syncWithOldRegister(addr, oldValue);
+    this.cpu.data[TCCR0A] = this.cpu.data[TCCR0A]! & 0xf3;
     this.updateWaveformMode(oldMode);
     this.scheduleClockEvent();
     this.notifyPwm("A");

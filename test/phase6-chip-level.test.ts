@@ -76,7 +76,7 @@ describe("Phase 6 chip-level tier", () => {
   test("brown-out reset sets BORF in MCUSR", () => {
     const avr = AVR().resetBrownOut();
 
-    expect(avr.cpu.readData(MCUSR)).toBe(1 << BORF);
+    expect(avr.cpu.readData(MCUSR)).toBe((1 << PORF) | (1 << BORF));
   });
 
   test("WDTON fuse forces watchdog system-reset mode", () => {

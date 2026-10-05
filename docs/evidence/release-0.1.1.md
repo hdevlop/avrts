@@ -12,12 +12,15 @@ The Timer2 asynchronous follow-up adds separate temporary-register transfers,
 two-edge busy deadlines, and source phase through clock changes and restore.
 The SPI status follow-up preserves unread completion/collision flags when a
 new master or slave byte starts.
+The register ownership follow-up masks reserved bits, protects ADC results and
+preserves reset causes across non-power-on resets.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
 [the timer boundary follow-up](timer-boundary-correctness.md),
 [the Timer2 asynchronous follow-up](timer2-async-transfers.md),
-[the SPI status follow-up](spi-status-sequence.md), and
+[the SPI status follow-up](spi-status-sequence.md),
+[the register ownership follow-up](register-bit-ownership.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -29,7 +32,7 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,580 passed, zero failed; 10,215 assertions across 64 files |
+| Complete Bun source suite | 1,656 passed, zero failed; 10,725 assertions across 65 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 82 packed files |
@@ -71,16 +74,23 @@ Arduino PWM, -2.5% for peripheral-mix and -1.4% for the Timer2 RTC. These runs
 cover source execution on the same host; small differences include measurement
 variation, and the preceding ten-workload matrix was not repeated for this batch.
 
+[The register ownership comparison](register-bits-performance.md) uses
+`0efbc61` as its baseline. Final focused changes are -0.9% for Arduino PWM,
+-3.0% for peripheral-mix and +2.7% for bitbang-crc. The initial bitbang run
+measured -4.4%; both measurements are retained, with the final GPIO change and
+measurement variation documented separately. This is a three-workload source
+comparison rather than a repeat of the full historical matrix.
+
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-82 files, is 279,265 bytes packed, and 1,498,746 bytes unpacked.
+82 files, is 281,278 bytes packed, and 1,506,958 bytes unpacked.
 
 SHA-256:
 
 ```text
-427baf1180cf871ab664d9f1163939fe5932b799ae005eadb9eebc05de616f8c
+9617d227fa492ec42701b45ea1d3ffb99bc4a0a07acd1de450edb833dd898207
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`

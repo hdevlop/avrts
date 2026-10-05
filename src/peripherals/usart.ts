@@ -167,6 +167,11 @@ export class Usart0 {
     this.refreshStatusFlagsAndInterrupts();
   }
 
+  @OnWrite(UBRR0H)
+  onWriteUbrr0h(): void {
+    this.cpu.data[UBRR0H] = this.cpu.data[UBRR0H]! & 0x0f;
+  }
+
   @OnWrite(UCSR0B)
   onWriteUcsr0b(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     if ((oldValue & (1 << RXEN0)) !== 0 && (value & (1 << RXEN0)) === 0) {
