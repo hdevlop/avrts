@@ -61,6 +61,7 @@ export class SelfProgramming {
     private readonly fuses: () => FuseBytes,
     private readonly setLockBits: (lockBits: number) => void,
     private readonly bootStartWord: () => number,
+    private readonly onReadyChange: () => void = () => {},
   ) {
     this.pageBuffer.fill(0xffff);
     this.cpu.setSpmInstructionHook((pc) => this.executeSpm(pc));
@@ -85,6 +86,18 @@ export class SelfProgramming {
     if ((value & (1 << SELFPRGEN)) !== 0) {
       this.cpu.addClockEvent(this.clearCommandEvent, SPM_OPERATION_CYCLES);
     }
+    this.updateInterrupt();
+  }
+
+  /** Ready stays asserted until firmware disables SPMIE or starts a command. */
+  updateInterrupt(): void {
+    const control = this.cpu.data[SPMCSR]!;
+    if ((control & ((1 << SPMIE) | (1 << SELFPRGEN))) === (1 << SPMIE) && this.pendingOperation === null) {
+      this.cpu.requestInterrupt(SPM_READY_VECTOR, () => this.updateInterrupt());
+    } else {
+      this.cpu.clearInterrupt(SPM_READY_VECTOR);
+    }
+    this.onReadyChange();
   }
 
   snapshot(): SelfProgrammingSnapshot {
@@ -118,6 +131,7 @@ export class SelfProgramming {
     if ((this.cpu.data[SPMCSR]! & (1 << SELFPRGEN)) !== 0 && this.pendingOperation === null) {
       this.cpu.addClockEvent(this.clearCommandEvent, snap?.commandClearRemainingCycles || SPM_OPERATION_CYCLES);
     }
+    this.updateInterrupt();
   }
 
   private executeSpm(pc: number): void {
@@ -208,6 +222,7 @@ export class SelfProgramming {
 
   private scheduleOperation(operation: PendingSpmOperation): void {
     this.pendingOperation = operation;
+    this.updateInterrupt();
     this.cpu.addClockEvent(this.completeOperationEvent, SPM_OPERATION_CYCLES);
   }
 
@@ -232,9 +247,6 @@ export class SelfProgramming {
     }
 
     this.clearCommandBits();
-    if ((this.cpu.data[SPMCSR]! & (1 << SPMIE)) !== 0) {
-      this.cpu.requestInterrupt(SPM_READY_VECTOR);
-    }
   }
 
   private fillPageBuffer(byteAddr: number): void {
@@ -270,6 +282,7 @@ export class SelfProgramming {
   private clearCommandBits(): void {
     this.cpu.data[SPMCSR] = this.cpu.data[SPMCSR]! & ~COMMAND_MASK;
     this.cpu.clearClockEvent(this.clearCommandEvent);
+    this.updateInterrupt();
   }
 
   private zPointer(): number {

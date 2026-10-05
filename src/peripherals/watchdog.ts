@@ -1,21 +1,27 @@
 import { OnWrite } from "../core";
-import { MCUSR, WDE, WDIE, WDIF, WDP3, WDRF, WDT_VECTOR, WDTCSR } from "../cpu";
+import { MCUSR, WDCE, WDE, WDIE, WDIF, WDP3, WDRF, WDT_VECTOR, WDTCSR } from "../cpu";
 import type { CPU } from "../cpu";
 import type { WatchdogSnapshot } from "../snapshot";
 
 // Watchdog timeout periods in milliseconds, indexed by the 4-bit WDP value.
 const PERIOD_MS = [16, 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000] as const;
+const PRESCALER_MASK = (1 << WDP3) | 0x07;
 
 /**
  * Watchdog timer (Phase 7 event-driven). Instead of being ticked every
  * instruction, it schedules a single CPU clock event at its timeout cycle and
- * re-arms on `WDR`, `WDTCSR` writes, and clock changes. On timeout it either
+ * re-arms on `WDR` and prescaler changes. On timeout it either
  * fires the WDT interrupt (WDIE mode) or resets the CPU (WDE mode). Only the
  * combined interrupt/reset mode clears WDIE when its interrupt is serviced.
  */
 export class Watchdog {
   private scheduled = false;
   private fireAtCycle = 0;
+  private changeWindowOpen = false;
+  private readonly closeChangeWindowEvent = (): void => {
+    this.changeWindowOpen = false;
+    this.cpu.data[WDTCSR] = this.cpu.data[WDTCSR]! & ~(1 << WDCE);
+  };
   private readonly onSystemReset: () => void;
   private readonly alwaysOn: () => boolean;
   // Stable callback identity so addClockEvent/clearClockEvent pair up.
@@ -37,11 +43,15 @@ export class Watchdog {
   }
 
   setClock(clockHz: number): void {
+    const remaining = this.scheduled ? Math.max(1, this.fireAtCycle - this.cpu.cycles) : 0;
+    const previousClockHz = this.clockHz;
     this.clockHz = clockHz;
-    this.reschedule();
+    if (this.scheduled) this.scheduleTimeout(Math.max(1, Math.round(remaining * clockHz / previousClockHz)));
   }
 
   reset(): void {
+    this.cpu.clearClockEvent(this.closeChangeWindowEvent);
+    this.changeWindowOpen = false;
     this.forceWdeIfNeeded();
     this.reschedule();
   }
@@ -54,10 +64,26 @@ export class Watchdog {
   @OnWrite(WDTCSR)
   onWriteWdtcsr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     // WDIF belongs to hardware and is write-one-to-clear.
-    this.cpu.data[WDTCSR] = (value & ~(1 << WDIF)) | (oldValue & ~value & (1 << WDIF));
+    const wasEnabled = this.scheduled;
+    const unlock = (value & ((1 << WDCE) | (1 << WDE))) === ((1 << WDCE) | (1 << WDE));
+    let control = (value & (1 << WDIE)) | (oldValue & ~value & (1 << WDIF));
+    if (unlock) {
+      control |= (oldValue & PRESCALER_MASK) | (1 << WDE) | (1 << WDCE);
+      this.changeWindowOpen = true;
+      this.cpu.addClockEvent(this.closeChangeWindowEvent, 4);
+    } else if (this.changeWindowOpen) {
+      control |= value & (PRESCALER_MASK | (1 << WDE));
+      this.changeWindowOpen = false;
+      this.cpu.clearClockEvent(this.closeChangeWindowEvent);
+    } else {
+      control |= (oldValue & PRESCALER_MASK) | ((oldValue | value) & (1 << WDE));
+    }
+    this.cpu.data[WDTCSR] = control;
     this.forceWdeIfNeeded();
     this.updateInterrupt();
-    this.reschedule(); // reconfiguring restarts the timeout window
+    if (wasEnabled !== this.enabled() || ((oldValue ^ this.cpu.data[WDTCSR]!) & PRESCALER_MASK) !== 0) {
+      this.reschedule();
+    }
   }
 
   /** Hardware acknowledgement, also used to rebuild pending snapshot callbacks. */
@@ -81,7 +107,11 @@ export class Watchdog {
     this.cpu.clearClockEvent(this.timeoutEvent);
     this.scheduled = false;
     if (!this.enabled()) return;
-    const timeout = this.timeoutCycles();
+    this.scheduleTimeout(this.timeoutCycles());
+  }
+
+  private scheduleTimeout(timeout: number): void {
+    this.cpu.clearClockEvent(this.timeoutEvent);
     this.cpu.addClockEvent(this.timeoutEvent, timeout);
     this.fireAtCycle = this.cpu.cycles + timeout;
     this.scheduled = true;
@@ -134,12 +164,18 @@ export class Watchdog {
     const accumulatedCycles = this.scheduled
       ? Math.max(0, this.timeoutCycles() - (this.fireAtCycle - this.cpu.cycles))
       : 0;
-    return { accumulatedCycles };
+    return { accumulatedCycles, changeWindowRemainingCycles: this.cpu.clockEventRemainingCycles(this.closeChangeWindowEvent) };
   }
 
   restore(snap: WatchdogSnapshot): void {
     this.cpu.clearClockEvent(this.timeoutEvent);
+    this.cpu.clearClockEvent(this.closeChangeWindowEvent);
     this.scheduled = false;
+    const window = snap.changeWindowRemainingCycles ?? 0;
+    this.changeWindowOpen = window > 0;
+    if (this.changeWindowOpen) this.cpu.addClockEvent(this.closeChangeWindowEvent, window);
+    else this.cpu.data[WDTCSR] = this.cpu.data[WDTCSR]! & ~(1 << WDCE);
+    this.updateInterrupt();
     if (!this.enabled()) return;
     const remaining = Math.max(1, this.timeoutCycles() - (snap.accumulatedCycles | 0));
     this.cpu.addClockEvent(this.timeoutEvent, remaining);

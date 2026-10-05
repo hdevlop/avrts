@@ -3,6 +3,49 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## Unreleased
+
+## 0.1.1 - 2026-10-05
+
+### Fixed
+
+- Synchronize ADC, comparator, SPI, TWI, pin-change, and external interrupt
+  requests when flags or masks change; latch external-interrupt edges while masked.
+- Preserve ADC busy state across control writes, abort conversions when disabled,
+  and use 25 ADC clocks for initialization followed by 13 clocks per conversion.
+- Latch ADC channel/reference selection during conversion and protect paired
+  result reads with the ADCL/ADCH lock, including across snapshot restore.
+- Preserve TWI's TWINT flag when firmware writes zero to it.
+- Reassert TWI interrupts until TWINT is cleared, including after snapshot restore.
+- Preserve SPI's read-only status flags on SPSR writes and avoid arming their
+  read-clear sequence when a restored interrupt is acknowledged.
+- Correct ADC auto-trigger enable/busy behavior, add comparator triggers, update
+  ADLAR result presentation immediately, and hold sampled inputs across conversions
+  and snapshot restore.
+- Mask the comparator's ADC mux selection to MUX2..0 to avoid invalid-channel errors.
+- Synchronize all USART requests with their masks and live flags, retain RX/UDRE
+  requests through ISR entry and PRR, and preserve TXC until explicit acknowledgement.
+- Preserve externally driven GPIO inputs across output changes and snapshots,
+  and avoid manufacturing peripheral interrupts while restoring GPIO state.
+- Abort SPI bytes on disable, mode changes, SS deselection, or master SS faults;
+  detect already-low input SS and retain separate receive/transmit register data.
+- Skip SPI SS checks on GPIO updates while SPI is disabled.
+- Protect TWI status bits and reject TWDR writes while TWINT is clear, maintaining
+  the hardware-owned TWWC collision flag.
+- Implement persistent EEPROM/SPM ready interrupts, EEPROM write-enable expiry
+  and erase-only/write-only modes, and ready suppression during SPM commands.
+- Enforce the watchdog configuration window and preserve elapsed timeout time
+  through flag writes, clock changes, and snapshot restore.
+- Deliver ADC hardware trigger edges before ISR acknowledgement and apply
+  external-trigger synchronization and sample-and-hold timing.
+- Filter Timer1 input capture using four stable samples, pause filtering with
+  its clock, disable capture when ICR1 is TOP, and acknowledge restored captures.
+- Gate ADC/SPI/USART clocks during sleep, keep asynchronous Timer2 active in ADC
+  noise-reduction mode, and resume code on enabled wake requests with global I clear.
+- Propagate runtime clock changes to asynchronous Timer2, preserving fractional
+  phase and update-busy deadlines through clock changes and snapshot restore.
+- Keep PWM duty reports within zero to one when an OCR value exceeds dynamic TOP.
+
 ## 0.1.0 - 2026-10-04
 
 ### Added

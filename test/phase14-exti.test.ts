@@ -121,8 +121,8 @@ describe("Phase 14 — external interrupts (register-level)", () => {
     expect(avr.cpu.pc).toBe(0);
 
     avr.pin(2).setInput(true);
-    // No flag set (EIMSK gate).
-    expect(avr.cpu.readData(EIFR) & (1 << INTF0)).toBe(0);
+    // The edge latches a flag even while its interrupt is masked.
+    expect(avr.cpu.readData(EIFR) & (1 << INTF0)).toBe(1 << INTF0);
 
     avr.runCycles(5);
     // Still in the main self-loop; no interrupt was taken.

@@ -12,3 +12,9 @@ still comparing RXC0 status and received bytes.
 Regenerate with `bun run fixtures:avr-gcc` or compile this file with the same
 `avr-gcc -mmcu=atmega328p -Os -DF_CPU=16000000UL` flags used by the fixture
 script.
+
+## SPI setup
+
+The master measurement configures PB2/SS as an output before setting MSTR, so
+an externally low SS input cannot abort the transfer. The C source and committed
+HEX/disassembly must be rebuilt together when the fixture changes.

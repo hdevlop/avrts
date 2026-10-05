@@ -40,7 +40,7 @@ describe("ADC", () => {
     adc.setChannelValue(2, 0x02ab);
     cpu.writeData(ADMUX, 2);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC)); // prescaler defaults to /2
-    adc.tick(25);
+    adc.tick(49); // First conversion: 25 ADC clocks at /2.
     expect(cpu.readData(ADCSRA) & (1 << ADSC)).toBe(1 << ADSC);
 
     adc.tick(1);
@@ -58,7 +58,7 @@ describe("ADC", () => {
     adc.setChannelValue(0, 0x02ab);
     cpu.writeData(ADMUX, 1 << ADLAR);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    adc.tick(26);
+    adc.tick(50);
 
     expect(cpu.readData(ADCH)).toBe(0xaa);
     expect(cpu.readData(ADCL)).toBe(0xc0);
@@ -71,7 +71,7 @@ describe("ADC", () => {
 
     adc.setChannelValue(0, 1);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    adc.tick(26);
+    adc.tick(50);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);
 
     cpu.writeData(ADCSRA, cpu.readData(ADCSRA) | (1 << ADIF));
@@ -84,7 +84,7 @@ describe("ADC", () => {
     avr.analog(3).setVoltage(2.5, 5);
     avr.cpu.writeData(ADMUX, 3);
     avr.cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    avr.runCycles(26);
+    avr.runCycles(50);
 
     expect(avr.cpu.readData(ADCL) | (avr.cpu.readData(ADCH) << 8)).toBe(512);
     expect(avr.analog(3).read()).toBe(512);
@@ -95,12 +95,12 @@ describe("ADC", () => {
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
-    cpu.flash[1] = 0x0000; // nop stream until ADC completes
+    cpu.flash[1] = 0xcfff; // idle loop until ADC completes, avoiding the ISR body
     cpu.flash[ADC_VECTOR] = 0x9518; // reti
 
     avr.analog(0).setValue(123);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADIE) | (1 << ADSC));
-    avr.runCycles(27);
+    avr.runCycles(50);
 
     expect(cpu.pc).toBe(ADC_VECTOR);
     expect(cpu.sreg.I).toBe(false);
@@ -117,12 +117,12 @@ describe("ADC", () => {
 
     source.analog(0).setValue(321);
     cpu.writeData(ADCSRB, 1 << ADTS2); // Timer0 overflow trigger source.
-    cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE) | (1 << ADSC));
+    cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE));
 
     const restored = AVR();
     restored.restore(source.snapshot());
     restored.cpu.data[TIFR0] = restored.cpu.data[TIFR0]! | (1 << TOV0);
-    restored.runCycles(27);
+    restored.runCycles(54); // Trigger at cycle 1, three sync cycles, then 25 ADC clocks at /2.
 
     expect(restored.cpu.readData(ADCL) | (restored.cpu.readData(ADCH) << 8)).toBe(321);
     expect(restored.cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);

@@ -57,6 +57,12 @@ export class PinChangeInterrupt {
   @OnWrite(PCIFR)
   onWritePcifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     this.cpu.data[PCIFR] = oldValue & ~value; // flags are write-1-to-clear
+    this.onWritePcicr();
+  }
+
+  @OnWrite(PCICR)
+  onWritePcicr(): void {
+    for (const group of GROUPS) this.updateInterrupt(group);
   }
 
   private evaluate(group: PcintGroup): void {
@@ -69,10 +75,17 @@ export class PinChangeInterrupt {
     if (changed === 0) return;
 
     this.cpu.data[PCIFR] = this.cpu.readData(PCIFR) | (1 << group.index);
-    if ((this.cpu.readData(PCICR) & (1 << group.index)) !== 0) {
+    this.updateInterrupt(group);
+  }
+
+  private updateInterrupt(group: PcintGroup): void {
+    const mask = 1 << group.index;
+    if ((this.cpu.data[PCICR]! & this.cpu.data[PCIFR]! & mask) !== 0) {
       this.cpu.requestInterrupt(group.vector, () => {
         this.cpu.data[PCIFR] = this.cpu.readData(PCIFR) & ~(1 << group.index);
       });
+    } else {
+      this.cpu.clearInterrupt(group.vector);
     }
   }
 

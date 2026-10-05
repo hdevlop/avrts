@@ -47,6 +47,7 @@ describe("SPI slave mode", () => {
     const avr = AVR();
     const cpu = avr.cpu;
 
+    cpu.writeData(DDRB, 1 << 2);
     cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     cpu.writeData(SPDR, 0x10);
     avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);
@@ -64,6 +65,7 @@ describe("SPI slave mode", () => {
     const avr = AVR();
     const cpu = avr.cpu;
 
+    cpu.writeData(DDRB, 1 << 2);
     cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     cpu.data[SPSR] = (1 << SPIF) | (1 << WCOL);
     cpu.writeData(SPDR, 0x22);
@@ -77,6 +79,7 @@ describe("SPI slave mode", () => {
     avr.spi.onByte((_byte, meta) => seen.push(`${meta.mode}:${meta.bitOrder}`));
     avr.spi.respondWith((_byte, meta) => (meta.bitOrder === "lsb-first" ? 0x5a : 0xa5));
 
+    avr.cpu.writeData(DDRB, 1 << 2);
     avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR) | (1 << DORD));
     avr.cpu.writeData(SPDR, 0x81);
     avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);

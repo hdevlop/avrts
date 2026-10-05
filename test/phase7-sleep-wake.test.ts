@@ -106,7 +106,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
     cpu.sleep();
 
     expect((cpu.readData(ADCSRA) >> ADSC) & 1).toBe(1);
-    avr.runCycles(26);
+    avr.runCycles(50);
 
     expect(cpu.isSleeping).toBe(true);
     expect(cpu.readData(TCNT0)).toBe(0);
@@ -187,7 +187,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADIE));
     cpu.writeData(SMCR, sleepMode(MODE_ADC_NOISE_REDUCTION));
     cpu.sleep();
-    avr.runCycles(26);
+    avr.runCycles(50);
 
     expect(cpu.isSleeping).toBe(false);
     expect(cpu.pc).toBe(ADC_VECTOR);

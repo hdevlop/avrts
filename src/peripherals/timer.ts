@@ -249,7 +249,7 @@ export class Timer0 implements PwmSource {
     }
     if (next !== 0) return;
 
-    this.cpu.data[TIFR0] = this.cpu.data[TIFR0]! | (1 << TOV0);
+    this.cpu.setInterruptFlag(TIFR0, 1 << TOV0);
     this.requestOverflowIfEnabled();
   }
 
@@ -315,12 +315,12 @@ export class Timer0 implements PwmSource {
   private handleCompare(counter: number): void {
     if (counter === this.cpu.data[OCR0A]!) {
       this.handleCompareOutput("A");
-      this.cpu.data[TIFR0] = this.cpu.data[TIFR0]! | (1 << OCF0A);
+      this.cpu.setInterruptFlag(TIFR0, 1 << OCF0A);
       this.requestCompareIfEnabled("A");
     }
     if (counter === this.cpu.data[OCR0B]!) {
       this.handleCompareOutput("B");
-      this.cpu.data[TIFR0] = this.cpu.data[TIFR0]! | (1 << OCF0B);
+      this.cpu.setInterruptFlag(TIFR0, 1 << OCF0B);
       this.requestCompareIfEnabled("B");
     }
   }

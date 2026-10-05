@@ -120,8 +120,13 @@ export class Timer2 implements PwmSource {
 
   /** The async TOSC ratio depends on the system clock; wired from useClock(). */
   setClock(clockHz: number): void {
-    this.clockHz = clockHz;
+    if (clockHz === this.clockHz) return;
+    const scale = clockHz / this.clockHz;
+    const busyRemaining = this.cpu.clockEventRemainingCycles(this.onAsyncBusyClearEvent);
     this.syncToCpuCycle();
+    if (this.asyncMode()) this.prescalerRemainder *= scale;
+    this.clockHz = clockHz;
+    if (busyRemaining > 0) this.cpu.addClockEvent(this.onAsyncBusyClearEvent, Math.max(1, Math.round(busyRemaining * scale)));
     this.refreshPrescaler();
     this.scheduleClockEvent();
   }
@@ -532,7 +537,8 @@ export class Timer2 implements PwmSource {
     };
   }
 
-  restore(snap: Timer2Snapshot): void {
+  restore(snap: Timer2Snapshot, clockHz = this.clockHz): void {
+    this.clockHz = clockHz;
     this.powerReduced = false;
     this.prescalerHeld = false;
     this.sleepPaused = false;

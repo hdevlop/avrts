@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AVR } from "../src";
 import {
+  DDRB,
   EEARH,
   EEARL,
   EECR,
@@ -84,6 +85,7 @@ describe("SPI", () => {
     const sent: number[] = [];
     avr.spi.onByte((b) => sent.push(b));
     avr.spi.respondWith((b) => b ^ 0xff);
+    avr.cpu.writeData(DDRB, 1 << 2);
     avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     avr.cpu.writeData(SPDR, 0x3c);
     expect(sent).toEqual([]);
@@ -103,6 +105,7 @@ describe("SPI", () => {
     const sent: number[] = [];
     avr.spi.onByte((b) => sent.push(b));
     avr.spi.respondWith((b) => b ^ 0xff);
+    avr.cpu.writeData(DDRB, 1 << 2);
     avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
 
     avr.cpu.writeData(SPDR, 0x10);
@@ -121,6 +124,7 @@ describe("SPI", () => {
   test("snapshot restores an in-flight transfer", () => {
     const source = AVR();
     source.spi.respondWith((b) => b ^ 0xff);
+    source.cpu.writeData(DDRB, 1 << 2);
     source.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     source.cpu.writeData(SPDR, 0x5a);
     source.runCycles(10);

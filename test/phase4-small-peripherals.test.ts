@@ -21,6 +21,7 @@ import {
   CLKPR,
   CLKPCE,
   CS00,
+  DDRB,
   EXTRF,
   ICES1,
   ICF1,
@@ -131,7 +132,7 @@ describe("Phase 4 small peripherals", () => {
     avr.analog(8).setValue(456);
     cpu.writeData(ADMUX, 8);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    avr.runCycles(26);
+    avr.runCycles(50);
     expect(readAdcResult(avr)).toBe(456);
 
     cpu.writeData(ADMUX, (1 << REFS0) | 14);
@@ -172,6 +173,7 @@ describe("Phase 4 small peripherals", () => {
     expect(serialBytes).toEqual([0x51]);
 
     const spi = AVR();
+    spi.cpu.writeData(DDRB, 1 << 2);
     spi.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     spi.cpu.writeData(SPDR, 0x33);
     spi.runCycles(10);
@@ -205,7 +207,7 @@ describe("Phase 4 small peripherals", () => {
     expect((cpu.readData(ADCSRA) >> ADIF) & 1).toBe(0);
 
     cpu.writeData(PRR, 0);
-    avr.runCycles(15);
+    avr.runCycles(39); // 40 of the first conversion's 50 cycles remain.
     expect((cpu.readData(ADCSRA) >> ADIF) & 1).toBe(0);
     avr.runCycles(1);
     expect((cpu.readData(ADCSRA) >> ADIF) & 1).toBe(1);
@@ -242,7 +244,7 @@ describe("Phase 4 small peripherals", () => {
     cpu.sleep();
 
     expect((cpu.readData(ADCSRA) >> ADSC) & 1).toBe(1);
-    avr.runCycles(25);
+    avr.runCycles(49);
     expect((cpu.readData(ADCSRA) >> ADIF) & 1).toBe(0);
     avr.runCycles(1);
     expect((cpu.readData(ADCSRA) >> ADIF) & 1).toBe(1);

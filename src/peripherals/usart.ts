@@ -92,23 +92,18 @@ export class Usart0 {
   private rxShift: RxFrame | null = null;
   private readonly rxFifo: RxFrame[] = [];
   private rxOverrun = false;
-  private interruptSourcesEnabled = false;
   private txShiftByte: number | null = null;
   private txBufferByte: number | null = null;
   private mspimResponder: MspimResponder = () => 0xff;
   private powerReduced = false;
+  private sleepPaused = false;
   private frozenTxRemainingCycles = 0;
   private frozenRxRemainingCycles = 0;
-  private frozenInterruptRemainingCycles = 0;
   private readonly onTxCompleteEvent = (): void => {
     this.completeTxFrame();
   };
   private readonly onRxCompleteEvent = (): void => {
     this.completeRxFrame();
-  };
-  private readonly onInterruptEvent = (): void => {
-    this.updateInterrupts();
-    this.scheduleInterruptPoll();
   };
 
   constructor(private readonly cpu: CPU) {
@@ -117,9 +112,9 @@ export class Usart0 {
 
   reset(): void {
     this.powerReduced = false;
+    this.sleepPaused = false;
     this.frozenTxRemainingCycles = 0;
     this.frozenRxRemainingCycles = 0;
-    this.frozenInterruptRemainingCycles = 0;
     this.cpu.clearClockEvent(this.onTxCompleteEvent);
     this.cpu.clearClockEvent(this.onRxCompleteEvent);
     this.rxWire.length = 0;
@@ -131,8 +126,7 @@ export class Usart0 {
     this.cpu.data[UCSR0A] = (1 << UDRE0);
     this.cpu.data[UCSR0C] = (1 << UCSZ01) | (1 << UCSZ00);
     this.cpu.data[UDR0] = 0;
-    this.refreshInterruptSourcesEnabled();
-    this.scheduleInterruptPoll();
+    this.updateInterrupts();
   }
 
   onByteTransmit(listener: SerialByteListener): () => void {
@@ -175,7 +169,6 @@ export class Usart0 {
 
   @OnWrite(UCSR0B)
   onWriteUcsr0b(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.refreshInterruptSourcesEnabled();
     if ((oldValue & (1 << RXEN0)) !== 0 && (value & (1 << RXEN0)) === 0) {
       // Disabling the receiver flushes the FIFO and aborts the in-flight frame.
       this.rxFifo.length = 0;
@@ -204,7 +197,6 @@ export class Usart0 {
 
     const ninth = (this.cpu.data[UCSR0B]! & (1 << TXB80)) !== 0 ? 0x100 : 0;
     this.cpu.data[UDR0] = byte;
-    this.cpu.data[UCSR0A] = this.cpu.readData(UCSR0A) & ~(1 << TXC0);
     if (this.txShiftByte === null) {
       this.startTxFrame(byte | ninth);
     } else {
@@ -212,7 +204,6 @@ export class Usart0 {
       this.updateTxDataRegisterEmptyFlag();
     }
     this.updateInterrupts();
-    this.scheduleInterruptPoll();
   }
 
   /** Firmware read of UDR0: pop the FIFO head and refresh the status flags. */
@@ -226,7 +217,7 @@ export class Usart0 {
     }
     const byte = this.cpu.data[UDR0]!;
     this.updateRxFlag();
-    this.scheduleInterruptPoll();
+    this.updateInterrupts();
     return byte & 0xff;
   }
 
@@ -257,7 +248,7 @@ export class Usart0 {
 
   private maybeStartRxShift(): void {
     if (this.rxShift !== null) return;
-    if (this.powerReduced) return;
+    if (this.clockPaused()) return;
     // Frames wait on the wire while the receiver is disabled; MSPIM receives
     // only through transfers (the master supplies the clock).
     if (!this.rxEnabled() || this.isMspim()) return;
@@ -325,7 +316,7 @@ export class Usart0 {
   private startTxFrame(byte9: number, remainingCycles = this.frameCycles()): void {
     this.txShiftByte = byte9 & 0x1ff;
     this.updateTxDataRegisterEmptyFlag();
-    if (this.powerReduced) {
+    if (this.clockPaused()) {
       this.frozenTxRemainingCycles = remainingCycles;
       return;
     }
@@ -357,7 +348,6 @@ export class Usart0 {
     }
     this.updateRxFlag();
     this.updateInterrupts();
-    this.scheduleInterruptPoll();
   }
 
   private frameCycles(): number {
@@ -386,12 +376,12 @@ export class Usart0 {
   }
 
   private txRemainingCycles(): number {
-    if (this.powerReduced && this.txShiftByte !== null) return this.frozenTxRemainingCycles;
+    if (this.clockPaused() && this.txShiftByte !== null) return this.frozenTxRemainingCycles;
     return this.txShiftByte === null ? 0 : this.cpu.clockEventRemainingCycles(this.onTxCompleteEvent);
   }
 
   private rxRemainingCycles(): number {
-    if (this.powerReduced && this.rxShift !== null) return this.frozenRxRemainingCycles;
+    if (this.clockPaused() && this.rxShift !== null) return this.frozenRxRemainingCycles;
     return this.rxShift === null ? 0 : this.cpu.clockEventRemainingCycles(this.onRxCompleteEvent);
   }
 
@@ -399,55 +389,32 @@ export class Usart0 {
     this.updateTxDataRegisterEmptyFlag();
     this.updateRxFlag();
     this.updateInterrupts();
-    this.scheduleInterruptPoll();
-  }
-
-  private refreshInterruptSourcesEnabled(): void {
-    const control = this.cpu.data[UCSR0B]!;
-    this.interruptSourcesEnabled =
-      (control & ((1 << RXCIE0) | (1 << UDRIE0) | (1 << TXCIE0))) !== 0;
-  }
-
-  private hasEnabledReadySource(): boolean {
-    if (!this.interruptSourcesEnabled) return false;
-    const status = this.cpu.data[UCSR0A]!;
-    const control = this.cpu.data[UCSR0B]!;
-    return (
-      ((status & (1 << RXC0)) !== 0 && (control & (1 << RXCIE0)) !== 0) ||
-      ((status & (1 << UDRE0)) !== 0 && (control & (1 << UDRIE0)) !== 0) ||
-      ((status & (1 << TXC0)) !== 0 && (control & (1 << TXCIE0)) !== 0)
-    );
-  }
-
-  private scheduleInterruptPoll(): void {
-    if (this.powerReduced) {
-      this.cpu.clearClockEvent(this.onInterruptEvent);
-      return;
-    }
-    if (this.hasEnabledReadySource()) {
-      this.cpu.addClockEvent(this.onInterruptEvent, 1);
-    } else {
-      this.cpu.clearClockEvent(this.onInterruptEvent);
-    }
   }
 
   private updateInterrupts(): void {
-    if (this.powerReduced) return;
-    if (!this.interruptSourcesEnabled) return;
-    if (!this.cpu.sreg.I) return;
     const status = this.cpu.data[UCSR0A]!;
     const control = this.cpu.data[UCSR0B]!;
     if ((status & (1 << RXC0)) !== 0 && (control & (1 << RXCIE0)) !== 0) {
-      this.cpu.requestInterrupt(USART_RX_VECTOR);
+      this.cpu.requestInterrupt(USART_RX_VECTOR, () => this.acknowledgeReadyInterrupt());
+    } else {
+      this.cpu.clearInterrupt(USART_RX_VECTOR);
     }
     if ((status & (1 << UDRE0)) !== 0 && (control & (1 << UDRIE0)) !== 0) {
-      this.cpu.requestInterrupt(USART_UDRE_VECTOR);
+      this.cpu.requestInterrupt(USART_UDRE_VECTOR, () => this.acknowledgeReadyInterrupt());
+    } else {
+      this.cpu.clearInterrupt(USART_UDRE_VECTOR);
     }
     if ((status & (1 << TXC0)) !== 0 && (control & (1 << TXCIE0)) !== 0) {
       this.cpu.requestInterrupt(USART_TX_VECTOR, () => {
         this.cpu.data[UCSR0A] = this.cpu.data[UCSR0A]! & ~(1 << TXC0);
       });
+    } else {
+      this.cpu.clearInterrupt(USART_TX_VECTOR);
     }
+  }
+
+  acknowledgeReadyInterrupt(): void {
+    this.updateInterrupts();
   }
 
   // --- Snapshot / restore (Phase 10) ---
@@ -473,9 +440,9 @@ export class Usart0 {
   /** Restore RX pipeline and TX state. UCSR0A/UCSR0B are restored with CPU data. */
   restore(snap: Usart0Snapshot): void {
     this.powerReduced = false;
+    this.sleepPaused = false;
     this.frozenTxRemainingCycles = 0;
     this.frozenRxRemainingCycles = 0;
-    this.frozenInterruptRemainingCycles = 0;
     this.rxWire.length = 0;
     this.rxFifo.length = 0;
     this.rxShift = null;
@@ -508,24 +475,35 @@ export class Usart0 {
     if (this.txShiftByte !== null) {
       this.cpu.addClockEvent(this.onTxCompleteEvent, snap.txRemainingCycles ?? this.frameCycles());
     }
-    this.refreshInterruptSourcesEnabled();
     this.refreshStatusFlagsAndInterrupts();
   }
 
   setPowerReduced(reduced: boolean): void {
-    if (this.powerReduced === reduced) return;
-    if (reduced) {
-      this.frozenTxRemainingCycles = this.txRemainingCycles();
-      this.frozenRxRemainingCycles = this.rxRemainingCycles();
-      this.frozenInterruptRemainingCycles = this.cpu.clockEventRemainingCycles(this.onInterruptEvent);
-      this.powerReduced = true;
+    const wasPaused = this.clockPaused();
+    this.powerReduced = reduced;
+    this.applyClockGate(wasPaused);
+  }
+
+  setSleepPaused(paused: boolean): void {
+    const wasPaused = this.clockPaused();
+    this.sleepPaused = paused;
+    this.applyClockGate(wasPaused);
+  }
+
+  private clockPaused(): boolean {
+    return this.powerReduced || this.sleepPaused;
+  }
+
+  private applyClockGate(wasPaused: boolean): void {
+    if (wasPaused === this.clockPaused()) return;
+    if (this.clockPaused()) {
+      this.frozenTxRemainingCycles = this.cpu.clockEventRemainingCycles(this.onTxCompleteEvent);
+      this.frozenRxRemainingCycles = this.cpu.clockEventRemainingCycles(this.onRxCompleteEvent);
       this.cpu.clearClockEvent(this.onTxCompleteEvent);
       this.cpu.clearClockEvent(this.onRxCompleteEvent);
-      this.cpu.clearClockEvent(this.onInterruptEvent);
       return;
     }
 
-    this.powerReduced = false;
     if (this.txShiftByte !== null) {
       this.cpu.addClockEvent(this.onTxCompleteEvent, this.frozenTxRemainingCycles || this.frameCycles());
     }
@@ -534,13 +512,7 @@ export class Usart0 {
     } else {
       this.maybeStartRxShift();
     }
-    if (this.frozenInterruptRemainingCycles > 0 && this.hasEnabledReadySource()) {
-      this.cpu.addClockEvent(this.onInterruptEvent, this.frozenInterruptRemainingCycles);
-    } else {
-      this.scheduleInterruptPoll();
-    }
     this.frozenTxRemainingCycles = 0;
     this.frozenRxRemainingCycles = 0;
-    this.frozenInterruptRemainingCycles = 0;
   }
 }

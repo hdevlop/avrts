@@ -76,6 +76,7 @@ static uint16_t measure_usart_dor(uint8_t* status, uint8_t* first, uint8_t* seco
 }
 
 static uint16_t measure_spi_spif(uint8_t* received, uint8_t* status) {
+  DDRB |= _BV(DDB2); // SS must be an output so a low input cannot clear MSTR.
   SPCR = _BV(SPE) | _BV(MSTR);
   SPSR = 0;
 

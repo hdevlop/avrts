@@ -34,7 +34,7 @@ describe("Phase 15 peripheral fidelity", () => {
 
     avr.analog(0).setValue(321);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    avr.runCycles(26);
+    avr.runCycles(50);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);
 
     cpu.writeData(ADCSRA, 1 << ADEN);
@@ -51,7 +51,7 @@ describe("Phase 15 peripheral fidelity", () => {
     avr.analog(0).setVoltage(1.1);
     cpu.writeData(ADMUX, (1 << REFS1) | (1 << REFS0)); // internal 1.1V reference
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADSC));
-    avr.runCycles(26);
+    avr.runCycles(50);
     expect(adcResult(avr)).toBe(1023);
 
     cpu.writeData(ADCSRA, cpu.readData(ADCSRA) | (1 << ADIF));
@@ -67,7 +67,7 @@ describe("Phase 15 peripheral fidelity", () => {
 
     avr.analog(0).setValue(111);
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE) | (1 << ADSC));
-    avr.runCycles(26);
+    avr.runCycles(50);
     expect(adcResult(avr)).toBe(111);
     expect(cpu.readData(ADCSRA) & (1 << ADSC)).toBe(1 << ADSC);
 
@@ -86,14 +86,14 @@ describe("Phase 15 peripheral fidelity", () => {
     cpu.writeData(OCR0A, 3);
     cpu.writeData(TCCR0A, 1 << WGM01); // CTC, OCR0A top
     cpu.writeData(ADCSRB, (1 << ADTS1) | (1 << ADTS0)); // Timer0 Compare Match A
-    cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE) | (1 << ADSC));
+    cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE));
     cpu.writeData(TCCR0B, 1 << CS00);
 
     avr.runCycles(3);
     expect(cpu.readData(TIFR0) & (1 << OCF0A)).toBe(1 << OCF0A);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(0);
 
-    avr.runCycles(26);
+    avr.runCycles(53); // Three synchronization cycles plus the first 25 ADC clocks at /2.
     expect(adcResult(avr)).toBe(123);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);
 
@@ -104,7 +104,7 @@ describe("Phase 15 peripheral fidelity", () => {
     expect(adcResult(avr)).toBe(123);
 
     cpu.writeData(TIFR0, 1 << OCF0A);
-    avr.runCycles(29);
+    avr.runCycles(33); // Next compare edge (3 cycles), then 13.5 ADC clocks at /2 + 3 sync cycles.
     expect(adcResult(avr)).toBe(777);
     expect(cpu.readData(ADCSRA) & (1 << ADIF)).toBe(1 << ADIF);
   });

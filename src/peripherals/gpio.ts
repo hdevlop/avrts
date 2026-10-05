@@ -24,7 +24,7 @@ const PIN_ADDR: Record<PortName, number> = { B: PINB, C: PINC, D: PIND };
  * and report any actual change. External input is injected via `setInput`.
  */
 export class Gpio {
-  private readonly touched = new Map<PortName, Set<() => void>>();
+  private readonly touched = new Map<PortName, Set<(restored: boolean) => void>>();
   private readonly peripheralMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
   private readonly peripheralValue: Record<PortName, number> = { B: 0, C: 0, D: 0 };
 
@@ -88,7 +88,7 @@ export class Gpio {
   /** Inject an external input level onto a pin (writes the PIN register, then notifies). */
   setInput(port: PortName, bit: number, high: boolean): void {
     const addr = PIN_ADDR[port];
-    const cur = this.cpu.readData(addr);
+    const cur = this.cpu.data[addr]!;
     this.cpu.data[addr] = high ? cur | (1 << bit) : cur & ~(1 << bit);
     this.notify(port);
   }
@@ -127,13 +127,13 @@ export class Gpio {
   }
 
   /** Subscribe to effective level changes of a single pin. */
-  onPinChange(port: PortName, bit: number, listener: (high: boolean) => void): () => void {
+  onPinChange(port: PortName, bit: number, listener: (high: boolean) => void, ignoreRestore = false): () => void {
     let prev = this.readPin(port, bit);
-    return this.onTouched(port, () => {
+    return this.onTouched(port, (restored) => {
       const high = this.readPin(port, bit);
       if (high !== prev) {
         prev = high;
-        listener(high);
+        if (!restored || !ignoreRestore) listener(high);
       }
     });
   }
@@ -158,11 +158,11 @@ export class Gpio {
 
   /** Public subscription used by the pin-change-interrupt controller. */
   onPortTouched(port: PortName, cb: () => void): () => void {
-    return this.onTouched(port, cb);
+    return this.onTouched(port, (restored) => { if (!restored) cb(); });
   }
 
   /** Low-level: run `cb` whenever anything on `port` is touched (PORT/DDR/PIN). */
-  private onTouched(port: PortName, cb: () => void): () => void {
+  private onTouched(port: PortName, cb: (restored: boolean) => void): () => void {
     let set = this.touched.get(port);
     if (!set) {
       set = new Set();
@@ -174,9 +174,9 @@ export class Gpio {
     };
   }
 
-  private notify(port: PortName): void {
+  private notify(port: PortName, restored = false): void {
     const set = this.touched.get(port);
-    if (set) for (const cb of [...set]) cb();
+    if (set) for (const cb of [...set]) cb(restored);
   }
 
   private togglePortFromPinWrite(port: PortName, value: number, oldValue: number): void {
@@ -196,9 +196,9 @@ export class Gpio {
   snapshot(): GpioSnapshot {
     return {
       pin: {
-        B: this.cpu.readData(PINB),
-        C: this.cpu.readData(PINC),
-        D: this.cpu.readData(PIND),
+        B: this.cpu.data[PINB]!,
+        C: this.cpu.data[PINC]!,
+        D: this.cpu.data[PIND]!,
       },
       peripheralMask: { ...this.peripheralMask },
       peripheralValue: { ...this.peripheralValue },
@@ -207,8 +207,8 @@ export class Gpio {
 
   /**
    * Replace injected input bytes and peripheral overrides directly, then fire the
-   * touched callbacks for each port so PCINT re-evaluates and pin listeners see
-   * any visible edge.
+   * host listeners for each port. Hardware edge detectors only synchronize their
+   * cached levels: restoring state must not manufacture a new interrupt.
    */
   restore(snap: GpioSnapshot): void {
     this.cpu.data[PINB] = snap.pin.B & 0xff;
@@ -220,8 +220,8 @@ export class Gpio {
     this.peripheralValue.B = snap.peripheralValue.B & 0xff;
     this.peripheralValue.C = snap.peripheralValue.C & 0xff;
     this.peripheralValue.D = snap.peripheralValue.D & 0xff;
-    this.notify("B");
-    this.notify("C");
-    this.notify("D");
+    this.notify("B", true);
+    this.notify("C", true);
+    this.notify("D", true);
   }
 }

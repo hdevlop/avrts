@@ -32,7 +32,7 @@ export function pwmSignal(cpu: CPU, config: PwmConfig, channel: PwmChannel): Pwm
   const active = (mode === "fast-pwm" || mode === "phase-correct-pwm") && compareMode >= 2;
   const inverted = compareMode === 3;
   const top = config.topValue?.() ?? config.max;
-  const rawDuty = active && top > 0 ? value / top : 0;
+  const rawDuty = active && top > 0 ? Math.min(1, value / top) : 0;
 
   return {
     channel,

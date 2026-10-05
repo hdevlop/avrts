@@ -72,8 +72,9 @@ export class AnalogComparator {
   @OnWrite(ACSR)
   onWriteAcsr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     const preservedFlag = (oldValue & (1 << ACI)) !== 0 && (value & (1 << ACI)) === 0;
-    this.cpu.data[ACSR] = (value & ~(1 << ACO)) | (preservedFlag ? 1 << ACI : 0);
+    this.cpu.data[ACSR] = (value & ~((1 << ACO) | (1 << ACI))) | (preservedFlag ? 1 << ACI : 0);
     this.evaluate();
+    this.updateInterrupt();
   }
 
   @OnWrite(ADMUX)
@@ -106,17 +107,23 @@ export class AnalogComparator {
     // ACIS) selects the capture edge there.
     if ((this.cpu.data[ACSR]! & (1 << ACIC)) !== 0) {
       if (this.captureTrigger !== undefined) this.captureTrigger(next);
-      else this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << ICF1);
+      else this.cpu.setInterruptFlag(TIFR1, 1 << ICF1);
     }
 
     if (!this.edgeMatches(previous, next)) return;
 
-    const acsr = this.cpu.data[ACSR]! | (1 << ACI);
-    this.cpu.data[ACSR] = acsr;
-    if ((acsr & (1 << ACIE)) !== 0) {
+    this.cpu.setInterruptFlag(ACSR, 1 << ACI);
+    this.updateInterrupt();
+  }
+
+  private updateInterrupt(): void {
+    const acsr = this.cpu.data[ACSR]!;
+    if ((acsr & ((1 << ACIE) | (1 << ACI))) === ((1 << ACIE) | (1 << ACI))) {
       this.cpu.requestInterrupt(ANALOG_COMP_VECTOR, () => {
         this.cpu.data[ACSR] = this.cpu.data[ACSR]! & ~(1 << ACI);
       });
+    } else {
+      this.cpu.clearInterrupt(ANALOG_COMP_VECTOR);
     }
   }
 
@@ -134,7 +141,7 @@ export class AnalogComparator {
       (this.cpu.data[ADCSRB]! & (1 << ACME)) !== 0 &&
       (this.cpu.data[ADCSRA]! & (1 << ADEN)) === 0;
     if (!muxEnabled) return this.ain1Volts;
-    return this.adc.readChannelVoltage(this.cpu.data[ADMUX]! & 0x0f);
+    return this.adc.readChannelVoltage(this.cpu.data[ADMUX]! & 0x07);
   }
 
   private disabled(): boolean {

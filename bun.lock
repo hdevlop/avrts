@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "avrts",
+      "name": "@hdevlop/avrts",
       "devDependencies": {
         "@playwright/test": "^1.49.0",
         "@types/bun": "^1.3.14",

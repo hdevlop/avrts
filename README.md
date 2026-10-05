@@ -421,6 +421,7 @@ Benchmark and result checks:
 ```bash
 bun run bench:result
 bun run bench:compare -- --repeats 3 --isolate
+bun run bench:revision --baseline /path/to/baseline/checkout --output comparison.json
 ```
 
 The current benchmark policy is documented in

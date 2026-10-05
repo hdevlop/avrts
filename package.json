@@ -1,6 +1,6 @@
 {
   "name": "@hdevlop/avrts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ATmega328P simulator with chip-level timing, peripheral, bootloader, and browser-worker support",
   "type": "module",
   "main": "./dist/public/index.js",
@@ -72,6 +72,7 @@
     "prepublishOnly": "bun run release:check",
     "bench": "bun run scripts/benchmark.ts",
     "bench:compare": "bun run scripts/benchmark-compare.ts",
+    "bench:revision": "bun run scripts/benchmark-revision.ts",
     "bench:result": "bun run scripts/benchmark-results.ts",
     "bench:startup": "bun run scripts/benchmark-startup.ts",
     "oracle:simavr": "bun run scripts/simavr-oracle.ts",

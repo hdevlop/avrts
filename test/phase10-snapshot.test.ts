@@ -234,7 +234,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
     compareDirectAndRestoredInterruptAck(
       (avr) => {
         avr.cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADIE) | (1 << ADSC));
-        avr.runCycles(30);
+        avr.runCycles(50);
       },
       ADC_VECTOR,
       ADCSRA,
@@ -245,6 +245,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
   test("restored SPI pending interrupts keep their flag acknowledge behavior", () => {
     compareDirectAndRestoredInterruptAck(
       (avr) => {
+        avr.cpu.writeData(DDRB, 1 << 2);
         avr.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR) | (1 << SPIE));
         avr.cpu.writeData(SPDR, 0x42);
         avr.runCycles(DEFAULT_SPI_TRANSFER_CYCLES);

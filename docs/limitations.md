@@ -23,11 +23,15 @@ Not machine-checked; keep in sync with the implementation by review.
   FE0/DOR0/UPE0, MPCM filtering, 9-bit, synchronous, and MSPIM modes — but
   framing/parity errors are host-*injected* (`usart.inject(...)`), not derived
   from wire bits, and the synchronous XCK clock is not wired to a GPIO pin.
+  Frame scheduling is calibrated to native simavr; individual serial-bit sample
+  boundaries and electrical line behavior are not modeled.
 - **SPI** models master mode plus a byte-level host master API for firmware
   slave mode (`avr.spi.master().transfer(byte)`). SS selection and master-mode
   SS-fault behavior are modeled, and `SPIF` supports the documented
   read-SPSR-then-access-SPDR clear sequence. Wire bit order (`DORD`) is exposed
   as transfer metadata but individual bits are not serialized.
+  Starting a new byte also clears stale SPIF/WCOL as an existing compatibility
+  behavior; silicon requires the status/data access or interrupt clear sequence.
 - **TWI** models master and slave modes (TWAR/TWAMR address match, general
   call, host-side `twi.master()` handle). Multi-master arbitration loss is
   reachable only via host injection, not from real wire contention. START/STOP
@@ -38,9 +42,15 @@ Not machine-checked; keep in sync with the implementation by review.
   input-capture unit (ICES1 edge select, ICR1 latch, TIMER1_CAPT). This is a
   logical voltage comparison only; electrical noise, input leakage, and
   propagation delay are not modeled.
+- **GPIO inputs** are host-driven logical levels. Floating inputs, pull-up
+  resistance, and full serial peripheral pin overrides are not modeled.
+- **EEPROM** implements reads, protected writes, programming modes, and ready
+  interrupts, but completes reads/writes immediately rather than modeling CPU
+  read stalls and millisecond programming latency.
 - **CLKPR** changes the runtime's effective `clockHz` after the CLKPCE-protected
-  write protocol. Cycle-relative peripheral scheduling is unchanged; host-frame
-  pacing and watchdog timeouts use the divided effective clock.
+  write protocol. CPU-clocked peripherals follow that effective clock;
+  watchdog timeouts and asynchronous Timer2 preserve their remaining wall time.
+  Host-frame pacing uses the divided effective clock.
 - **PRR** gates the modeled peripheral clocks for ADC, USART0, SPI, TWI, and
   timers 0/1/2 by pausing scheduled operations and timer counters. The register
   remains readable/writable in simulation while gated; electrical power/current
@@ -52,6 +62,8 @@ Not machine-checked; keep in sync with the implementation by review.
   TOV1 at TOP and dual-slope TOV1 at BOTTOM. The reserved WGM 13 free-runs to the
   16-bit MAX (documented approximation). Exact OCR/ICR double-buffer edge
   semantics for every dynamic TOP update remain approximated.
+  Its shared TEMP-register protocol for atomic high/low byte access is simplified
+  to independent bytes. Timer0/Timer1 external T0/T1 clock inputs are not wired.
 - **Timer2 asynchronous mode** models `ASSR.AS2` with a simulated 32.768 kHz
   TOSC source and `TCN2UB`/`OCR2xUB`/`TCR2xUB` update-busy flags. External
   TOSC/EXCLK pin wiring and crystal drift are not modeled.
@@ -69,12 +81,15 @@ Not machine-checked; keep in sync with the implementation by review.
   LPM signature/fuse/lock reads, and SPM_READY interrupts. Stock Optiboot
   STK500v1 programming is validated with avrts and a native simavr oracle.
   Flash wear and exact millisecond erase/write latency are not modeled.
-- **Sleep** gates Timer0/Timer1 and Timer2 by sleep mode, starts ADC
+- **Sleep** gates Timer0/Timer1, SPI, USART, ADC, and Timer2 by sleep mode, starts ADC
   conversion on ADC noise-reduction sleep entry, keeps asynchronous Timer2
-  running in power-save / extended-standby, reapplies gating after
+  running in ADC noise-reduction / power-save / extended-standby, reapplies gating after
   snapshot/restore, and adds the 4-cycle base interrupt wake latency.
   A compiled LowPower-style watchdog sleep fixture validates repeated
   power-down wake cycles and snapshot/restore (`test/lowpower-wdt.test.ts`).
+  TWI uses the host byte-operation model rather than modeling each asleep-bus
+  clock stretch or asynchronous address-watch transition. Oscillator startup
+  and wake-source filtering are not a complete silicon model.
 
 ## Permanent non-goals
 

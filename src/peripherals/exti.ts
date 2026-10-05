@@ -63,7 +63,7 @@ export class ExternalInterrupts {
   private prevPinLevels = { int0: false, int1: false };
   private levelModeActive = false;
   private readonly onLevelEvent = (): void => {
-    this.evaluateLevelMode();
+    this.updateInterrupts();
     this.scheduleLevelEvent();
   };
 
@@ -79,7 +79,7 @@ export class ExternalInterrupts {
     this.refreshLevelModeActive();
     this.gpio.onPortTouched("D", () => {
       this.evaluateEdges();
-      this.evaluateLevelMode();
+      this.updateInterrupts();
       this.scheduleLevelEvent();
     });
     if (options.cycleListener !== false) this.cpu.onCycles(() => this.tick());
@@ -94,7 +94,7 @@ export class ExternalInterrupts {
 
   tick(): void {
     if (!this.levelModeActive) return;
-    this.evaluateLevelMode();
+    this.updateInterrupts();
     this.scheduleLevelEvent();
   }
 
@@ -102,17 +102,20 @@ export class ExternalInterrupts {
   onWriteEifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     // Flags are write-1-to-clear.
     this.cpu.data[EIFR] = oldValue & ~value;
+    this.updateInterrupts();
   }
 
   @OnWrite(EICRA)
   onWriteEicra(): void {
     this.refreshLevelModeActive();
+    this.updateInterrupts();
     this.scheduleLevelEvent();
   }
 
   @OnWrite(EIMSK)
   onWriteEimsk(): void {
     this.refreshLevelModeActive();
+    this.updateInterrupts();
     this.scheduleLevelEvent();
   }
 
@@ -131,28 +134,29 @@ export class ExternalInterrupts {
       const matches =
         mode === 1 || (mode === 2 && falling) || (mode === 3 && rising);
       if (!matches) continue;
-      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) === 0) continue;
-
-      this.cpu.data[EIFR] = this.cpu.data[EIFR]! | (1 << cfg.flagBit);
-      this.cpu.requestInterrupt(cfg.vector, () => {
-        this.cpu.data[EIFR] = this.cpu.readData(EIFR) & ~(1 << cfg.flagBit);
-      });
+      this.cpu.setInterruptFlag(EIFR, 1 << cfg.flagBit);
     }
   }
 
   /**
-   * Level-mode re-evaluation. Fires after every instruction so the interrupt is
-   * continuously requested while the pin is LOW (matching real AVR behavior —
-   * the ISR is taken again after RETI and one main-program instruction).
+   * Synchronize edge requests with their flags and level requests with the live
+   * pin. Asserted low-level sources also schedule continuous re-evaluation.
    */
-  private evaluateLevelMode(): void {
+  private updateInterrupts(): void {
     for (const cfg of CONFIGS) {
       const mode = this.triggerMode(cfg);
-      if (mode !== 0) continue;
-      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) === 0) continue;
-      const high = this.gpio.readPin("D", cfg.pinBit);
-      if (high) continue;
-      this.cpu.requestInterrupt(cfg.vector);
+      const flag = 1 << cfg.flagBit;
+      if (mode === 0) this.cpu.data[EIFR] = this.cpu.data[EIFR]! & ~flag;
+      const asserted = mode === 0
+        ? !this.gpio.readPin("D", cfg.pinBit)
+        : (this.cpu.data[EIFR]! & flag) !== 0;
+      if ((this.cpu.data[EIMSK]! & (1 << cfg.enableBit)) !== 0 && asserted) {
+        this.cpu.requestInterrupt(cfg.vector, mode === 0 ? undefined : () => {
+          this.cpu.data[EIFR] = this.cpu.data[EIFR]! & ~flag;
+        });
+      } else {
+        this.cpu.clearInterrupt(cfg.vector);
+      }
     }
   }
 

@@ -16,6 +16,7 @@ import {
   TWSR,
   TWSTA,
   TWSTO,
+  TWWC,
 } from "../cpu";
 import type { CPU } from "../cpu";
 import type { TwiSnapshot } from "../snapshot";
@@ -65,10 +66,11 @@ type PendingTwiOperation =
 type SlaveAddressMatch = "own" | "generalCall";
 
 /**
- * Minimal TWI (I2C) master. It drives the standard status-code state machine the
+ * Byte-level TWI (I2C) master/slave. It drives the status-code state machine the
  * Arduino Wire library expects: START -> SLA+R/W -> data -> STOP. Connect virtual
- * slaves with `connect(address, slave)`. Slave/multi-master arbitration and
- * analog bus effects are not modeled, but AVR-visible operation timing is.
+ * slaves with `connect(address, slave)`, or drive this AVR through `master()`.
+ * Arbitration loss is host-injected; wire contention and analog bus effects
+ * are not modeled, but AVR-visible operation timing is.
  */
 export class Twi {
   private readonly slaves = new Map<number, TwiSlave>();
@@ -131,6 +133,7 @@ export class Twi {
 
   @OnWrite(TWCR)
   onWriteTwcr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+    value = (value & ~((1 << TWWC) | (1 << 1))) | (oldValue & (1 << TWWC));
     if ((value & (1 << TWEN)) === 0) {
       this.cpu.clearClockEvent(this.onOperationCompleteEvent);
       this.pendingOperation = null;
@@ -140,19 +143,13 @@ export class Twi {
       this.currentAddress = null;
       this.clearSlaveState();
       this.cpu.data[TWCR] = value & ~(1 << TWINT);
-      return;
-    }
-    if (this.pendingOperation !== null) {
+    } else if (this.pendingOperation !== null) {
       const pendingCommandBits = oldValue & ((1 << TWSTA) | (1 << TWSTO));
       this.cpu.data[TWCR] = (value & ~((1 << TWINT) | (1 << TWSTA) | (1 << TWSTO))) | pendingCommandBits;
-      return;
-    }
-    // The operation runs only when firmware writes a 1 to TWINT (clearing it).
-    if ((value & (1 << TWINT)) === 0) {
-      this.cpu.data[TWCR] = value;
-      return;
-    }
-    if ((value & (1 << TWSTA)) !== 0) {
+    } else if ((value & (1 << TWINT)) === 0) {
+      // Only writing one to TWINT clears it and starts the next operation.
+      this.cpu.data[TWCR] = value | (oldValue & (1 << TWINT));
+    } else if ((value & (1 << TWSTA)) !== 0) {
       this.scheduleOperation("start", value, 1);
     } else if (this.started && (value & (1 << TWSTO)) !== 0) {
       this.scheduleOperation("stop", value, 1);
@@ -160,6 +157,22 @@ export class Twi {
       this.scheduleOperation("transfer", value, this.sclCycles() * 9);
     } else {
       this.cpu.data[TWCR] = value & ~((1 << TWINT) | (1 << TWSTA) | (1 << TWSTO));
+    }
+    this.updateInterrupt();
+  }
+
+  @OnWrite(TWSR)
+  onWriteTwsr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+    this.cpu.data[TWSR] = (oldValue & 0xf8) | (value & 0x03);
+  }
+
+  @OnWrite(TWDR)
+  onWriteTwdr(_cpu: CPU, _addr: number, _value: number, oldValue: number): void {
+    if ((this.cpu.data[TWCR]! & (1 << TWINT)) === 0) {
+      this.cpu.data[TWDR] = oldValue;
+      this.cpu.data[TWCR] = this.cpu.data[TWCR]! | (1 << TWWC);
+    } else {
+      this.cpu.data[TWCR] = this.cpu.data[TWCR]! & ~(1 << TWWC);
     }
   }
 
@@ -269,6 +282,7 @@ export class Twi {
   private scheduleOperation(operation: PendingTwiOperation, value: number, cycles: number): void {
     this.pendingOperation = operation;
     this.cpu.data[TWCR] = value & ~(1 << TWINT);
+    this.updateInterrupt();
     if (this.powerReduced) {
       this.frozenOperationRemainingCycles = cycles;
       return;
@@ -338,6 +352,7 @@ export class Twi {
     this.cpu.data[TWSR] = (this.cpu.readData(TWSR) & 0x07) | STATUS.IDLE;
     // STOP clears TWSTO and does not set TWINT.
     this.cpu.data[TWCR] = this.cpu.readData(TWCR) & ~((1 << TWSTO) | (1 << TWINT));
+    this.updateInterrupt();
   }
 
   private doSlaveAddress(): void {
@@ -415,9 +430,21 @@ export class Twi {
     this.cpu.data[TWSR] = (this.cpu.readData(TWSR) & 0x07) | (code & 0xf8);
     // Operation done: TWINT reads back as 1; START flag is cleared by hardware.
     this.cpu.data[TWCR] = (this.cpu.readData(TWCR) & ~(1 << TWSTA)) | (1 << TWINT);
-    if ((this.cpu.readData(TWCR) & (1 << TWIE)) !== 0) {
-      this.cpu.requestInterrupt(TWI_VECTOR);
+    this.updateInterrupt();
+  }
+
+  private updateInterrupt(): void {
+    const mask = (1 << TWEN) | (1 << TWIE) | (1 << TWINT);
+    if ((this.cpu.data[TWCR]! & mask) === mask) {
+      this.cpu.requestInterrupt(TWI_VECTOR, () => this.acknowledgeInterrupt());
+    } else {
+      this.cpu.clearInterrupt(TWI_VECTOR);
     }
+  }
+
+  /** TWINT is not hardware-cleared on ISR entry: keep its request asserted. */
+  acknowledgeInterrupt(): void {
+    this.updateInterrupt();
   }
 
   private slaveAddressStatus(): number {
@@ -547,5 +574,6 @@ export class Twi {
       const fallback = this.operationFallbackCycles(this.pendingOperation);
       this.cpu.addClockEvent(this.onOperationCompleteEvent, snap.remainingCycles ?? fallback);
     }
+    this.updateInterrupt();
   }
 }

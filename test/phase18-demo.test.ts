@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -89,11 +89,10 @@ describe("Phase 18 — browser simulator demo", () => {
 describe("Phase 18 — demo static server", () => {
   let baseUrl: string;
   let server: ReturnType<typeof Bun.serve> | null = null;
-  const PORT = 5174;
 
   beforeAll(async () => {
     server = Bun.serve({
-      port: PORT,
+      port: 0,
       async fetch(req) {
         const url = new URL(req.url);
         let path = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -103,7 +102,11 @@ describe("Phase 18 — demo static server", () => {
         return new Response(file);
       },
     });
-    baseUrl = `http://localhost:${PORT}`;
+    baseUrl = `http://localhost:${server.port}`;
+  });
+
+  afterAll(() => {
+    server?.stop(true);
   });
 
   test("serves index.html at /", async () => {

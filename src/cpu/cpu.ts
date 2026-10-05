@@ -161,6 +161,7 @@ export class CPU {
   private readonly wdrListeners: Array<() => void> = [];
   private readonly sleepListeners: Array<(mode: number) => void> = [];
   private readonly wakeListeners: Array<() => void> = [];
+  private readonly flagListeners: Array<Array<(raised: number) => void> | undefined> = [];
   // Event-scheduled peripheral clock events (sorted by absolute cycle), plus a
   // small reuse pool. `nextClockEvent === undefined` is the common case (no
   // peripheral has scheduled anything), so the hot path is a single null check.
@@ -454,6 +455,26 @@ export class CPU {
     event.callback = NOOP;
     event.next = undefined;
     if (this.clockEventPool.length < 16) this.clockEventPool.push(event);
+  }
+
+  /** @internal Observe hardware flag edges used as ADC auto-trigger inputs. */
+  onInterruptFlag(address: number, listener: (raised: number) => void): () => void {
+    const listeners = this.flagListeners[address] ??= [];
+    listeners.push(listener);
+    return () => {
+      const index = listeners.indexOf(listener);
+      if (index >= 0) listeners.splice(index, 1);
+    };
+  }
+
+  /** @internal Assert hardware flags and deliver edges before ISR acknowledgement. */
+  setInterruptFlag(address: number, mask: number): void {
+    const oldValue = this.data[address]!;
+    this.data[address] = oldValue | mask;
+    const raised = mask & ~oldValue;
+    if (raised !== 0) {
+      for (const listener of this.flagListeners[address] ?? []) listener(raised);
+    }
   }
 
   /** Queue an interrupt by vector address; lowest vector has highest priority. */
@@ -864,7 +885,15 @@ export class CPU {
   private serviceNextInterrupt(): void {
     // Check the cheap array length before the SREG accessor: most ticks have no
     // pending interrupt, so this avoids the flag bit-math on the common path.
-    if (this.pendingInterrupts.length === 0 || !this.sreg.I) return;
+    if (this.pendingInterrupts.length === 0) return;
+    if (!this.sreg.I) {
+      if (this.sleeping) {
+        this.sleeping = false;
+        this.cycles += 4;
+        for (const listener of [...this.wakeListeners]) listener();
+      }
+      return;
+    }
     const interrupt = this.pendingInterrupts.shift()!;
     const wasSleeping = this.sleeping;
     this.sleeping = false; // an enabled interrupt wakes the CPU from sleep

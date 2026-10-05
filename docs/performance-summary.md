@@ -19,6 +19,11 @@ no per-instruction peripheral fan-out.
 
 ## Where we are (measured `--isolate`, production-representative)
 
+The 2026-10-05 peripheral patch comparison against the 0.1.0 source is recorded
+in [peripheral patch performance evidence](evidence/peripheral-performance.md).
+It uses a separate revision-comparison harness and does not update the historical
+avr8js ratios below.
+
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
 | synthetic / idle-dominated | tight-loop, delay-blink | **0.92-1.86x** |

@@ -11,10 +11,12 @@ import {
   DEFAULT_CLOCK_HZ,
   Decoder,
   EIFR,
+  EE_READY_VECTOR,
   EXTRF,
   FLASH_WORDS,
   INTF0,
   INTF1,
+  ICF1,
   INT0_VECTOR,
   INT1_VECTOR,
   MCUSR,
@@ -42,6 +44,7 @@ import {
   SPIF,
   SPI_STC_VECTOR,
   SPSR,
+  SPM_READY_VECTOR,
   TIFR0,
   TIFR1,
   TIFR2,
@@ -49,6 +52,7 @@ import {
   TIMER0_COMPB_VECTOR,
   TIMER0_OVF_VECTOR,
   TIMER1_COMPA_VECTOR,
+  TIMER1_CAPT_VECTOR,
   TIMER1_COMPB_VECTOR,
   TIMER1_OVF_VECTOR,
   TIMER2_COMPA_VECTOR,
@@ -57,9 +61,12 @@ import {
   TOV0,
   TOV1,
   TOV2,
+  TWI_VECTOR,
   TXC0,
   UCSR0A,
   USART_TX_VECTOR,
+  USART_RX_VECTOR,
+  USART_UDRE_VECTOR,
   WDRF,
   WDT_VECTOR,
 } from "./cpu";
@@ -455,6 +462,7 @@ class AVRRuntime implements AVR {
         this.fuseBytes = { ...this.fuseBytes, lockBits: lockBits & 0xff };
       },
       () => this.bootStartWord(),
+      () => this.eepromDevice.updateInterrupt(),
     );
     this.twiDevice = new Twi(this.cpu);
     this.powerReduction = new PowerReduction(this.cpu, [
@@ -466,7 +474,7 @@ class AVRRuntime implements AVR {
       { bit: PRTIM2, target: this.timer2 },
       { bit: PRTWI, target: this.twiDevice },
     ]);
-    this.sleepControl = new SleepControl(this.cpu, [this.timer0, this.timer1], this.timer2);
+    this.sleepControl = new SleepControl(this.cpu, [this.timer0, this.timer1, this.spiDevice, this.usart0], this.timer2, this.adc);
     this.timerSync = new TimerSync(this.cpu, [this.timer0, this.timer1], [this.timer2]);
     this.watchdog = new Watchdog(this.cpu, this.clockHz, {
       onSystemReset: () => {
@@ -1060,7 +1068,7 @@ class AVRRuntime implements AVR {
     this.gpioPeripheral.restore(snap.gpio);
     this.timer0.restore(snap.timer0);
     this.timer1.restore(snap.timer1);
-    this.timer2.restore(snap.timer2);
+    this.timer2.restore(snap.timer2, this.clockHz);
     this.usart0.restore(snap.usart0);
     this.adc.restore(snap.adc);
     this.analogComparator.restore(snap.comparator);
@@ -1102,6 +1110,10 @@ class AVRRuntime implements AVR {
 
   private acknowledgeForVector(vector: number): (() => void) | undefined {
     switch (vector) {
+      case EE_READY_VECTOR:
+        return () => this.eepromDevice.updateInterrupt();
+      case SPM_READY_VECTOR:
+        return () => this.selfProgramming.updateInterrupt();
       case WDT_VECTOR:
         return () => this.watchdog.acknowledgeInterrupt();
       case TIMER0_COMPA_VECTOR:
@@ -1119,6 +1131,10 @@ class AVRRuntime implements AVR {
       case TIMER1_COMPA_VECTOR:
         return () => {
           this.cpu.data[TIFR1] = this.cpu.readData(TIFR1) & ~(1 << OCF1A);
+        };
+      case TIMER1_CAPT_VECTOR:
+        return () => {
+          this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & ~(1 << ICF1);
         };
       case TIMER1_COMPB_VECTOR:
         return () => {
@@ -1146,8 +1162,10 @@ class AVRRuntime implements AVR {
         };
       case SPI_STC_VECTOR:
         return () => {
-          this.cpu.data[SPSR] = this.cpu.readData(SPSR) & ~(1 << SPIF);
+          this.cpu.data[SPSR] = this.cpu.data[SPSR]! & ~(1 << SPIF);
         };
+      case TWI_VECTOR:
+        return () => this.twiDevice.acknowledgeInterrupt();
       case ANALOG_COMP_VECTOR:
         return () => {
           this.cpu.data[ACSR] = this.cpu.readData(ACSR) & ~(1 << ACI);
@@ -1156,6 +1174,9 @@ class AVRRuntime implements AVR {
         return () => {
           this.cpu.data[UCSR0A] = this.cpu.readData(UCSR0A) & ~(1 << TXC0);
         };
+      case USART_RX_VECTOR:
+      case USART_UDRE_VECTOR:
+        return () => this.usart0.acknowledgeReadyInterrupt();
       case PCINT0_VECTOR:
         return () => {
           this.cpu.data[PCIFR] = this.cpu.readData(PCIFR) & ~(1 << PCIF0);
@@ -1386,6 +1407,7 @@ class AVRRuntime implements AVR {
     this.timeBaseCycles = this.cpu.cycles;
     this.clockHz = this.baseClockHz / normalized;
     this.watchdog.setClock(this.clockHz);
+    this.timer2.setClock(this.clockHz);
   }
 
   private nowMs(): number {

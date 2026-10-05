@@ -1,6 +1,7 @@
 import { OnRead, OnWrite } from "../core";
 import {
   ACIC,
+  ACO,
   ACSR,
   COM1A0,
   COM1A1,
@@ -93,20 +94,29 @@ export class Timer1 implements PwmSource {
     this.scheduleClockEvent();
   };
   // Noise-canceler-delayed input capture (armed by an ICP1/comparator edge).
+  private captureInputHigh = false;
+  private filteredCaptureHigh = false;
+  private frozenCaptureRemainingCycles = 0;
   private readonly onCaptureDelayEvent = (): void => {
-    this.performCapture();
+    if (this.captureInputHigh === this.filteredCaptureHigh) return;
+    this.filteredCaptureHigh = this.captureInputHigh;
+    if (this.captureInputHigh === ((this.cpu.data[TCCR1B]! & (1 << ICES1)) !== 0)) {
+      this.performCapture();
+    }
   };
 
   constructor(
     private readonly cpu: CPU,
     private readonly gpio?: Gpio,
   ) {
+    this.captureInputHigh = this.gpio?.readPin("B", 0) ?? false;
+    this.filteredCaptureHigh = this.captureInputHigh;
     // ICP1 is PB0 (Arduino pin 8). The pin edge triggers capture unless the
     // comparator owns the trigger (ACSR.ACIC set).
     this.gpio?.onPinChange("B", 0, (high) => {
       if ((this.cpu.data[ACSR]! & (1 << ACIC)) !== 0) return;
       this.onCaptureEdge(high);
-    });
+    }, true);
   }
 
   private get pwmConfig(): PwmConfig {
@@ -133,6 +143,9 @@ export class Timer1 implements PwmSource {
     this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.cpu.clearClockEvent(this.onCaptureDelayEvent);
+    this.frozenCaptureRemainingCycles = 0;
+    this.captureInputHigh = this.gpio?.readPin("B", 0) ?? false;
+    this.filteredCaptureHigh = this.captureInputHigh;
     this.refreshPrescaler();
     this.scheduleClockEvent();
     this.driveOutput("A", undefined);
@@ -276,13 +289,16 @@ export class Timer1 implements PwmSource {
 
   setPowerReduced(reduced: boolean): void {
     if (this.powerReduced === reduced) return;
+    const captureWasPaused = this.powerReduced || this.sleepPaused;
     if (reduced) {
       this.syncToCpuCycle();
       this.powerReduced = true;
+      this.updateCaptureClock(captureWasPaused);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
     this.powerReduced = false;
+    this.updateCaptureClock(captureWasPaused);
     this.lastCycle = this.cpu.cycles;
     this.scheduleClockEvent();
   }
@@ -310,13 +326,16 @@ export class Timer1 implements PwmSource {
 
   setSleepPaused(paused: boolean): void {
     if (this.sleepPaused === paused) return;
+    const captureWasPaused = this.powerReduced || this.sleepPaused;
     if (paused) {
       this.syncToCpuCycle();
       this.sleepPaused = true;
+      this.updateCaptureClock(captureWasPaused);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
     this.sleepPaused = false;
+    this.updateCaptureClock(captureWasPaused);
     this.lastCycle = this.cpu.cycles;
     this.scheduleClockEvent();
   }
@@ -334,26 +353,50 @@ export class Timer1 implements PwmSource {
   }
 
   private onCaptureEdge(high: boolean): void {
-    if (this.powerReduced) return;
-    const risingSelected = (this.cpu.data[TCCR1B]! & (1 << ICES1)) !== 0;
-    if (high !== risingSelected) return;
+    this.captureInputHigh = high;
     this.cpu.clearClockEvent(this.onCaptureDelayEvent);
+    if (this.powerReduced || this.sleepPaused) {
+      this.frozenCaptureRemainingCycles = high === this.filteredCaptureHigh ? 0
+        : (this.cpu.data[TCCR1B]! & (1 << ICNC1)) !== 0 ? NOISE_CANCELER_CYCLES : 1;
+      return;
+    }
+    if (!this.captureEnabled()) return;
     if ((this.cpu.data[TCCR1B]! & (1 << ICNC1)) !== 0) {
       // Noise canceler: the capture lands four system cycles after the edge.
-      // A new qualifying edge inside the window restarts the filter.
+      // Every opposite edge cancels the candidate: four equal samples are required.
       this.cpu.addClockEvent(this.onCaptureDelayEvent, NOISE_CANCELER_CYCLES);
       return;
     }
-    this.performCapture();
+    this.filteredCaptureHigh = high;
+    if (high === ((this.cpu.data[TCCR1B]! & (1 << ICES1)) !== 0)) this.performCapture();
   }
 
   private performCapture(): void {
-    if (this.powerReduced) return;
+    if (!this.captureEnabled()) return;
     this.syncToCpuCycle();
     this.cpu.data[ICR1L] = this.count & 0xff;
     this.cpu.data[ICR1H] = (this.count >> 8) & 0xff;
-    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << ICF1);
+    this.cpu.setInterruptFlag(TIFR1, 1 << ICF1);
     this.requestCaptureIfEnabled();
+  }
+
+  private captureEnabled(): boolean {
+    const mode = this.waveformMode();
+    return !this.powerReduced && !this.sleepPaused && mode !== 8 && mode !== 10 && mode !== 12 && mode !== 14;
+  }
+
+  private updateCaptureClock(wasPaused: boolean): void {
+    const paused = this.powerReduced || this.sleepPaused;
+    if (paused === wasPaused) return;
+    if (paused) {
+      this.frozenCaptureRemainingCycles = this.cpu.clockEventRemainingCycles(this.onCaptureDelayEvent);
+      this.cpu.clearClockEvent(this.onCaptureDelayEvent);
+    } else {
+      if (this.frozenCaptureRemainingCycles > 0) {
+        this.cpu.addClockEvent(this.onCaptureDelayEvent, this.frozenCaptureRemainingCycles);
+      }
+      this.frozenCaptureRemainingCycles = 0;
+    }
   }
 
   private requestCaptureIfEnabled(): void {
@@ -420,7 +463,7 @@ export class Timer1 implements PwmSource {
   }
 
   private setOverflowFlag(): void {
-    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << TOV1);
+    this.cpu.setInterruptFlag(TIFR1, 1 << TOV1);
     this.requestOverflowIfEnabled();
   }
 
@@ -488,12 +531,12 @@ export class Timer1 implements PwmSource {
   private handleCompare(counter: number, direction: "up" | "down"): void {
     if (counter === this.ocrValue("A")) {
       this.handleCompareOutput("A", direction);
-      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << OCF1A);
+      this.cpu.setInterruptFlag(TIFR1, 1 << OCF1A);
       this.requestCompareIfEnabled("A");
     }
     if (counter === this.ocrValue("B")) {
       this.handleCompareOutput("B", direction);
-      this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! | (1 << OCF1B);
+      this.cpu.setInterruptFlag(TIFR1, 1 << OCF1B);
       this.requestCompareIfEnabled("B");
     }
   }
@@ -698,7 +741,10 @@ export class Timer1 implements PwmSource {
       count: this.count,
       countingDown: this.countingDown,
       prescalerRemainder: this.prescalerRemainder,
-      captureDelayRemaining: this.cpu.clockEventRemainingCycles(this.onCaptureDelayEvent),
+      captureDelayRemaining: this.powerReduced || this.sleepPaused ? this.frozenCaptureRemainingCycles
+        : this.cpu.clockEventRemainingCycles(this.onCaptureDelayEvent),
+      captureInputHigh: this.captureInputHigh,
+      filteredCaptureHigh: this.filteredCaptureHigh,
     };
   }
 
@@ -711,7 +757,11 @@ export class Timer1 implements PwmSource {
     this.prescalerRemainder = snap.prescalerRemainder | 0;
     this.lastCycle = this.cpu.cycles;
     this.cpu.clearClockEvent(this.onCaptureDelayEvent);
+    this.frozenCaptureRemainingCycles = 0;
     const captureDelay = snap.captureDelayRemaining ?? 0;
+    this.captureInputHigh = snap.captureInputHigh ?? ((this.cpu.data[ACSR]! & (1 << ACIC)) !== 0
+      ? (this.cpu.data[ACSR]! & (1 << ACO)) !== 0 : this.gpio?.readPin("B", 0) ?? false);
+    this.filteredCaptureHigh = snap.filteredCaptureHigh ?? (captureDelay > 0 ? !this.captureInputHigh : this.captureInputHigh);
     if (captureDelay > 0) this.cpu.addClockEvent(this.onCaptureDelayEvent, captureDelay);
     this.refreshPrescaler();
     this.scheduleClockEvent();

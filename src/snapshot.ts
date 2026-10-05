@@ -35,6 +35,8 @@ export interface Timer1Snapshot {
   prescalerRemainder: number;
   /** Remaining cycles of a noise-canceler-delayed input capture (0 = none). */
   captureDelayRemaining?: number;
+  captureInputHigh?: boolean;
+  filteredCaptureHigh?: boolean;
 }
 
 export interface Timer2Snapshot {
@@ -76,6 +78,16 @@ export interface AdcSnapshot {
   voltageEnabled: Uint8Array;
   remainingCycles: number;
   converting: boolean;
+  /** Whether the next conversion needs the 25-clock ADC initialization. */
+  firstConversion?: boolean;
+  /** Channel/reference selection latched for the in-flight conversion. */
+  conversionMux?: number;
+  /** ADCL was read without the matching ADCH read. */
+  resultLocked?: boolean;
+  /** Remaining CPU cycles until the in-flight input is sampled. */
+  sampleRemainingCycles?: number;
+  /** Input held for the in-flight conversion; null before sample-and-hold. */
+  sampledResult?: number | null;
   triggerSource: number;
   triggerWasHigh: boolean;
 }
@@ -98,6 +110,7 @@ export interface SpiSnapshot {
   pendingMode?: "master" | "slave" | null;
   remainingCycles?: number;
   spifClearArmed?: boolean;
+  receivedByte?: number | null;
 }
 
 export interface ClockControlSnapshot {
@@ -159,6 +172,7 @@ export interface TwiSnapshot {
 
 export interface WatchdogSnapshot {
   accumulatedCycles: number;
+  changeWindowRemainingCycles?: number;
 }
 
 export interface PcintSnapshot {
