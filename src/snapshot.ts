@@ -30,6 +30,13 @@ export interface Timer0Snapshot {
 
 export interface Timer1Snapshot {
   count: number;
+  /** Shared high-byte TEMP latch, including incomplete CPU accesses. */
+  tempHigh?: number;
+  /** Active comparator words; CPU data retains the pending PWM buffers. */
+  activeOcrA?: number;
+  activeOcrB?: number;
+  /** A committed TCNT1 write suppresses the next timer-clock compare. */
+  compareBlocked?: boolean;
   /** Timer1 dual-slope PWM direction, when running an up/down WGM mode. */
   countingDown?: boolean;
   prescalerRemainder: number;

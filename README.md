@@ -218,6 +218,10 @@ avr.pwm(9).onChange((signal) => {
 avr.runFor(50);
 ```
 
+Timer1's PWM handle reports the active compare value and duty. A firmware OCR1
+write updates its CPU-visible buffer first; `pwm(...).read()` and change listeners
+reflect the new duty when that mode transfers the buffer at TOP or BOTTOM.
+
 Use `setValue(...)` when your test already has a raw 10-bit ADC sample:
 
 ```ts

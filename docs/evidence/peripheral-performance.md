@@ -1,8 +1,10 @@
 # Peripheral patch performance check
 
 Date: 2026-10-05. Baseline: `b017a8cc7c0326be358870192269c368861a3a4f`
-(published 0.1.0 source). Candidate: the 0.1.1 peripheral fixes, including the
-disabled-SPI guard. Both used the same checked-in firmware fixtures.
+(published 0.1.0 source). Candidate: the peripheral fixes at `4c8ce84`, including
+the disabled-SPI guard. Both used the same checked-in firmware fixtures. These
+measurements precede the Timer1 TEMP/PWM buffering follow-up; its comparison
+against `4c8ce84` is recorded in [Timer1 performance evidence](timer1-performance.md).
 
 Host: Intel Core i7-7700K, Windows 10 IoT Enterprise LTSC 10.0.19044,
 Bun 1.3.14. This comparison measures source execution in Bun; it does not

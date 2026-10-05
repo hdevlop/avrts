@@ -46,6 +46,9 @@ describe("Timer1 PWM (pins 9, 10)", () => {
     cpu.writeData(TCCR1A, (1 << WGM10) | (1 << COM1A1));
     cpu.writeData(OCR1AH, 0);
     cpu.writeData(OCR1AL, 64); // analogWrite(9, 64)
+    expect(avr.pwm(9).read().value).toBe(0); // still in the CPU-visible buffer.
+    cpu.writeData(TCCR1B, 1 << CS10);
+    avr.runCycles(255); // phase-correct OCR transfers at TOP.
 
     const sig = avr.pwm(9).read();
     expect(sig.enabled).toBe(true);
@@ -56,13 +59,16 @@ describe("Timer1 PWM (pins 9, 10)", () => {
     expect(sig.duty).toBeCloseTo(64 / 255);
   });
 
-  test("pin 10 (OC1B) emits a PWM change when OCR1B is written", () => {
+  test("pin 10 (OC1B) emits a PWM change when the OCR1B buffer transfers", () => {
     const avr = AVR();
     const seen: number[] = [];
     avr.pwm(10).onChange((signal) => seen.push(signal.duty));
 
     avr.cpu.writeData(TCCR1A, (1 << WGM10) | (1 << COM1B1));
     avr.cpu.writeData(OCR1BL, 200); // analogWrite(10, 200)
+    expect(seen.at(-1)).toBe(0);
+    avr.cpu.writeData(TCCR1B, 1 << CS10);
+    avr.runCycles(255);
 
     expect(seen.at(-1)).toBeCloseTo(200 / 255);
   });

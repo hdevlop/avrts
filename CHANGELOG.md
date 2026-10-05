@@ -9,6 +9,14 @@ Semantic Versioning once a version is published.
 
 ### Fixed
 
+- Model Timer1's shared TEMP byte, atomic low-byte commits, latched counter/capture
+  reads, and the OCR read exception; preserve incomplete accesses through snapshots.
+- Buffer Timer1 OCR updates at each PWM mode's TOP/BOTTOM boundary, retain active
+  compare values through clock gating and restore, and report the active PWM duty.
+- Hold Timer1 fast-PWM TOP for a full clock, preserve pulses across pending writes,
+  and handle constant duty, zero-duty pulses, and supported OC1A toggle modes.
+- Restrict ICR1 writes to TOP modes, raise ICF1 at ICR1 TOP, and block the next
+  compare clock after a committed TCNT1 write without resetting prescaler phase.
 - Synchronize ADC, comparator, SPI, TWI, pin-change, and external interrupt
   requests when flags or masks change; latch external-interrupt edges while masked.
 - Preserve ADC busy state across control writes, abort conversions when disabled,

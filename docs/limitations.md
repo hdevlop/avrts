@@ -60,10 +60,16 @@ Not machine-checked; keep in sync with the implementation by review.
   ICR1 WGM 12), the fixed 8/9/10-bit fast/phase-correct PWM modes (WGM 1/2/3 and
   5/6/7), and the OCR1A/ICR1-TOP PWM modes (WGM 8/9/10/11/14/15), with fast-PWM
   TOV1 at TOP and dual-slope TOV1 at BOTTOM. The reserved WGM 13 free-runs to the
-  16-bit MAX (documented approximation). Exact OCR/ICR double-buffer edge
-  semantics for every dynamic TOP update remain approximated.
-  Its shared TEMP-register protocol for atomic high/low byte access is simplified
-  to independent bytes. Timer0/Timer1 external T0/T1 clock inputs are not wired.
+  16-bit MAX (documented approximation). Shared TEMP accesses, atomic low-byte
+  commits, and OCR1A/B PWM buffering at the selected TOP/BOTTOM boundary are
+  modeled. ICR1 is unbuffered and writable only when it defines TOP; lowering
+  it below the counter can miss TOP until the counter wraps.
+  Timer0/Timer1 external T0/T1 clock inputs are not wired.
+- **Timer boundary timing** still simplifies the CTC clear and compare-flag
+  pipeline. CTC clears when the modeled counter reaches TOP instead of holding
+  TOP for the following timer clock; Timer0/Timer2 OCR writes remain immediate
+  rather than using PWM double buffers. Timer1 PWM periods and OCR buffering
+  have separate boundary regressions.
 - **Timer2 asynchronous mode** models `ASSR.AS2` with a simulated 32.768 kHz
   TOSC source and `TCN2UB`/`OCR2xUB`/`TCR2xUB` update-busy flags. External
   TOSC/EXCLK pin wiring and crystal drift are not modeled.

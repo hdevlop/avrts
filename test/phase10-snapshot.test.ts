@@ -440,13 +440,13 @@ describe("Phase 10 — snapshot / restore (Timers)", () => {
 
     const snap = avr.snapshot();
     const beforeCount =
-      (avr.cpu.readData(TCNT1H) << 8) | avr.cpu.readData(TCNT1L);
+      avr.cpu.readData(TCNT1L) | (avr.cpu.readData(TCNT1H) << 8);
 
     avr.runCycles(0x100);
     avr.restore(snap);
 
     const afterCount =
-      (avr.cpu.readData(TCNT1H) << 8) | avr.cpu.readData(TCNT1L);
+      avr.cpu.readData(TCNT1L) | (avr.cpu.readData(TCNT1H) << 8);
     expect(afterCount).toBe(beforeCount);
   });
 

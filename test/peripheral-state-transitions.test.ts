@@ -369,6 +369,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 capture is disabled while ICR1 defines TOP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
       avr.cpu.writeData(A.ICR1L, 0x80);
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1) | bit(A.WGM13) | bit(A.WGM12) | 1); // WGM 12
       avr.pin(8).setInput(true);
@@ -464,6 +465,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 PWM duty stays within its range when OCR exceeds a dynamic TOP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
       avr.cpu.writeData(A.ICR1L, 100);
       avr.cpu.writeData(A.OCR1BL, 150);
       avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12) | 1);

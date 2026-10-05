@@ -3,8 +3,11 @@
 Date: 2026-10-05. Package: `@hdevlop/avrts@0.1.1`.
 
 This patch corrects peripheral flags, interrupt requests, conversion state,
-clock gating, and snapshot transitions. The scope and remaining model boundaries
-are in [the correctness review](peripheral-correctness-review.md) and
+clock gating, and snapshot transitions. It also adds Timer1's shared TEMP access
+protocol and mode-specific OCR PWM buffering, with correct fast-PWM periods and
+pending state through snapshots. The scope and remaining model boundaries
+are in [the correctness review](peripheral-correctness-review.md),
+[the Timer1 follow-up](timer1-register-buffering.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -16,7 +19,7 @@ are in [the correctness review](peripheral-correctness-review.md) and
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,107 passed, zero failed; 6,154 assertions across 60 files |
+| Complete Bun source suite | 1,221 passed, zero failed; 6,740 assertions across 61 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 82 packed files |
@@ -34,26 +37,31 @@ on Ubuntu; its result is associated with the pushed preparation commit in Action
 
 ## Performance
 
-[The revision comparison](peripheral-performance.md) checks ten workloads against
-the 0.1.0 source. It identified unnecessary SPI SS work on GPIO updates while SPI
-was disabled; the guard restored bitbang throughput to baseline. The final PWM
+[The preceding revision comparison](peripheral-performance.md) checks ten workloads
+at `4c8ce84` against the 0.1.0 source. It identified unnecessary SPI SS work on
+GPIO updates while SPI was disabled; the guard restored bitbang throughput to baseline. The final PWM
 sample was 10.5% slower and its focused repeat 3.3% slower. That variation leaves
 a possible smaller PWM cost unresolved; no universal performance claim is made.
+
+[The Timer1 follow-up comparison](timer1-performance.md) uses `4c8ce84` as its
+baseline. Median throughput changed by -2.2% for peripheral-mix, -0.1% for
+ISR-heavy, and +2.3% for Arduino PWM. These focused source measurements cover
+three workloads; they are not a general speed guarantee.
 
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-82 files, is 267,233 bytes packed, and 1,431,931 bytes unpacked.
+82 files, is 270,643 bytes packed, and 1,445,881 bytes unpacked.
 
 SHA-256:
 
 ```text
-5b448df0629bfcff7eb4afdcf1723ff15de445087e869dfbbd9cd6c5640729e8
+d7b523f4f9806581d94e1772cfab1b43b7b4556b9ce4dc5b93051c25f34d07c8
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`
 followed by `npm pack --ignore-scripts`; archive hashes may differ if the toolchain
 or build output changes. npm publication is a separate step and was not run as
-part of preparation. Timer1 TEMP accesses and dynamic PWM buffering remain a
-subsequent fidelity batch.
+part of preparation. Timer0/Timer2 PWM buffering and the CTC clear/compare-flag
+pipeline remain separate fidelity work, as recorded in the limitations.

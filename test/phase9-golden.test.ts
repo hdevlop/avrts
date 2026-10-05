@@ -197,7 +197,10 @@ describe("Phase 9 golden fixtures", () => {
       });
     }
 
-    avr.runCycles(20_000);
+    // Timer1 transfers OCR at TOP, then needs the falling slope to produce its
+    // first high pulse. Observe two 510 * 64-clock phase-correct periods so
+    // every configured channel completes that pulse as well.
+    avr.runCycles(70_000);
 
     expect(avr.pwm(5).read()).toMatchObject({
       channel: "B",
