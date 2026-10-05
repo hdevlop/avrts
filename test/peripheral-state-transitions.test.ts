@@ -436,10 +436,13 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       target.cpu.writeData(A.CLKPR, bit(A.CLKPCE));
       target.cpu.writeData(A.CLKPR, 1);
       target.runCycles(1);
-      expect(target.cpu.readData(A.TCNT2)).toBe(1);
+      expect(target.cpu.readData(A.TCNT2)).toBe(0);
+      expect(target.cpu.readData(A.ASSR) & bit(A.TCR2BUB)).toBe(bit(A.TCR2BUB));
+      target.runCycles(1); // Second transfer edge at cycle 2.5, visible at 3.
+      expect(target.cpu.readData(A.TCNT2)).toBe(0);
       expect(target.cpu.readData(A.ASSR) & bit(A.TCR2BUB)).toBe(0);
       target.runCycles(4);
-      expect(target.cpu.readData(A.TCNT2)).toBe(5);
+      expect(target.cpu.readData(A.TCNT2)).toBe(4);
     });
 
     test("external ADC triggering uses its synchronized sample-and-hold and completion deadlines", () => {

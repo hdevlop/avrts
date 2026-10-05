@@ -89,11 +89,14 @@ Timer1's TEMP byte-access protocol and OCR buffering were added in the
 the preceding review; current release checks are in [release evidence](release-0.1.1.md).
 
 See `docs/limitations.md`. Remaining deliberate approximations include
-Timer1 fast-PWM overflow phase relative to the native oracle, Timer2's full
-asynchronous register latch, external T0/T1 clocks, byte serial/bus wiring, floating GPIO/pull-ups, immediate
+Timer1 fast-PWM overflow phase relative to the native oracle, Timer2's wake-time
+read/interrupt synchronization, external T0/T1 clocks, byte serial/bus wiring, floating GPIO/pull-ups, immediate
 EEPROM operations, analog settling, and full oscillator/wake-source timing. The
 regression matrix does not claim these details have passed physical hardware acceptance.
 
 The [timer boundary follow-up](timer-boundary-correctness.md) adds Timer0/Timer2
 PWM buffers and both slopes, CTC TOP+1 periods, and the ordinary compare-flag
 delay. It also fixes an I/O sampling-order mismatch in generated SBIC/SBIS.
+
+The [Timer2 asynchronous follow-up](timer2-async-transfers.md) models separate
+two-edge write transfers, temporary-register reads and independent busy flags.

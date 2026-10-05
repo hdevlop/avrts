@@ -330,17 +330,17 @@ describe("Phase 5 timer completeness", () => {
     cpu.writeData(TCCR2B, 1 << CS20);
 
     expect(cpu.readData(ASSR) & busyMask).toBe(busyMask);
-    expect(cpu.readData(TCNT2)).toBe(0x12);
+    expect(cpu.readData(TCNT2)).toBe(0); // Reads the old destination while busy.
 
-    avr.runCycles(487);
-    expect(cpu.readData(TCNT2)).toBe(0x12);
+    avr.runCycles(976);
+    expect(cpu.readData(TCNT2)).toBe(0);
     expect(cpu.readData(ASSR) & busyMask).toBe(busyMask);
 
-    avr.runCycles(1); // cycle 488: the ~TOSC-period busy clear fires here.
+    avr.runCycles(1); // ceil(2 * 488.28125): second source edge transfers all five.
     expect(cpu.readData(ASSR) & busyMask).toBe(0);
-    expect(cpu.readData(TCNT2)).toBe(0x12); // counter not ticked yet (ratio 488.28).
+    expect(cpu.readData(TCNT2)).toBe(0x12);
 
-    avr.runCycles(1); // cycle 489: first tick at the exact 488.28125-cycle TOSC ratio.
+    avr.runCycles(488); // ceil(3 * 488.28125): first tick after CS20 transferred.
     expect(cpu.readData(TCNT2)).toBe(0x13);
   });
 });

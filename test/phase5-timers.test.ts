@@ -40,9 +40,8 @@ import {
 
 // 16 MHz / 32.768 kHz — CPU cycles per asynchronous timer2 tick. The ratio is
 // fractional (488.28125); avrts carries the fraction, so N ticks complete after
-// ceil(N * ratio) cycles. TOSC_PERIOD is the rounded one-period busy-flag delay.
+// ceil(N * ratio) cycles; register transfers take two source edges.
 const TOSC_RATIO = 16_000_000 / 32768;
-const TOSC_PERIOD = Math.round(TOSC_RATIO);
 function toscCycles(ticks: number): number {
   return Math.ceil(ticks * TOSC_RATIO);
 }
@@ -165,7 +164,7 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
     const avr = AVR();
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20); // TOSC/1
-    avr.runCycles(toscCycles(10));
+    avr.runCycles(toscCycles(12)); // First two source edges transfer CS20.
     expect(avr.cpu.readData(TCNT2)).toBe(10);
   });
 
@@ -174,16 +173,16 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
     avr.cpu.flash[0] = 0xcfff; // rjmp -1: the run is longer than empty flash
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20);
-    avr.runCycles(toscCycles(256));
+    avr.runCycles(toscCycles(258)); // Two transfer edges, then 256 timer ticks.
     expect((avr.cpu.readData(TIFR2) >> TOV2) & 1).toBe(1);
   });
 
-  test("async register writes set the ASSR busy flag for one TOSC period", () => {
+  test("async register writes set the ASSR busy flag until two TOSC edges", () => {
     const avr = AVR();
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCNT2, 42);
     expect((avr.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(1);
-    avr.runCycles(TOSC_PERIOD - 1);
+    avr.runCycles(toscCycles(2) - 1);
     expect((avr.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(1);
     avr.runCycles(1);
     expect((avr.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(0);
@@ -201,17 +200,18 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20);
     avr.runCycles(toscCycles(3));
-    avr.cpu.writeData(TCNT2, 100); // resets the prescaler remainder to 0.
+    avr.cpu.writeData(TCNT2, 100); // Queued for source edge 5.
 
     const snap = avr.snapshot();
     const restored = AVR();
     restored.restore(snap);
 
     expect((restored.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(1);
-    restored.runCycles(TOSC_PERIOD); // one period clears the busy flag.
+    const transferCycles = toscCycles(5) - avr.cpu.cycles;
+    restored.runCycles(transferCycles);
     expect((restored.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(0);
-    restored.runCycles(toscCycles(6) - TOSC_PERIOD);
-    // Six TOSC periods elapsed since TCNT2 was written to 100.
-    expect(restored.cpu.readData(TCNT2)).toBe(106);
+    restored.runCycles(toscCycles(9) - restored.cpu.cycles);
+    // Edges 6..9 count after the edge-5 transfer to 100.
+    expect(restored.cpu.readData(TCNT2)).toBe(104);
   });
 });

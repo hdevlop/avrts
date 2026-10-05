@@ -78,12 +78,16 @@ Not machine-checked; keep in sync with the implementation by review.
   simavr overflow probe observes it at BOTTOM, so this phase is not native-oracle
   equivalent and has not been checked against physical hardware.
 - **Timer2 asynchronous mode** models `ASSR.AS2` with a simulated 32.768 kHz
-  TOSC source and `TCN2UB`/`OCR2xUB`/`TCR2xUB` update-busy flags. External
-  TOSC/EXCLK pin wiring and crystal drift are not modeled. ASSR register writes
-  still apply to the CPU-visible state immediately while busy flags time the
-  synchronization window; the separate TOSC-domain register latch and writes
-  attempted during update-busy are approximated. PWM buffering is modeled
-  independently of that clock-domain synchronization.
+  TOSC source and separate temporary-register transfers after two source edges.
+  Control/OCR reads expose the temporary value; TCNT reads the running counter.
+  Each busy flag clears with its own transfer, independently of PWM buffering.
+  Busy writes preserve the first queued value; clock-domain switches discard
+  pending writes while retaining destinations. These are deterministic choices
+  for hardware-defined corruption risks, not simulations of corrupted values.
+  Power-down/standby pause the source and retain state rather than modeling
+  oscillator startup instability or possible register loss. External TOSC/EXCLK
+  pin wiring, crystal drift, the wake-time CPU-domain TCNT read latch and the
+  three-CPU-cycle asynchronous interrupt-flag synchronization are not modeled.
 - **OSCCAL, DIDR0, and DIDR1** are plain storage. OSCCAL has no oscillator effect,
   and DIDR bits do not alter the digital/analog pin model.
 - **Fuse / boot tier** stores fuse bytes and lock bits; applies CKDIV8,

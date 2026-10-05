@@ -60,6 +60,10 @@ export interface Timer2Snapshot {
   asyncBusyMask?: number;
   /** Remaining cycles until the pending async register updates latch. */
   asyncBusyRemaining?: number;
+  /** Phase within a TOSC period, in CPU cycles at the snapshot's clock rate. */
+  toscPhase?: number;
+  /** Separate register transfers; omitted values preserve legacy busy windows. */
+  asyncWrites?: { register: number; value?: number; remainingCycles: number }[];
 }
 
 export interface Usart0Snapshot {

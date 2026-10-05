@@ -60,6 +60,11 @@ const TOSC_HZ = 32768;
 const ASSR_BUSY_MASK =
   (1 << TCN2UB) | (1 << OCR2AUB) | (1 << OCR2BUB) | (1 << TCR2AUB) | (1 << TCR2BUB);
 const DEFAULT_CLOCK_HZ = 16_000_000;
+const ASYNC_REGISTERS = [TCNT2, OCR2A, OCR2B, TCCR2A, TCCR2B] as const;
+const ASYNC_BUSY_BITS: Readonly<Record<number, number>> = {
+  [TCNT2]: TCN2UB, [OCR2A]: OCR2AUB, [OCR2B]: OCR2BUB,
+  [TCCR2A]: TCR2AUB, [TCCR2B]: TCR2BUB,
+};
 
 /**
  * Timer2 (8-bit): Timer0's counting/PWM/compare behavior with its own prescaler,
@@ -77,6 +82,9 @@ export class Timer2 implements PwmSource {
   private prescalerHeld = false;
   private sleepPaused = false;
   private clockHz = DEFAULT_CLOCK_HZ;
+  private toscCycleBase = 0;
+  private toscPausedAt: number | undefined;
+  private readonly asyncWrites = new Map<number, { value?: number; dueCycle: number }>();
   // Cached prescaler divisor, recomputed only when the CS bits (TCCR2B) change.
   // In async mode (ASSR.AS2) it is scaled by the CPU-cycles-per-TOSC-tick ratio.
   // tick() runs every instruction, so it must not re-read/re-map the register.
@@ -86,10 +94,7 @@ export class Timer2 implements PwmSource {
     this.syncToCpuCycle();
     this.scheduleClockEvent();
   };
-  // Clears the ASSR update-busy flags one TOSC period after an async write.
-  private readonly onAsyncBusyClearEvent = (): void => {
-    this.cpu.data[ASSR] = this.cpu.data[ASSR]! & ~ASSR_BUSY_MASK;
-  };
+  private readonly onAsyncUpdateEvent = (): void => this.applyAsyncWrites();
 
   constructor(
     private readonly cpu: CPU,
@@ -104,6 +109,7 @@ export class Timer2 implements PwmSource {
       max: 255,
       topValue: () => this.modeTop(),
       mode: () => this.pwmMode(),
+      compareMode: (channel) => this.compareMode(channel),
       ocrValue: (channel) => this.ocrValue(channel),
     };
   }
@@ -118,7 +124,10 @@ export class Timer2 implements PwmSource {
     this.sleepPaused = false;
     this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
-    this.cpu.clearClockEvent(this.onAsyncBusyClearEvent);
+    this.toscCycleBase = this.cpu.cycles;
+    this.toscPausedAt = undefined;
+    this.asyncWrites.clear();
+    this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.refreshPrescaler();
     this.scheduleClockEvent();
     this.driveOutput("A", undefined);
@@ -131,11 +140,17 @@ export class Timer2 implements PwmSource {
   setClock(clockHz: number): void {
     if (clockHz === this.clockHz) return;
     const scale = clockHz / this.clockHz;
-    const busyRemaining = this.cpu.clockEventRemainingCycles(this.onAsyncBusyClearEvent);
     this.syncToCpuCycle();
-    if (this.asyncMode()) this.prescalerRemainder *= scale;
+    if (this.asyncMode()) {
+      const now = this.toscNow();
+      this.prescalerRemainder *= scale;
+      this.toscCycleBase = now - (now - this.toscCycleBase) * scale;
+      for (const pending of this.asyncWrites.values()) {
+        pending.dueCycle = now + (pending.dueCycle - now) * scale;
+      }
+    }
     this.clockHz = clockHz;
-    if (busyRemaining > 0) this.cpu.addClockEvent(this.onAsyncBusyClearEvent, Math.max(1, Math.round(busyRemaining * scale)));
+    this.scheduleAsyncUpdate();
     this.refreshPrescaler();
     this.scheduleClockEvent();
   }
@@ -170,21 +185,30 @@ export class Timer2 implements PwmSource {
   }
 
   @OnWrite(TCNT2)
-  onWriteTcnt2(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+  onWriteTcnt2(_cpu: CPU, addr: number, value: number, oldValue: number): void {
+    if (this.deferAsyncWrite(addr, value, oldValue)) return;
     this.syncWithOldRegister(addr, oldValue);
     this.compareBlocked = true;
     this.lastCycle = this.cpu.cycles;
-    this.markAsyncBusy(TCN2UB);
     this.scheduleClockEvent();
   }
 
   @OnWrite(ASSR)
   onWriteAssr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     // AS2/EXCLK are writable; the update-busy flags are hardware-owned.
-    this.cpu.data[ASSR] = (value & ~ASSR_BUSY_MASK) | (oldValue & ASSR_BUSY_MASK);
-    if (((value ^ oldValue) & (1 << AS2)) === 0) return;
+    const next = (value & 0x60) | (oldValue & ASSR_BUSY_MASK);
+    this.cpu.data[ASSR] = next;
+    if (((next ^ oldValue) & (1 << AS2)) === 0) return;
     // Clock-domain switch: settle elapsed time at the old cached rate first.
+    this.cpu.data[ASSR] = oldValue;
     this.syncToCpuCycle();
+    // Hardware declares these contents undefined on a clock-domain switch.
+    // Keep destinations deterministic and discard unfinished transfers.
+    this.cpu.data[ASSR] = next & ~ASSR_BUSY_MASK;
+    this.asyncWrites.clear();
+    this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
+    this.toscCycleBase = this.cpu.cycles;
+    this.toscPausedAt = this.sleepPaused ? this.cpu.cycles : undefined;
     this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
     this.refreshPrescaler();
@@ -192,7 +216,8 @@ export class Timer2 implements PwmSource {
   }
 
   @OnWrite(TCCR2B)
-  onWriteTccr2b(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+  onWriteTccr2b(_cpu: CPU, addr: number, value: number, oldValue: number): void {
+    if (this.deferAsyncWrite(addr, value, oldValue)) return;
     const oldMode = this.syncWithOldRegister(addr, oldValue);
     // FOC strobes read as zero and never set flags or clear CTC.
     const strobes = this.cpu.data[TCCR2B]! & 0xc0;
@@ -204,7 +229,6 @@ export class Timer2 implements PwmSource {
     }
     if (((oldValue ^ this.cpu.data[TCCR2B]!) & 7) !== 0) this.prescalerRemainder = 0;
     this.lastCycle = this.cpu.cycles;
-    this.markAsyncBusy(TCR2BUB);
     this.refreshPrescaler();
     this.scheduleClockEvent();
     this.notifyPwm("A");
@@ -219,10 +243,11 @@ export class Timer2 implements PwmSource {
   }
 
   @OnWrite(TCCR2A)
-  onWriteTccr2a(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+  onWriteTccr2a(_cpu: CPU, addr: number, value: number, oldValue: number): void {
+    if (this.deferAsyncWrite(addr, value, oldValue)) return;
     const oldMode = this.syncWithOldRegister(addr, oldValue);
+    this.cpu.data[addr] = this.cpu.data[addr]! & 0xf3;
     this.updateWaveformMode(oldMode);
-    this.markAsyncBusy(TCR2AUB);
     this.scheduleClockEvent();
     this.notifyPwm("A");
     this.notifyPwm("B");
@@ -230,9 +255,9 @@ export class Timer2 implements PwmSource {
 
   @OnWrite(OCR2A)
   @OnWrite(OCR2B)
-  onWriteOcr2(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+  onWriteOcr2(_cpu: CPU, addr: number, value: number, oldValue: number): void {
+    if (this.deferAsyncWrite(addr, value, oldValue)) return;
     this.syncWithOldRegister(addr, oldValue);
-    this.markAsyncBusy(addr === OCR2A ? OCR2AUB : OCR2BUB);
     if (!this.isPwmMode()) {
       this.updateCompareBuffers();
       this.scheduleClockEvent();
@@ -243,6 +268,15 @@ export class Timer2 implements PwmSource {
   readTcnt2(): number {
     this.syncToCpuCycle();
     return this.cpu.data[TCNT2]!;
+  }
+
+  @OnRead(OCR2A)
+  @OnRead(OCR2B)
+  @OnRead(TCCR2A)
+  @OnRead(TCCR2B)
+  readAsyncTemporary(_cpu: CPU, addr: number): number {
+    const value = this.asyncWrites.get(addr)?.value ?? this.cpu.data[addr]!;
+    return addr === TCCR2B ? value & 0x0f : addr === TCCR2A ? value & 0xf3 : value;
   }
 
   readPwm(channel: PwmChannel): PwmSignal {
@@ -293,10 +327,21 @@ export class Timer2 implements PwmSource {
     if (paused) {
       this.syncToCpuCycle();
       this.sleepPaused = true;
+      if (this.asyncMode()) {
+        this.toscPausedAt = this.cpu.cycles;
+        this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
+      }
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
     this.sleepPaused = false;
+    if (this.toscPausedAt !== undefined) {
+      const elapsed = this.cpu.cycles - this.toscPausedAt;
+      this.toscCycleBase += elapsed;
+      for (const pending of this.asyncWrites.values()) pending.dueCycle += elapsed;
+      this.toscPausedAt = undefined;
+      this.scheduleAsyncUpdate();
+    }
     this.lastCycle = this.cpu.cycles;
     this.scheduleClockEvent();
   }
@@ -320,21 +365,79 @@ export class Timer2 implements PwmSource {
     return this.asyncMode() ? this.clockHz / TOSC_HZ : 1;
   }
 
-  /** Integer cycles in one TOSC period, used to time the ASSR busy-flag clear. */
-  private toscPeriodCycles(): number {
-    return Math.max(1, Math.round(this.clockHz / TOSC_HZ));
+  private toscNow(): number {
+    return this.toscPausedAt ?? this.cpu.cycles;
   }
 
-  /**
-   * Async-register write protocol: the corresponding ASSR update-busy flag
-   * stays set for one TOSC period. The written value applies immediately
-   * (the hardware temp-register latch is approximated away); firmware that
-   * follows the datasheet polls the flag before the next write.
-   */
-  private markAsyncBusy(bit: number): void {
-    if (!this.asyncMode()) return;
-    this.cpu.data[ASSR] = this.cpu.data[ASSR]! | (1 << bit);
-    this.cpu.addClockEvent(this.onAsyncBusyClearEvent, this.toscPeriodCycles());
+  private toscPhase(): number {
+    return (this.toscNow() - this.toscCycleBase) % (this.clockHz / TOSC_HZ);
+  }
+
+  /** Each register has its own temporary value and two-rising-edge transfer. */
+  private deferAsyncWrite(addr: number, value: number, oldValue: number): boolean {
+    if (!this.asyncMode()) return false;
+    this.cpu.data[addr] = oldValue;
+    this.syncToCpuCycle();
+    const mask = 1 << ASYNC_BUSY_BITS[addr]!;
+    // Silicon leaves busy-write corruption undefined. Preserve the first write
+    // rather than inventing a replacement value or extending another deadline.
+    if ((this.cpu.data[ASSR]! & mask) !== 0) return true;
+    const period = this.clockHz / TOSC_HZ;
+    const edge = Math.floor((this.toscNow() - this.toscCycleBase) / period) + 2;
+    this.asyncWrites.set(addr, { value, dueCycle: this.toscCycleBase + edge * period });
+    this.cpu.data[ASSR] = this.cpu.data[ASSR]! | mask;
+    this.scheduleAsyncUpdate();
+    return true;
+  }
+
+  private scheduleAsyncUpdate(): void {
+    this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
+    if (this.toscPausedAt !== undefined || this.asyncWrites.size === 0) return;
+    let due = Infinity;
+    for (const pending of this.asyncWrites.values()) due = Math.min(due, pending.dueCycle);
+    this.cpu.addClockEvent(this.onAsyncUpdateEvent, Math.max(1, Math.ceil(due - this.cpu.cycles)));
+  }
+
+  private applyAsyncWrites(): void {
+    this.syncToCpuCycle();
+    const oldMode = this.waveformMode();
+    const oldCs = this.cpu.data[TCCR2B]! & 7;
+    let controls = false;
+    let counter = false;
+    let compare = false;
+    let strobes = 0;
+    for (const [addr, pending] of this.asyncWrites) {
+      if (pending.dueCycle > this.cpu.cycles) continue;
+      this.asyncWrites.delete(addr);
+      this.cpu.data[ASSR] = this.cpu.data[ASSR]! & ~(1 << ASYNC_BUSY_BITS[addr]!);
+      if (pending.value === undefined) continue; // Legacy: destination already updated.
+      this.cpu.data[addr] = addr === TCCR2B ? pending.value & 0x0f
+        : addr === TCCR2A ? pending.value & 0xf3 : pending.value;
+      if (addr === TCNT2) counter = true;
+      else if (addr === TCCR2A || addr === TCCR2B) controls = true;
+      else compare = true;
+      if (addr === TCCR2B) strobes = pending.value & 0xc0;
+    }
+    if (counter) this.compareBlocked = true;
+    if (controls) this.updateWaveformMode(oldMode);
+    if (compare && !this.isPwmMode()) this.updateCompareBuffers();
+    if (oldCs !== (this.cpu.data[TCCR2B]! & 7)) this.prescalerRemainder = this.toscPhase();
+    this.refreshPrescaler();
+    if (!this.isPwmMode()) {
+      if ((strobes & 0x80) !== 0) this.handleCompareOutput("A");
+      if ((strobes & 0x40) !== 0) this.handleCompareOutput("B");
+    }
+    this.scheduleClockEvent();
+    this.scheduleAsyncUpdate();
+    if (controls) {
+      this.notifyPwm("A");
+      this.notifyPwm("B");
+    }
+  }
+
+  private compareBusy(channel: PwmChannel): boolean {
+    const mask = (1 << TCN2UB) | (1 << (channel === "A" ? OCR2AUB : OCR2BUB));
+    return (this.cpu.data[ASSR]! & mask) !== 0;
   }
 
   private incrementCounter(): void {
@@ -360,7 +463,7 @@ export class Timer2 implements PwmSource {
         this.countingDown = false;
         this.handleBottom();
         this.setOverflowFlag();
-      } else if (!this.countingDown && next === top) {
+      } else if (!this.countingDown && next === top && (mode === 1 || !this.compareBusy("A"))) {
         this.countingDown = true;
         this.updateCompareBuffers();
         // A new duty after a full-duty period must start the falling slope low.
@@ -370,7 +473,8 @@ export class Timer2 implements PwmSource {
       return;
     }
 
-    if ((mode === 2 || mode === 3 || mode === 7) && counter === top && (!blocked || mode === 3)) {
+    if ((mode === 2 || mode === 3 || mode === 7) && counter === top &&
+        (mode === 3 || (!blocked && !this.compareBusy("A")))) {
       this.cpu.data[TCNT2] = 0;
       if (mode !== 2) {
         this.updateCompareBuffers();
@@ -475,11 +579,11 @@ export class Timer2 implements PwmSource {
 
   private assertCompareFlags(counter: number, blocked: boolean): void {
     if (blocked) return;
-    if (counter === this.activeOcrA) {
+    if (counter === this.activeOcrA && !this.compareBusy("A")) {
       this.cpu.setInterruptFlag(TIFR2, 1 << OCF2A);
       this.requestCompareIfEnabled("A");
     }
-    if (counter === this.activeOcrB) {
+    if (counter === this.activeOcrB && !this.compareBusy("B")) {
       this.cpu.setInterruptFlag(TIFR2, 1 << OCF2B);
       this.requestCompareIfEnabled("B");
     }
@@ -582,6 +686,7 @@ export class Timer2 implements PwmSource {
   }
 
   private handleCompareOutput(channel: PwmChannel, direction: "up" | "down" = "up"): void {
+    if (this.compareBusy(channel)) return;
     if (this.isPwmMode()) {
       this.syncPwmOutput(channel, "compare", direction);
       return;
@@ -625,6 +730,7 @@ export class Timer2 implements PwmSource {
   }
 
   private syncPwmAtTop(channel: PwmChannel): void {
+    if (this.compareBusy(channel)) return;
     if (this.compareMode(channel) < 2 || this.syncPwmExtremes(channel) || this.ocrValue(channel) > this.modeTop()) return;
     this.driveOutput(channel, this.compareMode(channel) === 3);
   }
@@ -680,7 +786,11 @@ export class Timer2 implements PwmSource {
       compareBlocked: this.compareBlocked,
       prescalerRemainder: this.prescalerRemainder,
       asyncBusyMask: this.cpu.data[ASSR]! & ASSR_BUSY_MASK,
-      asyncBusyRemaining: this.cpu.clockEventRemainingCycles(this.onAsyncBusyClearEvent),
+      asyncBusyRemaining: this.cpu.clockEventRemainingCycles(this.onAsyncUpdateEvent),
+      toscPhase: this.toscPhase(),
+      asyncWrites: [...this.asyncWrites].map(([register, pending]) => ({
+        register, value: pending.value, remainingCycles: pending.dueCycle - this.toscNow(),
+      })),
     };
   }
 
@@ -695,10 +805,25 @@ export class Timer2 implements PwmSource {
     this.sleepPaused = false;
     this.prescalerRemainder = snap.prescalerRemainder ?? 0;
     this.lastCycle = this.cpu.cycles;
-    this.cpu.clearClockEvent(this.onAsyncBusyClearEvent);
-    if ((snap.asyncBusyRemaining ?? 0) > 0 && (snap.asyncBusyMask ?? 0) !== 0) {
-      this.cpu.addClockEvent(this.onAsyncBusyClearEvent, snap.asyncBusyRemaining!);
+    this.toscCycleBase = this.cpu.cycles - (snap.toscPhase ?? 0);
+    this.toscPausedAt = undefined;
+    this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
+    this.asyncWrites.clear();
+    if (snap.asyncWrites !== undefined) {
+      for (const pending of snap.asyncWrites) {
+        if (ASYNC_BUSY_BITS[pending.register] === undefined) continue;
+        this.asyncWrites.set(pending.register, {
+          value: pending.value === undefined ? undefined : pending.value & 0xff,
+          dueCycle: this.cpu.cycles + pending.remainingCycles,
+        });
+      }
+    } else if ((snap.asyncBusyRemaining ?? 0) > 0) {
+      for (const register of ASYNC_REGISTERS) {
+        if (((snap.asyncBusyMask ?? 0) & (1 << ASYNC_BUSY_BITS[register]!)) === 0) continue;
+        this.asyncWrites.set(register, { dueCycle: this.cpu.cycles + snap.asyncBusyRemaining! });
+      }
     }
+    this.scheduleAsyncUpdate();
     this.refreshPrescaler();
     this.scheduleClockEvent();
   }

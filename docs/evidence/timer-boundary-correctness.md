@@ -91,8 +91,10 @@ bun -e 'import { AVR } from "./src"; const avr = AVR(await Bun.file("logs/timer-
 The avrts command checks completion after 100-cycle batches; total cycle counts
 are completion envelopes, not an exact instruction-boundary comparison.
 
-Timer2's separate asynchronous register latch and busy-write behavior remain
-approximated; busy windows and PWM buffering are distinct. Reserved WGM modes,
+At this revision Timer2's separate asynchronous register latch was still an
+approximation. The [following batch](timer2-async-transfers.md) adds independent
+two-edge write transfers; busy windows and PWM buffering remain distinct.
+Reserved WGM modes,
 external timer clocks, electrical effects and physical hardware acceptance are
 outside this batch. PWM duty is a compare-value/TOP facade description, not a
 measurement of every pin pulse. See [limitations](../limitations.md).

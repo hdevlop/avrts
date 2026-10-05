@@ -580,9 +580,9 @@ test("asynchronous Timer2 distinguishes ASSR busy clear from the PWM transfer ed
   avr.cpu.writeData(A.OCR2B, 6);
   expect(avr.cpu.readData(A.ASSR) & bit(A.OCR2BUB)).toBe(bit(A.OCR2BUB));
   const restored = A.AVR().restore(avr.snapshot());
-  restored.runCycles(Math.round(tick));
+  restored.runCycles(Math.ceil(2 * tick)); // Two source edges transfer the async temporary value.
   expect(restored.cpu.readData(A.ASSR) & bit(A.OCR2BUB)).toBe(0);
   expect(restored.pwm(3).read().value).toBe(2);
-  restored.runCycles(Math.ceil(7 * tick));
+  restored.runCycles(Math.ceil(6 * tick));
   expect(restored.pwm(3).read().value).toBe(6);
 });

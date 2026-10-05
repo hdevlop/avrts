@@ -1197,15 +1197,8 @@ function spiSlaveResultComplete(result: number[]): boolean {
 }
 
 function timer2AsyncResultComplete(result: number[]): boolean {
-  return (
-    result[0] === 0xa7 &&
-    result[1] === 0x86 &&
-    result[3] === 0x20 &&
-    result[4] === 0xba &&
-    result[5] === 0x07 &&
-    result[6] === 0x20 &&
-    result[7] === 0x5c
-  );
+  // Completion is independent of acceptance; compare the entire result below.
+  return result.length === TIMER2_ASYNC_RESULT_LEN && result[0] === 0xa7 && result[7] === 0x5c;
 }
 
 function comparatorResultComplete(result: number[]): boolean {

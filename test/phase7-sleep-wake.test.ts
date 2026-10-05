@@ -85,7 +85,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
     asyncAvr.cpu.writeData(TCCR2B, 1 << CS20);
     asyncAvr.cpu.writeData(SMCR, sleepMode(MODE_POWER_SAVE));
     asyncAvr.cpu.sleep();
-    asyncAvr.runCycles(489); // one TOSC tick at the exact 488.28125-cycle ratio.
+    asyncAvr.runCycles(1465); // Two CS transfer edges, then one timer tick.
     expect(asyncAvr.cpu.readData(TCNT2)).toBe(1);
 
     const syncAvr = AVR();
@@ -135,7 +135,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
     cpu.writeData(TCCR2B, 1 << CS20);
     cpu.writeData(SMCR, sleepMode(MODE_EXTENDED_STANDBY));
     cpu.sleep();
-    avr.runCycles(489); // one TOSC tick at the exact 488.28125-cycle ratio.
+    avr.runCycles(1465); // Two CS transfer edges, then one timer tick.
 
     expect(cpu.isSleeping).toBe(true);
     expect(cpu.readData(TCNT2)).toBe(1);

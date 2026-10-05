@@ -20,6 +20,8 @@ export interface PwmConfig {
   topValue?: () => number;
   /** Optional timer-specific WGM decoder. */
   mode?: () => PwmSignal["mode"];
+  /** Optional active COM decoder when CPU reads expose a pending control write. */
+  compareMode?: (channel: PwmChannel) => number;
   /** Resolve the compare value (OCRnx) for a channel — 16-bit on Timer1. */
   ocrValue(channel: PwmChannel): number;
 }
@@ -28,7 +30,7 @@ export interface PwmConfig {
 export function pwmSignal(cpu: CPU, config: PwmConfig, channel: PwmChannel): PwmSignal {
   const mode = config.mode?.() ?? pwmMode(cpu, config);
   const value = config.ocrValue(channel);
-  const compareMode = compareOutputMode(cpu, config.tccrA, channel);
+  const compareMode = config.compareMode?.(channel) ?? compareOutputMode(cpu, config.tccrA, channel);
   const active = (mode === "fast-pwm" || mode === "phase-correct-pwm") && compareMode >= 2;
   const inverted = compareMode === 3;
   const top = config.topValue?.() ?? config.max;

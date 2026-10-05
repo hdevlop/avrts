@@ -386,7 +386,7 @@ As of the installed `avr8js` 0.21.0 dev dependency in this repository:
 | Bootloader flow | No fuse/BOOTRST/SPM tier for stock Optiboot programming | Boots stock Optiboot and flashes a sketch over simulated STK500v1 |
 | Fuses/lock bits/reset sources | Not modeled as a chip tier | CKDIV8, BOOTRST/BOOTSZ, WDTON, EESAVE, lock bits, `MCUSR`, external/brown-out/watchdog reset |
 | Analog comparator | No packaged comparator peripheral | `ACSR`, interrupts, ACIC to Timer1 input capture, simavr oracle row |
-| Timer2 async | No `ASSR.AS2` / 32.768 kHz `TOSC` model | Async Timer2 with busy flags and long-run drift validation |
+| Timer2 async | No `ASSR.AS2` / 32.768 kHz `TOSC` model | Separate two-edge register transfers, busy flags, and long-run drift validation |
 | PRR | No power-reduction peripheral | Gates modeled peripheral clocks |
 | USART RX | Application-friendly serial delivery | Frame-time pacing, 2-level FIFO, `DOR0`, frame/parity status injection |
 | Validation | Project tests and large real-world ecosystem exposure | Bun tests plus native simavr timing, result, and Optiboot oracles |

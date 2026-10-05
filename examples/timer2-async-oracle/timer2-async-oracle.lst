@@ -1,5 +1,5 @@
 
-examples\timer2-async-oracle\timer2-async-oracle.elf:     file format elf32-avr
+examples/timer2-async-oracle/timer2-async-oracle.elf:     file format elf32-avr
 
 
 Disassembly of section .text:
@@ -40,7 +40,7 @@ Disassembly of section .text:
   70:	de bf       	out	0x3e, r29	; 62
   72:	cd bf       	out	0x3d, r28	; 61
   74:	0e 94 49 00 	call	0x92	; 0x92 <main>
-  78:	0c 94 8e 00 	jmp	0x11c	; 0x11c <_exit>
+  78:	0c 94 99 00 	jmp	0x132	; 0x132 <_exit>
 
 0000007c <__bad_interrupt>:
   7c:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
@@ -78,39 +78,51 @@ Disassembly of section .text:
   b6:	8d ef       	ldi	r24, 0xFD	; 253
   b8:	80 93 b4 00 	sts	0x00B4, r24	; 0x8000b4 <__TEXT_REGION_LENGTH__+0x7f80b4>
   bc:	10 92 b0 00 	sts	0x00B0, r1	; 0x8000b0 <__TEXT_REGION_LENGTH__+0x7f80b0>
-  c0:	87 e0       	ldi	r24, 0x07	; 7
-  c2:	87 bb       	out	0x17, r24	; 23
-  c4:	81 e0       	ldi	r24, 0x01	; 1
-  c6:	80 93 b1 00 	sts	0x00B1, r24	; 0x8000b1 <__TEXT_REGION_LENGTH__+0x7f80b1>
-  ca:	10 92 80 00 	sts	0x0080, r1	; 0x800080 <__TEXT_REGION_LENGTH__+0x7f8080>
-  ce:	10 92 85 00 	sts	0x0085, r1	; 0x800085 <__TEXT_REGION_LENGTH__+0x7f8085>
-  d2:	10 92 84 00 	sts	0x0084, r1	; 0x800084 <__TEXT_REGION_LENGTH__+0x7f8084>
-  d6:	86 bb       	out	0x16, r24	; 22
-  d8:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__TEXT_REGION_LENGTH__+0x7f8081>
-  dc:	0e 94 40 00 	call	0x80	; 0x80 <wait_timer1_overflows>
-  e0:	80 91 b2 00 	lds	r24, 0x00B2	; 0x8000b2 <__TEXT_REGION_LENGTH__+0x7f80b2>
-  e4:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <_end+0x201>
-  e8:	87 b3       	in	r24, 0x17	; 23
-  ea:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <_end+0x202>
-  ee:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
-  f2:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <_end+0x203>
-  f6:	8d e1       	ldi	r24, 0x1D	; 29
-  f8:	0e 94 40 00 	call	0x80	; 0x80 <wait_timer1_overflows>
-  fc:	80 91 b2 00 	lds	r24, 0x00B2	; 0x8000b2 <__TEXT_REGION_LENGTH__+0x7f80b2>
- 100:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <_end+0x204>
- 104:	87 b3       	in	r24, 0x17	; 23
- 106:	80 93 05 03 	sts	0x0305, r24	; 0x800305 <_end+0x205>
- 10a:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
- 10e:	80 93 06 03 	sts	0x0306, r24	; 0x800306 <_end+0x206>
- 112:	8c e5       	ldi	r24, 0x5C	; 92
- 114:	80 93 07 03 	sts	0x0307, r24	; 0x800307 <_end+0x207>
+  c0:	10 92 b1 00 	sts	0x00B1, r1	; 0x8000b1 <__TEXT_REGION_LENGTH__+0x7f80b1>
 
-00000118 <.L9>:
- 118:	00 00       	nop
- 11a:	fe cf       	rjmp	.-4      	; 0x118 <.L9>
+000000c4 <.L9>:
+  c4:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
+  c8:	8f 71       	andi	r24, 0x1F	; 31
+  ca:	e1 f7       	brne	.-8      	; 0xc4 <.L9>
+  cc:	87 e0       	ldi	r24, 0x07	; 7
+  ce:	87 bb       	out	0x17, r24	; 23
+  d0:	81 e0       	ldi	r24, 0x01	; 1
+  d2:	80 93 b1 00 	sts	0x00B1, r24	; 0x8000b1 <__TEXT_REGION_LENGTH__+0x7f80b1>
 
-0000011c <_exit>:
- 11c:	f8 94       	cli
+000000d6 <.L10>:
+  d6:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
+  da:	80 fd       	sbrc	r24, 0
+  dc:	fc cf       	rjmp	.-8      	; 0xd6 <.L10>
+  de:	10 92 80 00 	sts	0x0080, r1	; 0x800080 <__TEXT_REGION_LENGTH__+0x7f8080>
+  e2:	10 92 85 00 	sts	0x0085, r1	; 0x800085 <__TEXT_REGION_LENGTH__+0x7f8085>
+  e6:	10 92 84 00 	sts	0x0084, r1	; 0x800084 <__TEXT_REGION_LENGTH__+0x7f8084>
+  ea:	81 e0       	ldi	r24, 0x01	; 1
+  ec:	86 bb       	out	0x16, r24	; 22
+  ee:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__TEXT_REGION_LENGTH__+0x7f8081>
+  f2:	0e 94 40 00 	call	0x80	; 0x80 <wait_timer1_overflows>
+  f6:	80 91 b2 00 	lds	r24, 0x00B2	; 0x8000b2 <__TEXT_REGION_LENGTH__+0x7f80b2>
+  fa:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <_end+0x201>
+  fe:	87 b3       	in	r24, 0x17	; 23
+ 100:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <_end+0x202>
+ 104:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
+ 108:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <_end+0x203>
+ 10c:	8d e1       	ldi	r24, 0x1D	; 29
+ 10e:	0e 94 40 00 	call	0x80	; 0x80 <wait_timer1_overflows>
+ 112:	80 91 b2 00 	lds	r24, 0x00B2	; 0x8000b2 <__TEXT_REGION_LENGTH__+0x7f80b2>
+ 116:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <_end+0x204>
+ 11a:	87 b3       	in	r24, 0x17	; 23
+ 11c:	80 93 05 03 	sts	0x0305, r24	; 0x800305 <_end+0x205>
+ 120:	80 91 b6 00 	lds	r24, 0x00B6	; 0x8000b6 <__TEXT_REGION_LENGTH__+0x7f80b6>
+ 124:	80 93 06 03 	sts	0x0306, r24	; 0x800306 <_end+0x206>
+ 128:	8c e5       	ldi	r24, 0x5C	; 92
+ 12a:	80 93 07 03 	sts	0x0307, r24	; 0x800307 <_end+0x207>
 
-0000011e <__stop_program>:
- 11e:	ff cf       	rjmp	.-2      	; 0x11e <__stop_program>
+0000012e <.L11>:
+ 12e:	00 00       	nop
+ 130:	fe cf       	rjmp	.-4      	; 0x12e <.L11>
+
+00000132 <_exit>:
+ 132:	f8 94       	cli
+
+00000134 <__stop_program>:
+ 134:	ff cf       	rjmp	.-2      	; 0x134 <__stop_program>

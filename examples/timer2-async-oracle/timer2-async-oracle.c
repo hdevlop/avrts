@@ -21,8 +21,14 @@ int main(void) {
   OCR2A = 0xfe;
   OCR2B = 0xfd;
   TCCR2A = 0;
+  TCCR2B = 0;
+  while (ASSR & (_BV(TCN2UB) | _BV(OCR2AUB) | _BV(OCR2BUB) | _BV(TCR2AUB) | _BV(TCR2BUB))) {
+  }
   TIFR2 = _BV(OCF2A) | _BV(OCF2B) | _BV(TOV2);
   TCCR2B = _BV(CS20);
+  // Measure drift after the asynchronous clock-start write has transferred.
+  while (ASSR & _BV(TCR2BUB)) {
+  }
 
   TCCR1A = 0;
   TCNT1 = 0;

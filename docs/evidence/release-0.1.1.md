@@ -8,10 +8,13 @@ protocol and mode-specific OCR PWM buffering, with correct fast-PWM periods and
 pending state through snapshots. The subsequent timer boundary batch adds
 Timer0/Timer2 PWM buffers and both slopes, all-timer CTC periods/ordinary flag
 delays, force-compare strobes and generated SBIC/SBIS I/O sampling order.
+The Timer2 asynchronous follow-up adds separate temporary-register transfers,
+two-edge busy deadlines, and source phase through clock changes and restore.
 The scope and remaining model boundaries
 are in [the correctness review](peripheral-correctness-review.md),
 [the Timer1 follow-up](timer1-register-buffering.md),
-[the timer boundary follow-up](timer-boundary-correctness.md), and
+[the timer boundary follow-up](timer-boundary-correctness.md),
+[the Timer2 asynchronous follow-up](timer2-async-transfers.md), and
 [the limitations](../limitations.md). Changes are listed in the root changelog.
 
 ## Local release evidence
@@ -23,7 +26,7 @@ are in [the correctness review](peripheral-correctness-review.md),
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 1,460 passed, zero failed; 9,611 assertions across 62 files |
+| Complete Bun source suite | 1,530 passed, zero failed; 9,981 assertions across 63 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 82 packed files |
@@ -57,21 +60,27 @@ workloads against `d31a3cb`. It found and addressed redundant Timer1 CTC events;
 the final peripheral-mix change is -7.2% and ISR-heavy is +2.5%. The full table
 ranges from -7.9% to +2.5%, retaining the remaining costs and measurement variation.
 
+[The Timer2 asynchronous comparison](timer2-async-performance.md) uses
+`f46d2a4` as its baseline. Its three focused workloads changed by +3.4% for
+Arduino PWM, -2.5% for peripheral-mix and -1.4% for the Timer2 RTC. These runs
+cover source execution on the same host; small differences include measurement
+variation, and the preceding ten-workload matrix was not repeated for this batch.
+
 ## Prepared artifact
 
 `npm pack --ignore-scripts --json` produced `hdevlop-avrts-0.1.1.tgz` in the
 workspace root after the successful build and package smoke check. It contains
-82 files, is 276,266 bytes packed, and 1,482,732 bytes unpacked.
+82 files, is 279,632 bytes packed, and 1,499,032 bytes unpacked.
 
 SHA-256:
 
 ```text
-b1af42778466f69e26fefff285376489ce422bb3a65b79133e7aa0cc74d599e0
+81bd65b7cc47de627ae5fb0223fb0f82b9d76c8b635637074479427c71d430b3
 ```
 
 This artifact is ignored by Git. It can be reproduced with `bun run release:check`
 followed by `npm pack --ignore-scripts`; archive hashes may differ if the toolchain
 or build output changes. npm publication is a separate step and was not run as
 part of preparation. Timer1 fast-PWM overflow phase differs from native simavr;
-full asynchronous Timer2 register synchronization and electrical timer inputs
+Timer2 wake-time read/interrupt synchronization and electrical timer inputs
 remain outside this preparation, as recorded in the limitations.
