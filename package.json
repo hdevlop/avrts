@@ -1,6 +1,6 @@
 {
   "name": "@hdevlop/avrts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ATmega328P simulator with chip-level timing, peripheral, bootloader, and browser-worker support",
   "type": "module",
   "main": "./dist/public/index.js",

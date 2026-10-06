@@ -178,6 +178,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.runCycles(10);
       expect(avr.pin(3).read()).toBe(true);
       avr.runCycles(10);
+      expect(avr.cpu.readData(A.TIFR2) & 6).toBe(0);
+      avr.runCycles(3);
       expect(avr.cpu.readData(A.TIFR2) & 6).toBe(bit(A.OCF2B));
       avr.runCycles(40);
       expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(bit(A.OCF2A));
@@ -196,6 +198,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(0);
       avr.runCycles(50);
       expect(avr.cpu.readData(A.TCNT2)).toBe(0);
+      expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(0);
+      avr.runCycles(3);
       expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(bit(A.OCF2A));
     });
 

@@ -107,8 +107,18 @@ Not machine-checked; keep in sync with the implementation by review.
   for hardware-defined corruption risks, not simulations of corrupted values.
   Power-down/standby pause the source and retain state rather than modeling
   oscillator startup instability or possible register loss. External TOSC/EXCLK
-  pin wiring, crystal drift and the
-  three-CPU-cycle asynchronous interrupt-flag synchronization are not modeled.
+  pin wiring and crystal drift are not modeled. Asynchronous compare/overflow
+  conditions pass through a timer-clock stage and three CPU clocks before CPU
+  flags become visible. Non-idle sleep pauses those CPU stages; enabled
+  timer-domain conditions wake noise-reduction, power-save and extended-standby
+  on the timer stage, with CPU synchronization completing during wake startup.
+  Pending stages survive snapshots and clock changes; three CPU clocks remain
+  three CPU clocks after CLKPR changes. This timing is based on the datasheet,
+  not physical-hardware calibration. The asynchronous clear/acknowledgement
+  handshake and repeated-wake behavior on re-entering sleep within one TOSC
+  period are not modeled. Exact PSRASY reset latency remains uncalibrated;
+  the native probe retains the written bit rather than providing a reliable
+  reset-completion reference.
 - **OSCCAL** is plain storage and has no oscillator effect. **DIDR0/DIDR1**
   retain only implemented bits; they do not alter the digital/analog pin model.
 - **Fuse / boot tier** stores fuse bytes and lock bits; applies CKDIV8,

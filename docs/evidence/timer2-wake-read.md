@@ -57,7 +57,8 @@ Focused same-host source measurements are in [performance evidence](timer2-wake-
 This change models the documented power-save read latch. Host TCNT2 reads while
 the CPU remains asleep continue to inspect the running destination. Other sleep
 modes retain their preceding read behavior. Asynchronous interrupt-flag and
-timer-wake pipelines, the PSRASY acknowledgement handshake, exact mux startup,
+timer-wake pipelines are added by the [0.1.2 follow-up](timer2-async-signals.md).
+The PSRASY acknowledgement handshake, exact mux startup,
 oscillator startup instability and external TOSC/EXCLK wiring remain outside
 this change. Physical calibration has not been run. See
 [limitations](../limitations.md). Timer1 overflow and SPI status disagreements

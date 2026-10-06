@@ -149,6 +149,10 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         avr.runCycles(19 * period - 1);
         expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(0);
         avr.runCycles(1);
+        if (asynchronous) {
+          expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(0);
+          avr.runCycles(3);
+        }
         expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2A)).toBe(bit(A.OCF2A));
         expect(avr.cpu.snapshot().pendingInterrupts).toContain(A.TIMER2_COMPA_VECTOR);
       });

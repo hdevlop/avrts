@@ -5,6 +5,15 @@ Semantic Versioning once a version is published.
 
 ## Unreleased
 
+## 0.1.2 - 2026-10-06
+
+### Fixed
+
+- Synchronize asynchronous Timer2 compare and overflow flags through their
+  timer-clock stage and three CPU clocks while leaving compare outputs immediate.
+- Wake from asynchronous timer conditions before CPU-visible flag delivery;
+  retain pending flag stages through sleep, clock changes, gates and snapshots.
+
 ## 0.1.1 - 2026-10-05
 
 ### Fixed

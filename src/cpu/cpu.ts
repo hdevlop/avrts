@@ -160,6 +160,7 @@ export class CPU {
   readonly readHooks: Array<IoReadHook[] | undefined> = [];
   private readonly wdrListeners: Array<() => void> = [];
   private readonly sleepListeners: Array<(mode: number) => void> = [];
+  private readonly wakeStartListeners: Array<(wakeCycle: number) => void> = [];
   private readonly wakeListeners: Array<(wakeCycle: number) => void> = [];
   private readonly flagListeners: Array<Array<(raised: number) => void> | undefined> = [];
   // Event-scheduled peripheral clock events (sorted by absolute cycle), plus a
@@ -283,6 +284,30 @@ export class CPU {
       const index = this.wakeListeners.indexOf(listener);
       if (index >= 0) this.wakeListeners.splice(index, 1);
     };
+  }
+
+  /** @internal Resume clock-domain synchronizers before wake-entry cycles. */
+  onWakeStart(listener: (wakeCycle: number) => void): () => void {
+    this.wakeStartListeners.push(listener);
+    return () => {
+      const index = this.wakeStartListeners.indexOf(listener);
+      if (index >= 0) this.wakeStartListeners.splice(index, 1);
+    };
+  }
+
+  /** @internal An asynchronous peripheral can wake before its CPU flag arrives. */
+  wakeForPeripheral(): void {
+    if (!this.sleeping) return;
+    const wakeCycle = this.beginWake();
+    this.cycles += 4;
+    for (const listener of [...this.wakeListeners]) listener(wakeCycle);
+  }
+
+  private beginWake(): number {
+    const wakeCycle = this.cycles;
+    this.sleeping = false;
+    for (const listener of [...this.wakeStartListeners]) listener(wakeCycle);
+    return wakeCycle;
   }
 
   /** Called by the WDR instruction to reset the watchdog timer. */
@@ -888,17 +913,13 @@ export class CPU {
     if (this.pendingInterrupts.length === 0) return;
     if (!this.sreg.I) {
       if (this.sleeping) {
-        this.sleeping = false;
-        const wakeCycle = this.cycles;
-        this.cycles += 4;
-        for (const listener of [...this.wakeListeners]) listener(wakeCycle);
+        this.wakeForPeripheral();
       }
       return;
     }
     const interrupt = this.pendingInterrupts.shift()!;
     const wasSleeping = this.sleeping;
-    const wakeCycle = this.cycles;
-    this.sleeping = false; // an enabled interrupt wakes the CPU from sleep
+    const wakeCycle = wasSleeping ? this.beginWake() : this.cycles;
     interrupt.acknowledge?.();
     this.pushWord(this.pc);
     this.sreg.I = false;

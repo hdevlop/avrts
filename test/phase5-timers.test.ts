@@ -168,12 +168,14 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
     expect(avr.cpu.readData(TCNT2)).toBe(10);
   });
 
-  test("TOV2 sets after 256 asynchronous ticks", () => {
+  test("asynchronous TOV2 crosses the next timer clock and three CPU clocks after overflow", () => {
     const avr = AVR();
     avr.cpu.flash[0] = 0xcfff; // rjmp -1: the run is longer than empty flash
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20);
     avr.runCycles(toscCycles(258)); // Two transfer edges, then 256 timer ticks.
+    expect((avr.cpu.readData(TIFR2) >> TOV2) & 1).toBe(0);
+    avr.runCycles(toscCycles(1) + 3);
     expect((avr.cpu.readData(TIFR2) >> TOV2) & 1).toBe(1);
   });
 

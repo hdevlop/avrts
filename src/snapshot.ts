@@ -74,6 +74,10 @@ export interface Timer2Snapshot {
   asyncSleepCounter?: number;
   /** Remaining CPU cycles of the post-wake read synchronization window. */
   asyncWakeReadRemaining?: number;
+  /** Overflow condition awaiting the following asynchronous timer edge. */
+  asyncOverflowPending?: boolean;
+  /** Timer-domain flags crossing the three CPU-clock synchronizer stages. */
+  asyncFlags?: { mask: number; remainingCycles: number }[];
 }
 
 export interface Usart0Snapshot {

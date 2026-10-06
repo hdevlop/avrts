@@ -220,6 +220,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       expect(avr.pin(3).read()).toBe(true);
       runTo(avr, 500);
       expect(count(avr)).toBe(45);
+      expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2B)).toBe(0);
+      avr.runCycles(3);
       expect(avr.cpu.readData(A.TIFR2) & bit(A.OCF2B)).toBe(bit(A.OCF2B));
     });
 

@@ -87,6 +87,10 @@ export class Timer2 implements PwmSource {
   // CPU-domain counter read latch: stale until the first TOSC edge after wake.
   private asyncSleepCounter: number | undefined;
   private asyncWakeReadUntil: number | undefined;
+  private asyncOverflowPending = false;
+  private asyncIoPaused = false;
+  private counterEventCycle = 0;
+  private readonly asyncFlags = new Map<number, { remainingCycles: number; dueCycle?: number }>();
   // Independent ten-bit divider phase, separate from the oscillator's phase.
   private dividerCycleBase = 0;
   private dividerPausedAt: number | undefined;
@@ -99,8 +103,10 @@ export class Timer2 implements PwmSource {
   private readonly onClockEvent = (): void => {
     this.syncToCpuCycle();
     this.scheduleClockEvent();
+    this.transferAsyncFlags();
   };
   private readonly onAsyncUpdateEvent = (): void => this.applyAsyncWrites();
+  private readonly onAsyncFlagEvent = (): void => this.transferAsyncFlags();
 
   constructor(
     private readonly cpu: CPU,
@@ -111,6 +117,26 @@ export class Timer2 implements PwmSource {
       // re-enters power-save before its read synchronizer has caught up.
       this.asyncSleepCounter = mode === 0b011 && this.asyncMode() ? this.readTcnt2() : undefined;
       this.asyncWakeReadUntil = undefined;
+      this.asyncIoPaused = mode !== 0;
+      if (this.asyncIoPaused) {
+        for (const pending of this.asyncFlags.values()) {
+          if (pending.dueCycle === undefined) continue;
+          pending.remainingCycles = Math.max(0, pending.dueCycle - this.cpu.cycles);
+          pending.dueCycle = undefined;
+        }
+      } else {
+        for (const pending of this.asyncFlags.values()) {
+          pending.dueCycle ??= this.cpu.cycles + pending.remainingCycles;
+        }
+      }
+      this.scheduleAsyncFlags();
+    });
+    this.cpu.onWakeStart(() => {
+      this.asyncIoPaused = false;
+      for (const pending of this.asyncFlags.values()) {
+        pending.dueCycle ??= this.cpu.cycles + pending.remainingCycles;
+      }
+      this.scheduleAsyncFlags();
     });
     this.cpu.onWake((wakeCycle) => {
       if (this.asyncSleepCounter === undefined) return;
@@ -147,6 +173,10 @@ export class Timer2 implements PwmSource {
     this.toscPausedAt = undefined;
     this.asyncSleepCounter = undefined;
     this.asyncWakeReadUntil = undefined;
+    this.asyncOverflowPending = false;
+    this.asyncIoPaused = false;
+    this.asyncFlags.clear();
+    this.cpu.clearClockEvent(this.onAsyncFlagEvent);
     this.dividerCycleBase = this.cpu.cycles;
     this.dividerPausedAt = undefined;
     this.asyncWrites.clear();
@@ -206,6 +236,7 @@ export class Timer2 implements PwmSource {
     this.prescalerRemainder += cycles;
     while (this.prescalerRemainder >= prescaler) {
       this.prescalerRemainder -= prescaler;
+      this.counterEventCycle = this.cpu.cycles;
       this.incrementCounter();
     }
     this.lastCycle = this.cpu.cycles;
@@ -243,6 +274,9 @@ export class Timer2 implements PwmSource {
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.asyncSleepCounter = undefined;
     this.asyncWakeReadUntil = undefined;
+    this.asyncOverflowPending = false;
+    this.asyncFlags.clear();
+    this.cpu.clearClockEvent(this.onAsyncFlagEvent);
     this.toscCycleBase = this.cpu.cycles;
     this.toscPausedAt = this.sleepPaused ? this.cpu.cycles : undefined;
     this.dividerCycleBase = this.cpu.cycles;
@@ -278,6 +312,7 @@ export class Timer2 implements PwmSource {
     this.requestCompareIfEnabled("A");
     this.requestCompareIfEnabled("B");
     this.requestOverflowIfEnabled();
+    this.scheduleAsyncFlags();
   }
 
   @OnWrite(TCCR2A)
@@ -510,6 +545,10 @@ export class Timer2 implements PwmSource {
   }
 
   private incrementCounter(): void {
+    if (this.asyncOverflowPending) {
+      this.asyncOverflowPending = false;
+      this.raiseFlag(1 << TOV2);
+    }
     const counter = this.cpu.data[TCNT2]!;
     const mode = this.waveformMode();
     const top = this.modeTop();
@@ -570,11 +609,16 @@ export class Timer2 implements PwmSource {
   }
 
   private setOverflowFlag(): void {
-    this.cpu.setInterruptFlag(TIFR2, 1 << TOV2);
-    this.requestOverflowIfEnabled();
+    if (this.asyncMode()) {
+      // Overflow has no existing next-clock compare stage: retain it until
+      // the following timer clock, then cross the three CPU-clock stages.
+      if ((this.cpu.data[TIFR2]! & (1 << TOV2)) === 0) this.asyncOverflowPending = true;
+      return;
+    }
+    this.raiseFlag(1 << TOV2);
   }
 
-  private advanceCounter(steps: number): void {
+  private advanceCounter(steps: number, firstCycle = this.cpu.cycles, period = this.cachedPrescaler ?? 0): void {
     let remaining = steps;
     while (remaining > 0) {
       const untilEvent = this.stepsUntilNextEvent();
@@ -585,9 +629,12 @@ export class Timer2 implements PwmSource {
       if (untilEvent > 1) {
         this.cpu.data[TCNT2] = (this.cpu.data[TCNT2]! + (this.countingDown ? 1 - untilEvent : untilEvent - 1)) & 0xff;
         remaining -= untilEvent - 1;
+        firstCycle += (untilEvent - 1) * period;
       }
+      this.counterEventCycle = firstCycle;
       this.incrementCounter();
       remaining -= 1;
+      firstCycle += period;
     }
   }
 
@@ -602,7 +649,7 @@ export class Timer2 implements PwmSource {
     const total = this.prescalerRemainder + elapsed;
     const steps = Math.floor(total / prescaler);
     this.prescalerRemainder = total - steps * prescaler;
-    if (steps > 0) this.advanceCounter(steps);
+    if (steps > 0) this.advanceCounter(steps, now - this.prescalerRemainder - (steps - 1) * prescaler);
   }
 
   private syncWithOldRegister(addr: number, oldValue: number): number {
@@ -629,7 +676,7 @@ export class Timer2 implements PwmSource {
   private stepsUntilNextEvent(): number {
     const counter = this.cpu.data[TCNT2]!;
     const mode = this.waveformMode();
-    if (this.compareBlocked || counter === this.activeOcrA || counter === this.activeOcrB) return 1;
+    if (this.asyncOverflowPending || this.compareBlocked || counter === this.activeOcrA || counter === this.activeOcrB) return 1;
     if ((mode === 2 || this.isPwmMode()) && (counter === this.modeTop() || counter === 0)) return 1;
     if ((mode === 1 || mode === 5) && this.countingDown) {
       return Math.min(
@@ -649,13 +696,64 @@ export class Timer2 implements PwmSource {
   private assertCompareFlags(counter: number, blocked: boolean): void {
     if (blocked) return;
     if (counter === this.activeOcrA && !this.compareBusy("A")) {
-      this.cpu.setInterruptFlag(TIFR2, 1 << OCF2A);
-      this.requestCompareIfEnabled("A");
+      this.raiseFlag(1 << OCF2A);
     }
     if (counter === this.activeOcrB && !this.compareBusy("B")) {
-      this.cpu.setInterruptFlag(TIFR2, 1 << OCF2B);
-      this.requestCompareIfEnabled("B");
+      this.raiseFlag(1 << OCF2B);
     }
+  }
+
+  private raiseFlag(mask: number): void {
+    if (!this.asyncMode()) {
+      this.publishFlag(mask);
+      return;
+    }
+    if ((this.cpu.data[TIFR2]! & mask) !== 0 || this.asyncFlags.has(mask)) return;
+    this.asyncFlags.set(mask, {
+      remainingCycles: 3,
+      dueCycle: this.asyncIoPaused ? undefined : Math.ceil(this.counterEventCycle) + 3,
+    });
+    this.scheduleAsyncFlags();
+  }
+
+  private publishFlag(mask: number): void {
+    this.cpu.setInterruptFlag(TIFR2, mask);
+    if (mask === (1 << TOV2)) this.requestOverflowIfEnabled();
+    else this.requestCompareIfEnabled(mask === (1 << OCF2A) ? "A" : "B");
+  }
+
+  private asyncWakeEnabled(): boolean {
+    return this.asyncIoPaused && this.cpu.isSleeping && [1, 3, 7].includes(this.cpu.sleepMode)
+      && [...this.asyncFlags.keys()].some((mask) => (this.cpu.data[TIMSK2]! & mask) !== 0);
+  }
+
+  private scheduleAsyncFlags(): void {
+    this.cpu.clearClockEvent(this.onAsyncFlagEvent);
+    if (this.asyncFlags.size === 0) return;
+    if (this.asyncIoPaused) {
+      if (this.asyncWakeEnabled()) this.cpu.addClockEvent(this.onAsyncFlagEvent, 1);
+      return;
+    }
+    let due = Infinity;
+    for (const pending of this.asyncFlags.values()) due = Math.min(due, pending.dueCycle!);
+    this.cpu.addClockEvent(this.onAsyncFlagEvent, Math.max(1, Math.ceil(due - this.cpu.cycles)));
+  }
+
+  private transferAsyncFlags(): void {
+    if (this.asyncFlags.size === 0) return;
+    if (this.asyncIoPaused) {
+      if (this.asyncWakeEnabled()) {
+        this.cpu.clearClockEvent(this.onAsyncFlagEvent);
+        this.cpu.wakeForPeripheral();
+      }
+      return;
+    }
+    for (const [mask, pending] of this.asyncFlags) {
+      if (pending.dueCycle! > this.cpu.cycles) continue;
+      this.asyncFlags.delete(mask);
+      this.publishFlag(mask);
+    }
+    this.scheduleAsyncFlags();
   }
 
   private handleCompare(counter: number, direction: "up" | "down" = "up"): void {
@@ -867,6 +965,11 @@ export class Timer2 implements PwmSource {
         ? this.asyncSleepCounter : undefined,
       asyncWakeReadRemaining: this.asyncWakeReadUntil === undefined ? undefined
         : Math.max(0, this.asyncWakeReadUntil - this.cpu.cycles),
+      asyncOverflowPending: this.asyncOverflowPending,
+      asyncFlags: [...this.asyncFlags].map(([mask, pending]) => ({
+        mask, remainingCycles: pending.dueCycle === undefined ? pending.remainingCycles
+          : Math.max(0, pending.dueCycle - this.cpu.cycles),
+      })),
     };
   }
 
@@ -886,6 +989,17 @@ export class Timer2 implements PwmSource {
     this.asyncSleepCounter = snap.asyncSleepCounter;
     this.asyncWakeReadUntil = snap.asyncSleepCounter !== undefined && (snap.asyncWakeReadRemaining ?? 0) > 0
       ? this.cpu.cycles + snap.asyncWakeReadRemaining! : undefined;
+    this.asyncOverflowPending = snap.asyncOverflowPending ?? false;
+    this.asyncIoPaused = this.cpu.isSleeping && this.cpu.sleepMode !== 0;
+    this.asyncFlags.clear();
+    for (const pending of snap.asyncFlags ?? []) {
+      if (![1 << TOV2, 1 << OCF2A, 1 << OCF2B].includes(pending.mask)) continue;
+      this.asyncFlags.set(pending.mask, {
+        remainingCycles: pending.remainingCycles,
+        dueCycle: this.asyncIoPaused ? undefined : this.cpu.cycles + pending.remainingCycles,
+      });
+    }
+    this.scheduleAsyncFlags();
     this.dividerCycleBase = this.cpu.cycles - (snap.dividerPhase ?? snap.prescalerRemainder ?? 0);
     this.dividerPausedAt = undefined;
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
