@@ -15,6 +15,8 @@ Semantic Versioning once a version is published.
   retain pending flag stages through sleep, clock changes, gates and snapshots.
 - Restart peripheral clocks before billing wake startup and interrupt entry,
   preserving timer phase, in-flight operations and independent PRR gates.
+- Stop INT0/INT1 edge detection in non-idle sleep while retaining asynchronous
+  low-level and pin-change wake sources; sample held edges when I/O clocks resume.
 
 ## 0.1.1 - 2026-10-05
 

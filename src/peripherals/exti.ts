@@ -70,7 +70,18 @@ export class ExternalInterrupts {
   constructor(
     private readonly cpu: CPU,
     private readonly gpio: Gpio,
-  ) {}
+  ) {
+    this.cpu.onWakeStart(() => {
+      // Sample the held pin level when clkI/O restarts. Pulses completed while
+      // that clock was stopped never reached the synchronous edge detector.
+      const flagsBefore = this.cpu.data[EIFR]!;
+      this.evaluateEdges();
+      // The CPU may already have selected an edge request for acknowledgement.
+      // Refresh only new flag edges so that selection is not queued a second time.
+      const raised = this.cpu.data[EIFR]! & ~flagsBefore;
+      if (raised !== 0) this.updateInterrupts(raised);
+    });
+  }
 
   /** Subscribe to GPIO port D changes; standalone use also wires level-mode ticking. */
   attach(options: { cycleListener?: boolean } = {}): void {
@@ -121,8 +132,11 @@ export class ExternalInterrupts {
     this.scheduleLevelEvent();
   }
 
-  /** Edge detection runs on every GPIO port-D touch. */
+  /** Clocked edge detection on GPIO port-D touches and wake restart. */
   private evaluateEdges(): void {
+    // Only low-level INT0/1 and PCINT sensing is asynchronous. Preserve the
+    // last clocked sample through non-idle sleep, including snapshot restore.
+    if (this.cpu.isSleeping && this.cpu.sleepMode !== 0) return;
     for (const cfg of CONFIGS) {
       const now = this.gpio.readPin("D", cfg.pinBit);
       const prev = cfg === INT0_CONFIG ? this.prevPinLevels.int0 : this.prevPinLevels.int1;
@@ -144,10 +158,11 @@ export class ExternalInterrupts {
    * Synchronize edge requests with their flags and level requests with the live
    * pin. Asserted low-level sources also schedule continuous re-evaluation.
    */
-  private updateInterrupts(): void {
+  private updateInterrupts(mask = 0x03): void {
     for (const cfg of CONFIGS) {
-      const mode = this.triggerMode(cfg);
       const flag = 1 << cfg.flagBit;
+      if ((mask & flag) === 0) continue;
+      const mode = this.triggerMode(cfg);
       if (mode === 0) this.cpu.data[EIFR] = this.cpu.data[EIFR]! & ~flag;
       const asserted = mode === 0
         ? !this.gpio.readPin("D", cfg.pinBit)

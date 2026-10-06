@@ -46,6 +46,13 @@ Not machine-checked; keep in sync with the implementation by review.
   propagation delay are not modeled.
 - **GPIO inputs** are host-driven logical levels. Floating inputs, pull-up
   resistance, and full serial peripheral pin overrides are not modeled.
+- **External interrupts** stop INT0/INT1 edge/toggle detection with clkI/O in
+  non-idle sleep and sample held levels at wake start. Completed asleep pulses
+  are ignored; idle, asynchronous low-level sensing and PCINT remain active.
+  Last clocked samples survive snapshots separately from raw GPIO levels.
+  Input synchronizer stages, short-pulse filtering and low-level pulse retention
+  through physical oscillator startup are not calibrated. See
+  [external interrupt sleep evidence](evidence/external-interrupt-sleep.md).
 - **EEPROM** implements reads, protected writes, programming modes, and ready
   interrupts, but completes reads/writes immediately rather than modeling CPU
   read stalls and millisecond programming latency.

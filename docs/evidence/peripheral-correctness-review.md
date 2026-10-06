@@ -106,6 +106,11 @@ The [wake clock follow-up](wake-clock-domains.md) restarts peripheral clocks
 before wake startup and interrupt entry, retaining PRR and pending operation
 deadlines. It keeps the uncalibrated Timer2 acknowledgement limits explicit.
 
+The [external interrupt sleep follow-up](external-interrupt-sleep.md) gates
+INT0/INT1 edge sensing with clkI/O, retaining asynchronous low-level and PCINT
+wake and resampling held levels at resume. Completed asleep pulses do not wake
+non-idle code; input synchronizer/startup filtering remains a model boundary.
+
 The [timer boundary follow-up](timer-boundary-correctness.md) adds Timer0/Timer2
 PWM buffers and both slopes, CTC TOP+1 periods, and the ordinary compare-flag
 delay. It also fixes an I/O sampling-order mismatch in generated SBIC/SBIS.

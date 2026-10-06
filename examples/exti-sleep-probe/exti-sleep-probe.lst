@@ -1,0 +1,123 @@
+
+examples/exti-sleep-probe/exti-sleep-probe.elf:     file format elf32-avr
+
+
+Disassembly of section .text:
+
+00000000 <__vectors>:
+   0:	0c 94 34 00 	jmp	0x68	; 0x68 <__ctors_end>
+   4:	0c 94 40 00 	jmp	0x80	; 0x80 <__vector_1>
+   8:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+   c:	0c 94 50 00 	jmp	0xa0	; 0xa0 <__vector_3>
+  10:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  14:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  18:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  1c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  20:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  24:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  28:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  2c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  30:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  34:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  38:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  3c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  40:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  44:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  48:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  4c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  50:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  54:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  58:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  5c:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  60:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+  64:	0c 94 3e 00 	jmp	0x7c	; 0x7c <__bad_interrupt>
+
+00000068 <__ctors_end>:
+  68:	11 24       	eor	r1, r1
+  6a:	1f be       	out	0x3f, r1	; 63
+  6c:	cf ef       	ldi	r28, 0xFF	; 255
+  6e:	d8 e0       	ldi	r29, 0x08	; 8
+  70:	de bf       	out	0x3e, r29	; 62
+  72:	cd bf       	out	0x3d, r28	; 61
+  74:	0e 94 60 00 	call	0xc0	; 0xc0 <main>
+  78:	0c 94 88 00 	jmp	0x110	; 0x110 <_exit>
+
+0000007c <__bad_interrupt>:
+  7c:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
+
+00000080 <__vector_1>:
+  80:	8f 93       	push	r24
+  82:	8f b7       	in	r24, 0x3f	; 63
+  84:	8f 93       	push	r24
+  86:	ef 93       	push	r30
+  88:	ff 93       	push	r31
+  8a:	e1 e0       	ldi	r30, 0x01	; 1
+  8c:	f3 e0       	ldi	r31, 0x03	; 3
+  8e:	80 81       	ld	r24, Z
+  90:	8f 5f       	subi	r24, 0xFF	; 255
+  92:	80 83       	st	Z, r24
+  94:	ff 91       	pop	r31
+  96:	ef 91       	pop	r30
+  98:	8f 91       	pop	r24
+  9a:	8f bf       	out	0x3f, r24	; 63
+  9c:	8f 91       	pop	r24
+  9e:	18 95       	reti
+
+000000a0 <__vector_3>:
+  a0:	8f 93       	push	r24
+  a2:	8f b7       	in	r24, 0x3f	; 63
+  a4:	8f 93       	push	r24
+  a6:	ef 93       	push	r30
+  a8:	ff 93       	push	r31
+  aa:	e2 e0       	ldi	r30, 0x02	; 2
+  ac:	f3 e0       	ldi	r31, 0x03	; 3
+  ae:	80 81       	ld	r24, Z
+  b0:	8f 5f       	subi	r24, 0xFF	; 255
+  b2:	80 83       	st	Z, r24
+  b4:	ff 91       	pop	r31
+  b6:	ef 91       	pop	r30
+  b8:	8f 91       	pop	r24
+  ba:	8f bf       	out	0x3f, r24	; 63
+  bc:	8f 91       	pop	r24
+  be:	18 95       	reti
+
+000000c0 <main>:
+  c0:	10 92 00 03 	sts	0x0300, r1	; 0x800300 <_end+0x200>
+  c4:	10 92 01 03 	sts	0x0301, r1	; 0x800301 <_end+0x201>
+  c8:	10 92 02 03 	sts	0x0302, r1	; 0x800302 <_end+0x202>
+  cc:	10 92 03 03 	sts	0x0303, r1	; 0x800303 <_end+0x203>
+  d0:	83 e0       	ldi	r24, 0x03	; 3
+  d2:	80 93 69 00 	sts	0x0069, r24	; 0x800069 <__TEXT_REGION_LENGTH__+0x7f8069>
+  d6:	81 e0       	ldi	r24, 0x01	; 1
+  d8:	8c bb       	out	0x1c, r24	; 28
+  da:	8d bb       	out	0x1d, r24	; 29
+  dc:	80 93 6b 00 	sts	0x006B, r24	; 0x80006b <__TEXT_REGION_LENGTH__+0x7f806b>
+  e0:	8b bb       	out	0x1b, r24	; 27
+  e2:	80 93 68 00 	sts	0x0068, r24	; 0x800068 <__TEXT_REGION_LENGTH__+0x7f8068>
+  e6:	83 b7       	in	r24, 0x33	; 51
+  e8:	81 7f       	andi	r24, 0xF1	; 241
+  ea:	84 60       	ori	r24, 0x04	; 4
+  ec:	83 bf       	out	0x33, r24	; 51
+  ee:	83 b7       	in	r24, 0x33	; 51
+  f0:	81 60       	ori	r24, 0x01	; 1
+  f2:	83 bf       	out	0x33, r24	; 51
+  f4:	87 ea       	ldi	r24, 0xA7	; 167
+  f6:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <_end+0x200>
+  fa:	78 94       	sei
+  fc:	88 95       	sleep
+  fe:	83 b7       	in	r24, 0x33	; 51
+ 100:	8e 7f       	andi	r24, 0xFE	; 254
+ 102:	83 bf       	out	0x33, r24	; 51
+ 104:	f8 94       	cli
+ 106:	8c e5       	ldi	r24, 0x5C	; 92
+ 108:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <_end+0x203>
+
+0000010c <.L4>:
+ 10c:	00 00       	nop
+ 10e:	fe cf       	rjmp	.-4      	; 0x10c <.L4>
+
+00000110 <_exit>:
+ 110:	f8 94       	cli
+
+00000112 <__stop_program>:
+ 112:	ff cf       	rjmp	.-2      	; 0x112 <__stop_program>
