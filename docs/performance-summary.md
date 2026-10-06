@@ -39,8 +39,14 @@ The synthetic tight-loop is bulk-skipped in a few microseconds and is excluded
 from practical speed claims. Mixed-fixture cycle rates also reflect different
 TWI latency models, not equal completed transaction counts.
 
-The release check passed 2,729 source tests, eight browser tests and packed
-consumer checks. The four covered result fixtures still match avr8js and native
+The subsequent [peripheral event workload](evidence/peripheral-bound.md) adds
+continuous high-baud USART, hardware PWM and ADC interrupts with Idle wake-ups.
+Its separate best-of-five comparison measured 25.02 vs 25.58 Mcycles/s (0.98x),
+with actual post-warm-up serial/PWM counts retained. Its construction-inclusive
+internal rate was 13.00 Mcycles/s; the two methods are not interchangeable.
+
+The release check passed 2,743 source tests, eight browser tests and packed
+consumer checks. The five covered result fixtures still match avr8js and native
 simavr with existing normalizations; native timing and Optiboot checks passed.
 See [release preparation](evidence/release-0.1.2.md) and the refresh for exact
 coverage. The historical source-revision samples remain in

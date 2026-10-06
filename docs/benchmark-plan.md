@@ -15,15 +15,16 @@ reveals something the others can't), and add external references so "fast" and
 
 ## Current state
 
-- Internal fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)) — 11:
+- Internal fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)) — 12:
   `tight-loop`, `delay-blink`, `serial-print`, `serial-print-listener`,
   `analog-write`, `sensor-format`, `float-math`, `bitbang-crc`, `isr-heavy`,
-  `string-heavy`, `dsp-fixed`. The external comparison also has 11 workloads:
-  it uses `peripheral-mix` instead of `serial-print-listener`.
+  `string-heavy`, `dsp-fixed`, `peripheral-bound`. The external comparison also
+  has 12 workloads: it uses `peripheral-mix` instead of `serial-print-listener`.
 - Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js — pass
   `--isolate` for any real-code claim, see Methodology), `bun run bench:result`
   (defaults to all final-state oracle scenarios vs avr8js:
-  `peripheral-mix`/`isr-heavy`/`string-heavy`/`dsp-fixed`; use `--case` for one),
+  `peripheral-mix`/`isr-heavy`/`string-heavy`/`dsp-fixed`/`peripheral-bound`;
+  use `--case` for one),
   `bun run profile:opcodes` (hot opcode / fast-block profile).
 - Local fixture toolchains verified on 2026-07-01: vendored `./avr-gcc/bin`
   (`avr-gcc` 15.2.0) and Arduino IDE bundled `arduino-cli` 1.5.1 with
@@ -35,7 +36,7 @@ reveals something the others can't), and add external references so "fast" and
   the local simavr library. `bun run oracle:simavr:compare` performs a normalized
   avrts comparison for a simple firmware path (cycles, PC, SP, R0-R31, and SREG
   with the interrupt-enable bit masked by default). `bun run oracle:simavr:result`
-  runs the four result fixtures against native simavr and avrts. The result oracle
+  runs the five result fixtures against native simavr and avrts. The result oracle
   compares result SRAM, selected registers, serial output, and TWI transcripts;
   `peripheral-mix` normalizes its old timer-threshold byte because timed TWI
   makes that threshold engine-dependent, and normalizes the PORTD PWM latch byte
@@ -100,9 +101,13 @@ ratio. If two fixtures profile nearly identically, drop one.
 
 ### Different axis (not cycles/sec)
 
-- [ ] **`peripheral-bound`** — high-baud USART + timer PWM + ADC sampling at once.
-  - The bottleneck here is the **clock-event queue**, not the CPU. The CPU-bound
-    fixtures never stress the scheduler under load.
+- [x] **`peripheral-bound`** — 1 Mbaud USART interrupts + two 62.5 kHz PWM outputs
+  + interrupt-driven ADC sampling, with Idle wake-ups and continuous batches.
+  - Stresses peripheral scheduling, ISR entry/return and output delivery together;
+    it is not a pure queue microbenchmark because the ISR instructions also cost.
+  - [Evidence](evidence/peripheral-bound.md): 0.98x vs avr8js on the measured host,
+    raw post-warm-up byte/PWM counts, fast/cycle-exact activity/shutdown tests,
+    and unnormalized final-state comparison at five ADC inputs against both peers.
 - [ ] **Fidelity benchmark** — for each fixture, assert the **final state matches
   an oracle** (RAM + registers + serial output), not just speed. Catches
   correctness drift the speed numbers miss. (Oracle = avr8js and/or simavr; see
@@ -155,8 +160,8 @@ below remain proposed options, separate from the installed speed harness.
   cycle budget and diff final RAM / register file / serial output against avrts.
   This is a *correctness* gate, not a speed one — it catches fidelity bugs the
   speed benchmarks are blind to. `bun run oracle:simavr:result` now covers
-  `peripheral-mix`, `isr-heavy`, `string-heavy`, and `dsp-fixed` via the native
-  helper, with the documented `peripheral-mix` timer-threshold and PORTD
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, and `peripheral-bound`
+  via the native helper, with the documented `peripheral-mix` timer-threshold and PORTD
   PWM-latch normalizations.
 - [x] **simavr native peripheral-timing oracle.** `bun run oracle:simavr:timing`
   runs avr-libc fixtures that poll USART `TXC0`/`RXC0`, SPI master `SPIF`,
@@ -175,7 +180,7 @@ below remain proposed options, separate from the installed speed harness.
 - **`--isolate` is mandatory for real-code claims.** `bench:compare --isolate` runs
   one firmware per subprocess (fresh heap), which is how the simulator is used in
   production and keeps each fixture's hot methods monomorphic. The single-process
-  default co-runs all 11 firmwares and **megamorphically deoptimizes avrts's shared
+  default co-runs all firmwares and **megamorphically deoptimizes avrts's shared
   hot path ~3x** (avr8js is nearly immune), so it under-reports real-code throughput
   badly. Use the default only for the synthetic/IO-bound fixtures, which are
   insensitive to the artifact. Every real-code ratio below is `--isolate`.
@@ -234,16 +239,19 @@ below remain proposed options, separate from the installed speed harness.
   benchmark/profile harnesses, and `bench:compare`.
 - [x] Write/compile a `dsp-fixed` sketch; wire into result comparison,
   benchmark/profile harnesses, and `bench:compare`.
+- [x] Write/compile a `peripheral-bound` sketch; wire into benchmark/profile,
+  startup/revision/external harnesses and both default result-oracle matrices.
+  Record profile, throughput and actual activity after warm-up.
 - [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
 - [x] Make `bench:result` run every covered result-oracle scenario by default
-  (`peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`) while keeping
+  (`peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`) while keeping
   `--case` for focused checks.
 - [x] Install/build native simavr locally and add `oracle:simavr` smoke/state-dump
   harness.
 - [x] Add `oracle:simavr:compare` normalized smoke comparison against avrts.
 - [x] Add `oracle:simavr:result` native simavr result-oracle matrix for
-  `peripheral-mix`, `isr-heavy`, `string-heavy`, and `dsp-fixed`.
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, and `peripheral-bound`.
 - [x] Decide whether the simavr-WASM ceiling is worth the one-time integration —
   not for the current non-JIT track; re-open only if "faster on real Arduino
   programs" becomes an explicit product goal.
@@ -251,6 +259,11 @@ below remain proposed options, separate from the installed speed harness.
 ## Recorded fixture evidence
 
 ### Current 2026-10-06 comparison
+
+The subsequent [peripheral event workload](evidence/peripheral-bound.md) adds
+the twelfth fixture and fifth result oracle. A separate isolated five-trial
+sample measured 25.02 vs 25.58 Mcycles/s (0.98x), with continuous USART/PWM
+activity and exact final-state output at five ADC inputs in both references.
 
 [The execution-only refresh](evidence/benchmark-comparison-refresh.md) uses five
 trials, 50 million measured cycles per workload/engine, explicit warm-up and

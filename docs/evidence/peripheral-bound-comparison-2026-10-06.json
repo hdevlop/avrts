@@ -1,0 +1,126 @@
+{
+  "runtime": "1.3.14",
+  "clockHz": 16000000,
+  "repeats": 5,
+  "warmupCycles": 500000,
+  "includesConstruction": false,
+  "isolate": true,
+  "udivmodsi4Region": "semantic-direct",
+  "rows": [
+    {
+      "name": "peripheral-bound",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2255.0526,
+            "constructionMs": 63.65920000000001,
+            "cyclesPerSecond": 22172431.809351142,
+            "peripheralActivity": {
+              "serialBytes": 283760,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2049.0786000000003,
+            "constructionMs": 62.539800000000014,
+            "cyclesPerSecond": 24401211.3542155,
+            "peripheralActivity": {
+              "serialBytes": 283760,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2013.0864999999994,
+            "constructionMs": 68.49579999999969,
+            "cyclesPerSecond": 24837482.144955028,
+            "peripheralActivity": {
+              "serialBytes": 283760,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2024.4157999999998,
+            "constructionMs": 61.587000000000444,
+            "cyclesPerSecond": 24698483.38468807,
+            "peripheralActivity": {
+              "serialBytes": 283760,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1998.7744999999995,
+            "constructionMs": 63.58100000000013,
+            "cyclesPerSecond": 25015328.142319214,
+            "peripheralActivity": {
+              "serialBytes": 283760,
+              "pwmEdges": 781250
+            }
+          }
+        ],
+        "bestCyclesPerSecond": 25015328.142319214
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 2087.2838999999985,
+            "constructionMs": 1.8823000000011234,
+            "cyclesPerSecond": 23954576.088092294,
+            "peripheralActivity": {
+              "serialBytes": 261895,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 2084.7317000000003,
+            "constructionMs": 0.3870999999999185,
+            "cyclesPerSecond": 23983902.101167258,
+            "peripheralActivity": {
+              "serialBytes": 261895,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 2050.5400999999983,
+            "constructionMs": 0.36599999999998545,
+            "cyclesPerSecond": 24383820.145726506,
+            "peripheralActivity": {
+              "serialBytes": 261895,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 1954.4472999999998,
+            "constructionMs": 0.3907999999973981,
+            "cyclesPerSecond": 25582680.586987436,
+            "peripheralActivity": {
+              "serialBytes": 261895,
+              "pwmEdges": 781250
+            }
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 2030.7077000000027,
+            "constructionMs": 0.3305000000000291,
+            "cyclesPerSecond": 24621958.640330136,
+            "peripheralActivity": {
+              "serialBytes": 261895,
+              "pwmEdges": 781250
+            }
+          }
+        ],
+        "bestCyclesPerSecond": 25582680.586987436
+      },
+      "ratio": 0.9778227913709401
+    }
+  ]
+}

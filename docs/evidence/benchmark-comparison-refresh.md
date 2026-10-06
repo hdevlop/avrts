@@ -104,7 +104,8 @@ electrical timing or all firmware, and do not imply universal realtime headroom.
 - The already prepared `0.1.2` archive remained byte-identical after repacking;
   its metadata is in [release preparation](release-0.1.2.md).
 
-The dedicated high-baud USART/PWM/ADC queue workload and final-state oracles for
-the remaining throughput fixtures are still open plan items. This refresh adds
-neither a WASM peer nor a JIT. Follow-up optimization should start from fresh
+The subsequent [high-baud USART/PWM/ADC workload](peripheral-bound.md) completes
+the dedicated peripheral event fixture, with raw activity and both oracles.
+Final-state oracles for the remaining older throughput fixtures are still open.
+This refresh adds neither a WASM peer nor a JIT. Follow-up optimization should start from fresh
 float/bit-bang/delay profiles rather than the old all-real-code-below-parity claim.

@@ -8,6 +8,7 @@ import bitbangCrcHex from "../examples/arduino-bitbang-crc/arduino-bitbang-crc.i
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with { type: "text" };
 import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with { type: "text" };
+import peripheralBoundHex from "../examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex" with { type: "text" };
 
 const DEFAULT_CLOCK_HZ = 16_000_000;
 
@@ -118,6 +119,17 @@ export function createBenchmarkCases(cyclesOverride?: number): BenchmarkCase[] {
       description: "Arduino fixed-point FIR, PROGMEM, and ring-buffer fixture",
       cycles: cycles(5_000_000),
       create: () => AVR(dspFixedHex),
+    },
+    {
+      name: "peripheral-bound",
+      description: "1 Mbaud USART interrupts, dual 62.5 kHz PWM, ADC interrupts, and idle wake-ups",
+      cycles: cycles(5_000_000),
+      create: () => {
+        const avr = AVR(peripheralBoundHex);
+        avr.analog(0).setValue(512);
+        avr.pin(2).setInput(true);
+        return avr;
+      },
     },
   ];
 }

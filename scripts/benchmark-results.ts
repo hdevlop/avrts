@@ -35,6 +35,7 @@ import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heav
 import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with {
   type: "text",
 };
+import peripheralBoundHex from "../examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex" with { type: "text" };
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -68,10 +69,10 @@ const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
 const DEFAULT_CASE: ResultCase = "all";
 
-type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy" | "dsp-fixed";
+type ResultScenario = "peripheral-mix" | "isr-heavy" | "string-heavy" | "dsp-fixed" | "peripheral-bound";
 type ResultCase = ResultScenario | "all";
 
-const RESULT_SCENARIOS: readonly ResultScenario[] = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed"];
+const RESULT_SCENARIOS: readonly ResultScenario[] = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed", "peripheral-bound"];
 
 interface ResultOptions {
   scenario: ResultScenario;
@@ -116,6 +117,7 @@ const SCENARIO_HEX: Record<ResultScenario, string> = {
   "isr-heavy": isrHeavyHex,
   "string-heavy": stringHeavyHex,
   "dsp-fixed": dspFixedHex,
+  "peripheral-bound": peripheralBoundHex,
 };
 
 function programFor(hex: string): Uint16Array {
@@ -354,6 +356,10 @@ export function compareDspFixed(options: Partial<ResultOptions> = {}): CompareRe
   return compareScenario("dsp-fixed", options);
 }
 
+export function comparePeripheralBound(options: Partial<ResultOptions> = {}): CompareResult {
+  return compareScenario("peripheral-bound", options);
+}
+
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     scenario: DEFAULT_CASE,
@@ -397,8 +403,8 @@ function parseAnalog(value: string | undefined): number {
 
 function parseScenario(value: string | undefined): ResultCase {
   if (value === "all") return value;
-  if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
-  throw new Error(`--case expects all, peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
+  if (value === "peripheral-bound" || value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
+  throw new Error(`--case expects all, peripheral-mix, isr-heavy, string-heavy, dsp-fixed, or peripheral-bound, got ${value}.`);
 }
 
 function parseBoolean(value: string | undefined, flag: string): boolean {

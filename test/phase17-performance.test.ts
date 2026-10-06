@@ -87,6 +87,7 @@ describe("Phase 17 — browser performance", () => {
       "isr-heavy",
       "string-heavy",
       "dsp-fixed",
+      "peripheral-bound",
     ]);
   });
 
@@ -120,6 +121,7 @@ describe("Phase 17 — browser performance", () => {
       "isr-heavy": 1_000_000,
       "string-heavy": 1_000_000,
       "dsp-fixed": 1_000_000,
+      "peripheral-bound": 1_000_000,
     };
     for (const [name, { floor }] of Object.entries(baseline.cases)) {
       test(name, () => {

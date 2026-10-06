@@ -31,7 +31,7 @@ import {
   TWSR,
   UDRE0,
 } from "../src/cpu";
-import { compareDspFixed, compareIsrHeavy, comparePeripheralMix, compareStringHeavy } from "./benchmark-results";
+import { compareDspFixed, compareIsrHeavy, comparePeripheralMix, compareStringHeavy, comparePeripheralBound } from "./benchmark-results";
 
 interface Options {
   hex: string;
@@ -113,7 +113,7 @@ const STRING_HEAVY_SERIAL_FLUSH_CYCLES = 500_000;
 const DEFAULT_MAX_CYCLES = 5_000_000;
 const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
-const RESULT_SCENARIOS = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed"] as const;
+const RESULT_SCENARIOS = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed", "peripheral-bound"] as const;
 const TIMING_RESULT_ADDR = 0x0300;
 const TIMING_RESULT_LEN = 40;
 const TIMING_MAX_CYCLES = 1_000_000;
@@ -297,6 +297,7 @@ const RESULT_HEX_PATHS: Record<ResultScenario, string> = {
   "isr-heavy": "examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex",
   "string-heavy": "examples/arduino-string-heavy/arduino-string-heavy.ino.hex",
   "dsp-fixed": "examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex",
+  "peripheral-bound": "examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex",
 };
 
 const RESULT_AVRTS_COMPARE: Record<ResultScenario, (options: { maxCycles: number; analogRaw: number; d2High: boolean }) => { avrts: ScenarioOutcome }> = {
@@ -304,6 +305,7 @@ const RESULT_AVRTS_COMPARE: Record<ResultScenario, (options: { maxCycles: number
   "isr-heavy": compareIsrHeavy,
   "string-heavy": compareStringHeavy,
   "dsp-fixed": compareDspFixed,
+  "peripheral-bound": comparePeripheralBound,
 };
 
 const PERIPHERAL_MIX_TIMER_THRESHOLD_RESULT_INDEX = 6;
@@ -438,8 +440,8 @@ function parseBoolean(value: string | undefined, flag: string): boolean {
 
 function parseResultCase(value: string | undefined): ResultCase {
   if (value === "all") return value;
-  if (value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
-  throw new Error(`--result-case expects all, peripheral-mix, isr-heavy, string-heavy, or dsp-fixed, got ${value}.`);
+  if (value === "peripheral-bound" || value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
+  throw new Error(`--result-case expects all, peripheral-mix, isr-heavy, string-heavy, dsp-fixed, or peripheral-bound, got ${value}.`);
 }
 
 function parseTimingCase(value: string | undefined): TimingCase {

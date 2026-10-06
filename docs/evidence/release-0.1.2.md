@@ -24,26 +24,27 @@ held-input sampling. See [the analog sleep review](analog-sleep-boundaries.md).
 
 ## Local validation
 
-All components of `bun run release:check` passed with the final library/fixture
-implementation and `0.1.2` metadata. Later comparison display formatting passed
-focused tests and typechecking; CI checks the final pushed commit.
+All components of `bun run release:check` passed with the final library, fixture
+and harness implementation and `0.1.2` metadata. CI checks the final pushed commit.
 
 | Check | Result |
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 2,729 passed, zero failed; 17,610 assertions across 73 files |
+| Complete Bun source suite | 2,743 passed, zero failed; 17,686 assertions across 74 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
-| Native simavr result fixtures | All four passed |
+| Native simavr result fixtures | All five passed; new peripheral-bound fixture also passed five ADC inputs |
 | Native simavr timing fixtures | All five passed |
 | Native simavr Optiboot | Transcript, flash page, and uploaded application matched |
 
-The five new test files add 768 regressions, including fast and cycle-exact execution:
+The six new test files add 779 regressions, including fast and cycle-exact execution:
 76 Timer2 signal cases, 58 wake clock cases and 354 external interrupt sleep
-cases, plus 272 analog input/sleep cases and eight benchmark harness/fixture
-cases. Existing asynchronous tests explicitly cover the CPU synchronizer and
+cases, plus 272 analog input/sleep cases, eight benchmark harness/fixture
+cases and eleven peripheral-bound activity/fidelity cases. The new fixture also
+enters the existing generated-core/profile parity checks and throughput floors.
+Existing asynchronous tests explicitly cover the CPU synchronizer and
 resumed clocks during entry. The external interrupt cases also run compiled
 power-down firmware directly and after restore with held/completed pin pulses.
 The analog probe additionally validates ADC conversion without an ADSC write
@@ -53,8 +54,8 @@ calibrate every silicon timing detail. The Timer2 firmware probe separately
 records native simavr disagreements. Neither that probe nor the new external
 interrupt/analog source regressions are counted among passing native fixtures.
 
-Local output is retained under ignored `logs/release-0.1.2-*` and
-`logs/benchmark-*` paths. GitHub CI
+Local output is retained under ignored `logs/release-0.1.2-*`,
+`logs/benchmark-*` and `logs/peripheral-bound-*` paths. GitHub CI
 runs package checks on Ubuntu Node 22/24 and Windows Node 22, plus Chromium on
 Ubuntu. Its result is associated with the pushed preparation commit in Actions.
 
@@ -92,6 +93,12 @@ Earlier mixed-fixture long-run rates above remain
 historical tail measurements. The new execution-only comparison records all
 eleven workloads and their raw samples; it is not an emulator optimization.
 The fixture/harness changes do not alter the packed library or archive digest.
+
+The subsequent [peripheral event workload](peripheral-bound.md) adds continuous
+USART/PWM/ADC activity with Idle wake-ups, measured byte/edge counters, and a
+fifth final-state oracle in both reference runners. The five ADC input scenarios
+match completed results and serial output without new normalizations. It adds
+coverage and benchmark pressure; it changes no emulator library implementation.
 
 ## Prepared archive
 

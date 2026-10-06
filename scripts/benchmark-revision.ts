@@ -17,6 +17,7 @@ const fixtures: Record<string, string> = {
   "string-heavy": "arduino-string-heavy",
   "dsp-fixed": "arduino-dsp-fixed",
   "timer2-rtc": "arduino-timer2-rtc",
+  "peripheral-bound": "arduino-peripheral-bound",
 };
 const args = Bun.argv.slice(2);
 const option = (name: string) => {

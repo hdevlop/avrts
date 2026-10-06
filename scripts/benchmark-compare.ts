@@ -27,6 +27,7 @@ import peripheralMixHex from "../examples/arduino-peripheral-mix/arduino-periphe
 import isrHeavyHex from "../examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex" with { type: "text" };
 import stringHeavyHex from "../examples/arduino-string-heavy/arduino-string-heavy.ino.hex" with { type: "text" };
 import dspFixedHex from "../examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex" with { type: "text" };
+import peripheralBoundHex from "../examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex" with { type: "text" };
 import {
   CPU as Avr8jsCPU,
   avrInstruction,
@@ -68,7 +69,7 @@ interface CompareOptions {
    * Run each workload in its own subprocess (fresh JSC heap per fixture). This is
    * the production-representative measurement: real use runs one firmware per CPU,
    * so each fixture's hot methods stay monomorphic. The default single-process
-   * mode co-runs all 11 firmwares, which megamorphically deoptimizes avrts's
+   * mode co-runs all firmwares, which megamorphically deoptimizes avrts's
    * shared hot path ~3x (avr8js is nearly immune) and under-reports real-code
    * throughput. See docs/performance-summary.md.
    */
@@ -83,6 +84,7 @@ interface CompareOptions {
 interface Runner {
   readonly cycles: number;
   readonly twiStops?: number | undefined;
+  readonly peripheralActivity?: { serialBytes: number; pwmEdges: number } | undefined;
   run(cycles: number): void;
 }
 
@@ -92,6 +94,7 @@ interface Sample {
   constructionMs: number;
   cyclesPerSecond: number;
   twiStops?: number;
+  peripheralActivity?: { serialBytes: number; pwmEdges: number };
 }
 
 interface ComparisonRow {
@@ -110,12 +113,17 @@ export function measureExecution(create: () => Runner, cycles: number, warmupCyc
   if (warmupCycles > 0) runner.run(warmupCycles);
   const before = runner.cycles;
   const twiStopsBefore = runner.twiStops;
+  const activityBefore = runner.peripheralActivity;
   const start = now();
   runner.run(cycles);
   const elapsedMs = Math.max(0.001, now() - start);
   const actualCycles = runner.cycles - before;
   return { cycles: actualCycles, elapsedMs, constructionMs, cyclesPerSecond: actualCycles / (elapsedMs / 1000),
-    ...(twiStopsBefore === undefined ? {} : { twiStops: runner.twiStops! - twiStopsBefore }) };
+    ...(twiStopsBefore === undefined ? {} : { twiStops: runner.twiStops! - twiStopsBefore }),
+    ...(activityBefore === undefined ? {} : { peripheralActivity: {
+      serialBytes: runner.peripheralActivity!.serialBytes - activityBefore.serialBytes,
+      pwmEdges: runner.peripheralActivity!.pwmEdges - activityBefore.pwmEdges,
+    } }) };
 }
 
 const WORKLOADS: Workload[] = [
@@ -130,6 +138,7 @@ const WORKLOADS: Workload[] = [
   { name: "isr-heavy", cycles: 5_000_000, hex: isrHeavyHex },
   { name: "string-heavy", cycles: 5_000_000, hex: stringHeavyHex },
   { name: "dsp-fixed", cycles: 5_000_000, hex: dspFixedHex },
+  { name: "peripheral-bound", cycles: 5_000_000, hex: peripheralBoundHex },
 ];
 
 function programFor(hex?: string): Uint16Array {
@@ -151,8 +160,17 @@ function runAvrts(workload: Workload, options: CompareOptions): Sample {
     avr.pin(2).setInput(true);
     const transcript = workload.name === "peripheral-mix" ? createTranscript() : undefined;
     if (transcript) avr.twi.connect(0x50, createAvrtsTwiSlave(transcript));
+    let serialBytes = 0;
+    let pwmEdges = 0;
+    const observeActivity = workload.name === "peripheral-bound";
+    if (observeActivity) {
+      avr.serial.onByte(() => { serialBytes++; });
+      avr.pin(9).onChange(() => { pwmEdges++; });
+      avr.pin(10).onChange(() => { pwmEdges++; });
+    }
     return { get cycles() { return avr.cpu.cycles; }, run: (cycles) => { avr.runCycles(cycles); },
-      get twiStops() { return transcript?.stops; } };
+      get twiStops() { return transcript?.stops; },
+      get peripheralActivity() { return observeActivity ? { serialBytes, pwmEdges } : undefined; } };
   }, workload.cycles, options.warmupCycles);
 }
 
@@ -162,10 +180,10 @@ function runAvr8js(workload: Workload, options: CompareOptions): Sample {
     new AVRTimer(cpu, timer0Config);
     new AVRTimer(cpu, timer1Config);
     new AVRTimer(cpu, timer2Config);
-    new AVRUSART(cpu, usart0Config, CLOCK_HZ);
+    const usart = new AVRUSART(cpu, usart0Config, CLOCK_HZ);
     const adc = new AVRADC(cpu, adcConfig);
     adc.channelValues[0] = 2.5;
-    new AVRIOPort(cpu, portBConfig);
+    const portB = new AVRIOPort(cpu, portBConfig);
     new AVRIOPort(cpu, portCConfig);
     const portD = new AVRIOPort(cpu, portDConfig);
     portD.setPin(2, true);
@@ -174,6 +192,17 @@ function runAvr8js(workload: Workload, options: CompareOptions): Sample {
     if (transcript) twi.eventHandler = new Avr8jsTwiSlave(twi, transcript);
     const clock = new AVRClock(cpu, CLOCK_HZ, clockConfig);
     new AVRWatchdog(cpu, watchdogConfig, clock);
+    let serialBytes = 0;
+    let pwmEdges = 0;
+    const observeActivity = workload.name === "peripheral-bound";
+    if (observeActivity) {
+      usart.onByteTransmit = () => { serialBytes++; };
+      portB.addListener((value, oldValue) => {
+        const changed = (value ^ oldValue) & 0x06;
+        if (changed & 0x02) pwmEdges++;
+        if (changed & 0x04) pwmEdges++;
+      });
+    }
 
     return {
       get cycles() { return cpu.cycles; },
@@ -182,6 +211,7 @@ function runAvr8js(workload: Workload, options: CompareOptions): Sample {
         while (cpu.cycles < target) { avrInstruction(cpu); cpu.tick(); }
       },
       get twiStops() { return transcript?.stops; },
+      get peripheralActivity() { return observeActivity ? { serialBytes, pwmEdges } : undefined; },
     };
   }, workload.cycles, options.warmupCycles);
 }
