@@ -30,12 +30,29 @@ export class AnalogComparator {
   private ain1Volts = 0;
   private output = false;
   private initialized = false;
+  private sleepBlocked = false;
   private captureTrigger?: (high: boolean) => void;
 
   constructor(
     private readonly cpu: CPU,
     private readonly adc: Adc,
-  ) {}
+  ) {
+    this.adc.onChannelChange((channel) => {
+      if (channel === this.negativeInputChannel()) this.evaluate();
+    });
+    this.cpu.onSleep((mode) => {
+      this.sleepBlocked = mode !== 0;
+      this.updateInterrupt();
+    });
+    this.cpu.onWakeStart(() => {
+      const wasBlocked = this.sleepBlocked;
+      this.sleepBlocked = false;
+      const flagBefore = this.cpu.data[ACSR]! & (1 << ACI);
+      this.evaluate(false);
+      // An already selected comparator request must not be queued again.
+      if (wasBlocked || (flagBefore === 0 && (this.cpu.data[ACSR]! & (1 << ACI)) !== 0)) this.updateInterrupt();
+    });
+  }
 
   /**
    * Route ACIC-selected output edges into the Timer1 input-capture unit (the
@@ -47,6 +64,7 @@ export class AnalogComparator {
   }
 
   reset(): void {
+    this.sleepBlocked = false;
     this.output = this.computeOutput();
     this.initialized = true;
     this.syncAco();
@@ -98,7 +116,10 @@ export class AnalogComparator {
     this.cpu.data[DIDR1] = this.cpu.data[DIDR1]! & 0x03;
   }
 
-  private evaluate(): void {
+  private evaluate(requestInterrupt = true): void {
+    // The comparator is automatically powered off outside idle/noise-reduction
+    // sleep. Retain its last logical output until wake; raw inputs still change.
+    if (this.cpu.isSleeping && this.cpu.sleepMode !== 0 && this.cpu.sleepMode !== 1) return;
     const next = this.computeOutput();
     const previous = this.output;
     this.output = next;
@@ -119,12 +140,14 @@ export class AnalogComparator {
     if (!this.edgeMatches(previous, next)) return;
 
     this.cpu.setInterruptFlag(ACSR, 1 << ACI);
-    this.updateInterrupt();
+    if (requestInterrupt) this.updateInterrupt();
   }
 
   private updateInterrupt(): void {
     const acsr = this.cpu.data[ACSR]!;
-    if ((acsr & ((1 << ACIE) | (1 << ACI))) === ((1 << ACIE) | (1 << ACI))) {
+    // The comparator is a wake source only in idle. Retain other-mode flags
+    // for delivery after an eligible source has resumed the CPU.
+    if (!this.sleepBlocked && (acsr & ((1 << ACIE) | (1 << ACI))) === ((1 << ACIE) | (1 << ACI))) {
       this.cpu.requestInterrupt(ANALOG_COMP_VECTOR, () => {
         this.cpu.data[ACSR] = this.cpu.data[ACSR]! & ~(1 << ACI);
       });
@@ -143,11 +166,15 @@ export class AnalogComparator {
   }
 
   private negativeInputVolts(): number {
+    const channel = this.negativeInputChannel();
+    return channel === null ? this.ain1Volts : this.adc.readChannelVoltage(channel);
+  }
+
+  private negativeInputChannel(): number | null {
     const muxEnabled =
       (this.cpu.data[ADCSRB]! & (1 << ACME)) !== 0 &&
       (this.cpu.data[ADCSRA]! & (1 << ADEN)) === 0;
-    if (!muxEnabled) return this.ain1Volts;
-    return this.adc.readChannelVoltage(this.cpu.data[ADMUX]! & 0x07);
+    return muxEnabled ? this.cpu.data[ADMUX]! & 0x07 : null;
   }
 
   private disabled(): boolean {
@@ -177,10 +204,12 @@ export class AnalogComparator {
   }
 
   restore(snap: AnalogComparatorSnapshot | undefined): void {
+    this.sleepBlocked = this.cpu.isSleeping && this.cpu.sleepMode !== 0;
     this.ain0Volts = snap?.ain0Volts ?? 0;
     this.ain1Volts = snap?.ain1Volts ?? 0;
     this.output = snap?.output ?? this.computeOutput();
     this.initialized = snap?.initialized ?? true;
     this.syncAco();
+    if (this.sleepBlocked) this.updateInterrupt();
   }
 }

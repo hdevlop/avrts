@@ -43,7 +43,14 @@ Not machine-checked; keep in sync with the implementation by review.
   voltages and the ACME ADC mux, and the ACIC path drives the full Timer1
   input-capture unit (ICES1 edge select, ICR1 latch, TIMER1_CAPT). This is a
   logical voltage comparison only; electrical noise, input leakage, and
-  propagation delay are not modeled.
+  propagation delay are not modeled. ACME-selected host input changes are
+  evaluated immediately. Deep sleep retains the last logical output without
+  generating events; wake samples held inputs after ADC/Timer1 clocks resume.
+  Only idle allows comparator wake; other-mode flags remain available after
+  an eligible wake source resumes the CPU. Power-up settling and ACO's physical
+  1–2-clock synchronizer are not modeled. ACME operation with PRADC set remains
+  unsupported rather than modeling the hardware's unavailable ADC mux. See
+  [analog sleep evidence](evidence/analog-sleep-boundaries.md).
 - **GPIO inputs** are host-driven logical levels. Floating inputs, pull-up
   resistance, and full serial peripheral pin overrides are not modeled.
 - **External interrupts** stop INT0/INT1 edge/toggle detection with clkI/O in
@@ -141,7 +148,7 @@ Not machine-checked; keep in sync with the implementation by review.
   STK500v1 programming is validated with avrts and a native simavr oracle.
   Flash wear and exact millisecond erase/write latency are not modeled.
 - **Sleep** gates Timer0/Timer1, SPI, USART, ADC, and Timer2 by sleep mode, starts ADC
-  conversion on ADC noise-reduction sleep entry, keeps asynchronous Timer2
+  conversion on idle / ADC noise-reduction sleep entry, keeps asynchronous Timer2
   running in ADC noise-reduction / power-save / extended-standby, reapplies gating after
   snapshot/restore, and adds the 4-cycle base interrupt wake latency. Sleep gates
   release at wake start, before startup/interrupt entry clocks, while PRR remains

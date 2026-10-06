@@ -453,7 +453,6 @@ class AVRRuntime implements AVR {
     this.timer2 = new Timer2(this.cpu, this.gpioPeripheral);
     this.usart0 = new Usart0(this.cpu);
     this.adc = new Adc(this.cpu);
-    this.analogComparator = new AnalogComparator(this.cpu, this.adc);
     this.eepromDevice = new Eeprom(this.cpu);
     this.spiDevice = new Spi(this.cpu, this.gpioPeripheral);
     this.clockControl = new ClockControl(this.cpu, (divider) => this.applyClockDivider(divider));
@@ -478,6 +477,8 @@ class AVRRuntime implements AVR {
       { bit: PRTWI, target: this.twiDevice },
     ]);
     this.sleepControl = new SleepControl(this.cpu, [this.timer0, this.timer1, this.spiDevice, this.usart0], this.timer2, this.adc);
+    // Resume ADC/Timer1 clocks before the comparator samples held wake inputs.
+    this.analogComparator = new AnalogComparator(this.cpu, this.adc);
     this.timerSync = new TimerSync(this.cpu, [this.timer0, this.timer1], [this.timer2]);
     this.watchdog = new Watchdog(this.cpu, this.clockHz, {
       onSystemReset: () => {

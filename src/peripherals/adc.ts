@@ -79,6 +79,7 @@ export class Adc {
   private readonly channels = new Uint16Array(ADC_CHANNEL_COUNT);
   private readonly channelVoltages = new Float64Array(ADC_CHANNEL_COUNT);
   private readonly voltageEnabled = new Uint8Array(ADC_CHANNEL_COUNT);
+  private readonly channelListeners = new Set<(channel: number) => void>();
   private remainingCycles = 0;
   private converting = false;
   private firstConversion = true;
@@ -173,6 +174,7 @@ export class Adc {
     const normalized = this.normalizeChannel(channel);
     this.channels[normalized] = clamp10(value);
     this.voltageEnabled[normalized] = 0;
+    for (const listener of this.channelListeners) listener(normalized);
   }
 
   readChannelValue(channel: number): number {
@@ -187,6 +189,13 @@ export class Adc {
     this.channelVoltages[normalized] = Number.isFinite(volts) ? Math.max(0, volts) : 0;
     this.voltageEnabled[normalized] = 1;
     this.channels[normalized] = clamp10(Math.round(ratio * 1023));
+    for (const listener of this.channelListeners) listener(normalized);
+  }
+
+  /** Notify analog consumers after a host changes a channel's input level. */
+  onChannelChange(listener: (channel: number) => void): () => void {
+    this.channelListeners.add(listener);
+    return () => { this.channelListeners.delete(listener); };
   }
 
   readChannelVoltage(channel: number): number {
@@ -438,14 +447,14 @@ export class Adc {
   }
 
   private onSleep(): void {
-    if (!this.isNoiseReductionSleepMode()) return;
+    if (!this.startsConversionOnSleep()) return;
     if (this.converting || this.clockPaused()) return;
     this.startConversion();
   }
 
-  private isNoiseReductionSleepMode(): boolean {
+  private startsConversionOnSleep(): boolean {
     const mode = (this.cpu.data[SMCR]! >> SM0) & ((1 << (SM2 - SM0 + 1)) - 1);
-    return mode === 0b001;
+    return mode === 0b000 || mode === 0b001;
   }
 
   private resyncTriggerLatch(): void {

@@ -17,6 +17,10 @@ Semantic Versioning once a version is published.
   preserving timer phase, in-flight operations and independent PRR gates.
 - Stop INT0/INT1 edge detection in non-idle sleep while retaining asynchronous
   low-level and pin-change wake sources; sample held edges when I/O clocks resume.
+- Start an enabled ADC conversion on idle sleep entry, retaining in-flight samples.
+- Deliver ACME-selected analog input changes to comparator interrupts and Timer1
+  capture without requiring a register read; suppress deep-sleep comparator events
+  and restrict comparator wake to idle while retaining flags for later delivery.
 
 ## 0.1.1 - 2026-10-05
 

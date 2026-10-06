@@ -111,6 +111,12 @@ INT0/INT1 edge sensing with clkI/O, retaining asynchronous low-level and PCINT
 wake and resampling held levels at resume. Completed asleep pulses do not wake
 non-idle code; input synchronizer/startup filtering remains a model boundary.
 
+The [analog sleep follow-up](analog-sleep-boundaries.md) starts an enabled ADC
+on idle entry, delivers ACME input changes without lazy register reads, and
+blocks comparator events in deep sleep and comparator wake outside idle.
+It retains flags and raw inputs through restore and resumes ADC/Timer1 clocks
+before sampling held comparator inputs at wake.
+
 The [timer boundary follow-up](timer-boundary-correctness.md) adds Timer0/Timer2
 PWM buffers and both slopes, CTC TOP+1 periods, and the ordinary compare-flag
 delay. It also fixes an I/O sampling-order mismatch in generated SBIC/SBIS.

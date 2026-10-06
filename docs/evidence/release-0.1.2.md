@@ -17,7 +17,10 @@ operations. The scope and timing evidence are in
 [the wake clock review](wake-clock-domains.md). A second follow-up stops
 clocked INT0/INT1 edge detection during non-idle sleep and samples held levels
 when I/O clocks resume, while retaining asynchronous low-level and PCINT wake.
-See [the external interrupt review](external-interrupt-sleep.md).
+See [the external interrupt review](external-interrupt-sleep.md). A third
+follow-up starts ADC conversion on idle entry, delivers live ACME input changes,
+and restricts comparator events/wake by sleep mode while resuming clocks before
+held-input sampling. See [the analog sleep review](analog-sleep-boundaries.md).
 
 ## Local validation
 
@@ -28,7 +31,7 @@ and `0.1.2` metadata. Subsequent edits only recorded documentation and samples.
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 2,449 passed, zero failed; 15,457 assertions across 71 files |
+| Complete Bun source suite | 2,721 passed, zero failed; 17,573 assertions across 72 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
@@ -36,15 +39,18 @@ and `0.1.2` metadata. Subsequent edits only recorded documentation and samples.
 | Native simavr timing fixtures | All five passed |
 | Native simavr Optiboot | Transcript, flash page, and uploaded application matched |
 
-The three new test files add 488 regressions across fast and cycle-exact execution:
+The four new test files add 760 regressions across fast and cycle-exact execution:
 76 Timer2 signal cases, 58 wake clock cases and 354 external interrupt sleep
-cases. Existing asynchronous tests explicitly cover the CPU synchronizer and
+cases, plus 272 analog input/sleep cases. Existing asynchronous tests explicitly
+cover the CPU synchronizer and
 resumed clocks during entry. The external interrupt cases also run compiled
 power-down firmware directly and after restore with held/completed pin pulses.
+The analog probe additionally validates ADC conversion without an ADSC write
+on idle sleep entry and comparator delivery after an eligible PCINT wake.
 Native fixtures retain their established normalizations; passing them does not
 calibrate every silicon timing detail. The Timer2 firmware probe separately
 records native simavr disagreements. Neither that probe nor the new external
-interrupt source regression is counted among passing native fixtures.
+interrupt/analog source regressions are counted among passing native fixtures.
 
 Local output is retained under ignored `logs/release-0.1.2-*` paths. GitHub CI
 runs package checks on Ubuntu Node 22/24 and Windows Node 22, plus Chromium on
@@ -71,15 +77,21 @@ peripheral mix and +2.1% for interrupt-heavy firmware. These are focused host
 measurements, with method and raw samples in
 [the external interrupt review](external-interrupt-sleep.md#focused-performance).
 
+The subsequent analog follow-up was compared against that external-interrupt
+head `8fb5eda`: Arduino PWM +2.6%, interrupt-heavy -0.9% and repeated watchdog
+sleep/wake +0.8%. The small measured interrupt-workload cost is retained; these
+host results do not establish universal performance. Method and samples are in
+[the analog sleep review](analog-sleep-boundaries.md#focused-performance).
+
 ## Prepared archive
 
 `npm pack --ignore-scripts --json` packaged the already validated build as
-`hdevlop-avrts-0.1.2.tgz`: 83 files, 289,679 packed bytes and 1,546,883 unpacked
+`hdevlop-avrts-0.1.2.tgz`: 83 files, 290,373 packed bytes and 1,551,845 unpacked
 bytes. The ignored archive remains available locally for publication review.
 
-- SHA-256: `26209c3b281427ee06cca1b0c617dd7c95aee798dd2f50cb7388d165daf2b42b`
-- SHA-1: `1e602570b106d1e633acb2c4bf4e1c2f87ea1011`
-- npm integrity: `sha512-AVaI5Z9agRIxU7G9x+Q8LfthxQIy0A1WjYjVzWBcCZFWeDsD8x16GsZZg80tJNpTVJNoEBFll2xHZJEdwV5Ddg==`
+- SHA-256: `9fb92e3872b191b848f4164ab994febba8221facdcad2dd83cbc79e7dbcd7884`
+- SHA-1: `3bfe7016351e0c426fbde5b751075eb01ecb5bbc`
+- npm integrity: `sha512-slJwmqmkVNH5OwXjSTHH1g/aXQI/qJEoDAZV4FCB5QYZPPD7BaAp8crweBLI6oDYPbsyd+8UAb2WehbS8TYFoQ==`
 
 ## Remaining boundaries
 
@@ -88,7 +100,8 @@ firmware probe. The datasheet does not specify its exact asynchronous reset
 transfer count, and native simavr retained the reset bit through polling.
 avrts therefore retains its existing immediate acknowledgement convention;
 no unsupported latency was added. Flag-clear acknowledgement/re-entry within
-a TOSC period, external input synchronizer/short-pulse/startup filtering and
-physical hardware calibration remain open. See
+a TOSC period, external input synchronizer/short-pulse/startup filtering,
+comparator power-up/synchronizer timing and physical hardware calibration remain
+open. See
 [the investigation](timer2-async-signals.md#psrasy-investigation-and-remaining-boundaries)
 and [limitations](../limitations.md).
