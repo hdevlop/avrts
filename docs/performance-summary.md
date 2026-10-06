@@ -19,44 +19,52 @@ no per-instruction peripheral fan-out.
 
 ## Where we are (measured `--isolate`, production-representative)
 
-The 2026-10-05 peripheral patch comparison against the 0.1.0 source is recorded
-in [peripheral patch performance evidence](evidence/peripheral-performance.md).
-It uses a separate revision-comparison harness and does not update the historical
-avr8js ratios below.
+The [2026-10-06 comparison refresh](evidence/benchmark-comparison-refresh.md)
+supersedes the historical July ratios. It excludes construction, adds explicit
+warm-up, supplies matching host inputs/TWI and keeps the mixed fixture running.
+Both engines execute in Bun 1.3.14 on the same Windows i7-7700K host, best of
+five 50-million-cycle trials per workload in isolated processes.
 
 | class | fixtures | ratio vs avr8js |
 | ----- | -------- | --------------- |
-| synthetic / idle-dominated | tight-loop, delay-blink | **0.92-1.86x** |
-| IO-bound | serial-print, analog-write, peripheral-mix | 0.66-1.04x |
-| real compiled code | sensor, dsp, isr, string, float, bitbang | **0.35-0.74x** |
+| idle/delay | delay-blink | 0.94x |
+| IO/peripheral | serial-print, analog-write, peripheral-mix | 3.08-4.39x |
+| formatting / ISR / DSP | sensor-format, string-heavy, isr-heavy, dsp-fixed | 1.11-1.69x |
+| soft-float / bit-banging | float-math, bitbang-crc | 0.44-0.73x |
 
-The 2026-07-13 Windows release-review sample remains faster than realtime on ten
-of eleven fixtures, but `bitbang-crc` measured 15.45M cycles/s in the common
-best-of-3 matrix and 13.11M cycles/s in a focused best-of-10 run. Realtime
-headroom is therefore fixture- and host-specific, not a blanket guarantee.
-Real-code throughput still trails avr8js at roughly 0.35-0.74x. 653 tests green;
-result oracles match
-avr8js for the four `bench:result` fixtures, and `oracle:simavr:result` now
-cross-checks the same matrix against native simavr with the documented
-`peripheral-mix` timer-threshold and PORTD PWM-latch normalizations.
-`oracle:simavr:timing` also covers calibrated USART/SPI/TWI polling delays.
+Seven of the ten nontrivial workloads lead the peer in cycle rate on this host;
+all ten measure over 16M cycles/s, with bit-banging closest at 18.84M. This is
+not a blanket realtime guarantee for other hosts, Node, browser workers or UI.
+The synthetic tight-loop is bulk-skipped in a few microseconds and is excluded
+from practical speed claims. Mixed-fixture cycle rates also reflect different
+TWI latency models, not equal completed transaction counts.
+
+The release check passed 2,729 source tests, eight browser tests and packed
+consumer checks. The four covered result fixtures still match avr8js and native
+simavr with existing normalizations; native timing and Optiboot checks passed.
+See [release preparation](evidence/release-0.1.2.md) and the refresh for exact
+coverage. The historical source-revision samples remain in
+[peripheral patch evidence](evidence/peripheral-performance.md); their old
+mixed-fixture rate describes a halted tail, not continuous peripheral activity.
 
 ## What we learned (the important part)
 
 1. **FastBlocks are avrts's unique weapon.** They *bulk-skip* busy-wait/delay/poll
    loops where avr8js simulates every iteration — that is why avrts wins ~2x on
    synthetic code and why the poll-wait block lifted dsp/isr/peripheral ~10%.
-2. **On straight-line real code it's a per-instruction dispatch race, and avrts
-   loses it.** avr8js is one monolithic `avrInstruction()` that V8 optimizes as a
-   whole; avrts pays per-opcode ladder/dispatch cost per instruction.
+2. **Dispatch cost remains workload-specific.** avr8js uses one monolithic
+   `avrInstruction()`; avrts combines a generated ladder with FastBlocks.
+   In these comparisons both execute in Bun's JavaScriptCore. The current
+   matrix, rather than a universal dispatch claim, determines which paths trail.
 3. **Many hypothesized costs were measured to be dead ends** — settled, do not
    revisit: handler-fallback dispatch (monolithic core removed it → no production
    gain), `notifyCycles`, the `cycles` accessor, clock-event re-arm, decode-ladder
    *ordering* (~10% ceiling), and several block-JIT/bucketed-core prototypes
    (correct but slower — all reverted).
-4. **The "real code loses at 0.20x" scare was a benchmark artifact** — co-running
+4. **The historical "real code loses at 0.20x" scare was a benchmark artifact** — co-running
    11 firmwares megamorphically deoptimized avrts. Production is one firmware per
-   process (`--isolate`), where real code is ~0.55-0.74x, not ~0.20x.
+   process (`--isolate`). The old ratios also included construction and should
+   not be substituted for the refreshed execution-only sample.
 
 ## What's banked (current levers, done)
 
@@ -104,16 +112,17 @@ cross-checks the same matrix against native simavr with the documented
    no longer the obvious next patch after `serial-buffer-wait`; the fresh fast
    profile leaves its `BRNE` at `0x052d` in the small tail (2,674 hits / 5,379
    cycles in a 5M-cycle sample). Re-profile before choosing the next block.
-2. **Big, the only real path to BEAT avr8js — a translate-once region JIT.**
-   Everything else is interpretation; the only way to do *less work per executed
-   instruction* than avr8js on real code is to stop interpreting hot regions. See
-   next section.
+2. **Large optional architecture change — a translate-once region JIT.**
+   This could reduce interpretation in hot arithmetic regions, but would need
+   independent profiling, parity and throughput evidence. It is not required
+   for workloads that already lead the current comparison. See next section.
 
-## The path to beat avr8js: translate-once region JIT
+## Optional direction: translate-once region JIT
 
-Beating avr8js on *real* code is not an interpreter-tuning problem — it is an
-architecture change. The plan (distilled from an earlier JIT design pass, including two rejected naive
-slices):
+A region JIT is a possible architecture change for hot arithmetic code. This
+earlier proposal remains conditional on an explicit product goal and fresh
+evidence; the benchmark refresh does not implement it. The design, including
+two rejected naive slices:
 
 **Why the naive versions failed (don't repeat):**
 - Blocks that emit *handler calls* keep per-instruction dispatch → slower.
@@ -145,11 +154,11 @@ slices):
    Keep only if a real fixture crosses toward/over 1.0x with no synthetic
    regression.
 
-**Effort & expectation:** large, multi-session, its own project. It is the only
-lever with a real shot at >1.0x on arithmetic-bound real code (dsp FIR, softfloat).
+**Effort & expectation:** large, multi-session, its own project. Throughput
+benefits remain unproven and would need measurement on the intended workloads.
 Pursue it **only if "beat avr8js on real compiled Arduino code" is an explicit
-product goal** — the engine is already correct, well-tested, and faster than
-realtime without it.
+product goal**. Existing correctness and timing limits remain in
+[limitations](limitations.md); realtime headroom is host- and workload-specific.
 
 ## Working rules (still apply)
 

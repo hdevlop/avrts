@@ -124,7 +124,7 @@ function programFor(hex: string): Uint16Array {
   return progMem;
 }
 
-function createTranscript(): TwiTranscript {
+export function createTranscript(): TwiTranscript {
   return { starts: [], writes: [], reads: [], stops: 0 };
 }
 
@@ -134,7 +134,7 @@ function nextTwiRead(transcript: TwiTranscript): number {
   return (0xa5 ^ last ^ prev ^ ((transcript.writes.length * 17) & 0xff)) & 0xff;
 }
 
-function createAvrtsTwiSlave(transcript: TwiTranscript) {
+export function createAvrtsTwiSlave(transcript: TwiTranscript) {
   return {
     start(address: number, read: boolean): boolean {
       transcript.starts.push(`${read ? "R" : "W"}@${address.toString(16).padStart(2, "0")}`);
@@ -155,7 +155,7 @@ function createAvrtsTwiSlave(transcript: TwiTranscript) {
   };
 }
 
-class Avr8jsTwiSlave implements TWIEventHandler {
+export class Avr8jsTwiSlave implements TWIEventHandler {
   constructor(
     private readonly twi: AVRTWI,
     private readonly transcript: TwiTranscript,

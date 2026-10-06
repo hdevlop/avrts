@@ -3,17 +3,18 @@
  *
  * Runs the same workloads through both simulators for the same CPU-cycle budget
  * and reports cycles/s for each plus the ratio. The default cycle budgets are
- * intentionally long enough that Arduino setup does not dominate the steady
- * loop comparison. Both simulators are wired with the same peripheral set
- * (timers 0/1/2, USART0, ADC, GPIO B/C/D, watchdog) so neither
- * gets a free pass by skipping peripheral work — though note the two use
+ * preceded by an explicit warm-up, with construction excluded. Both simulators
+ * instantiate the peripherals used by these workloads (timers 0/1/2, USART0,
+ * ADC, GPIO B/C/D, watchdog, TWI). The two use
  * different peripheral-timing architectures (avrts's default runtime uses CPU
  * clock events; this avr8js loop calls cpu.tick() after each instruction), which
  * is itself part of what is being compared.
  *
- *   bun run scripts/benchmark-compare.ts [--repeats N] [--case NAME] [--cycles N]
+ *   bun run scripts/benchmark-compare.ts --isolate [--repeats N] [--case NAME]
+ *     [--cycles N] [--warmup-cycles N] [--json] [--output FILE]
  */
 import { AVR, type Udivmodsi4RegionMode } from "../src";
+import { createTranscript, createAvrtsTwiSlave, Avr8jsTwiSlave } from "./benchmark-results";
 import { loadHex } from "../src/loader";
 import { FLASH_WORDS } from "../src/cpu";
 import delayBlinkHex from "../examples/delay-blink/delay-blink.ino.hex" with { type: "text" };
@@ -45,6 +46,8 @@ import {
   clockConfig,
   AVRWatchdog,
   watchdogConfig,
+  AVRTWI,
+  twiConfig,
 } from "avr8js";
 
 const CLOCK_HZ = 16_000_000;
@@ -72,6 +75,47 @@ interface CompareOptions {
   isolate: boolean;
   /** Suppress the run header (used for isolate child processes). */
   quiet: boolean;
+  warmupCycles: number;
+  json: boolean;
+  output?: string;
+}
+
+interface Runner {
+  readonly cycles: number;
+  readonly twiStops?: number | undefined;
+  run(cycles: number): void;
+}
+
+interface Sample {
+  cycles: number;
+  elapsedMs: number;
+  constructionMs: number;
+  cyclesPerSecond: number;
+  twiStops?: number;
+}
+
+interface ComparisonRow {
+  name: string;
+  cycles: number;
+  avrts: { samples: Sample[]; bestCyclesPerSecond: number };
+  avr8js: { samples: Sample[]; bestCyclesPerSecond: number };
+  ratio: number;
+}
+
+/** Time execution only, retaining setup cost separately and counting actual cycles. */
+export function measureExecution(create: () => Runner, cycles: number, warmupCycles: number, now = () => performance.now()): Sample {
+  const setupStart = now();
+  const runner = create();
+  const constructionMs = now() - setupStart;
+  if (warmupCycles > 0) runner.run(warmupCycles);
+  const before = runner.cycles;
+  const twiStopsBefore = runner.twiStops;
+  const start = now();
+  runner.run(cycles);
+  const elapsedMs = Math.max(0.001, now() - start);
+  const actualCycles = runner.cycles - before;
+  return { cycles: actualCycles, elapsedMs, constructionMs, cyclesPerSecond: actualCycles / (elapsedMs / 1000),
+    ...(twiStopsBefore === undefined ? {} : { twiStops: runner.twiStops! - twiStopsBefore }) };
 }
 
 const WORKLOADS: Workload[] = [
@@ -98,51 +142,53 @@ function programFor(hex?: string): Uint16Array {
   return progMem;
 }
 
-function runAvrts(workload: Workload, udivmodsi4Region: Udivmodsi4RegionMode): number {
-  const create = () => {
-    if (workload.hex === undefined) {
-      const avr = AVR();
-      avr.cpu.flash[0] = 0xcfff;
-      return avr;
-    }
-    return AVR(workload.hex);
-  };
-  const start = performance.now();
-  const avr = create();
-  avr.cpu.udivmodsi4RegionMode = udivmodsi4Region;
-  avr.runCycles(workload.cycles);
-  const elapsed = Math.max(0.001, performance.now() - start);
-  return workload.cycles / (elapsed / 1000);
+function runAvrts(workload: Workload, options: CompareOptions): Sample {
+  return measureExecution(() => {
+    const avr = workload.hex === undefined ? AVR() : AVR(workload.hex);
+    if (workload.hex === undefined) avr.cpu.flash[0] = 0xcfff;
+    avr.cpu.udivmodsi4RegionMode = options.udivmodsi4Region;
+    avr.analog(0).setValue(512);
+    avr.pin(2).setInput(true);
+    const transcript = workload.name === "peripheral-mix" ? createTranscript() : undefined;
+    if (transcript) avr.twi.connect(0x50, createAvrtsTwiSlave(transcript));
+    return { get cycles() { return avr.cpu.cycles; }, run: (cycles) => { avr.runCycles(cycles); },
+      get twiStops() { return transcript?.stops; } };
+  }, workload.cycles, options.warmupCycles);
 }
 
-function runAvr8js(workload: Workload): number {
-  const start = performance.now();
-  const cpu = new Avr8jsCPU(programFor(workload.hex));
-  // Full peripheral set, matching what avrts ticks each instruction.
-  new AVRTimer(cpu, timer0Config);
-  new AVRTimer(cpu, timer1Config);
-  new AVRTimer(cpu, timer2Config);
-  new AVRUSART(cpu, usart0Config, CLOCK_HZ);
-  new AVRADC(cpu, adcConfig);
-  new AVRIOPort(cpu, portBConfig);
-  new AVRIOPort(cpu, portCConfig);
-  new AVRIOPort(cpu, portDConfig);
-  const clock = new AVRClock(cpu, CLOCK_HZ, clockConfig);
-  new AVRWatchdog(cpu, watchdogConfig, clock);
+function runAvr8js(workload: Workload, options: CompareOptions): Sample {
+  return measureExecution(() => {
+    const cpu = new Avr8jsCPU(programFor(workload.hex));
+    new AVRTimer(cpu, timer0Config);
+    new AVRTimer(cpu, timer1Config);
+    new AVRTimer(cpu, timer2Config);
+    new AVRUSART(cpu, usart0Config, CLOCK_HZ);
+    const adc = new AVRADC(cpu, adcConfig);
+    adc.channelValues[0] = 2.5;
+    new AVRIOPort(cpu, portBConfig);
+    new AVRIOPort(cpu, portCConfig);
+    const portD = new AVRIOPort(cpu, portDConfig);
+    portD.setPin(2, true);
+    const twi = new AVRTWI(cpu, twiConfig, CLOCK_HZ);
+    const transcript = workload.name === "peripheral-mix" ? createTranscript() : undefined;
+    if (transcript) twi.eventHandler = new Avr8jsTwiSlave(twi, transcript);
+    const clock = new AVRClock(cpu, CLOCK_HZ, clockConfig);
+    new AVRWatchdog(cpu, watchdogConfig, clock);
 
-  const target = cpu.cycles + workload.cycles;
-  while (cpu.cycles < target) {
-    avrInstruction(cpu);
-    cpu.tick();
-  }
-  const elapsed = Math.max(0.001, performance.now() - start);
-  return workload.cycles / (elapsed / 1000);
+    return {
+      get cycles() { return cpu.cycles; },
+      run(cycles) {
+        const target = cpu.cycles + cycles;
+        while (cpu.cycles < target) { avrInstruction(cpu); cpu.tick(); }
+      },
+      get twiStops() { return transcript?.stops; },
+    };
+  }, workload.cycles, options.warmupCycles);
 }
 
-function best(fn: (w: Workload) => number, workload: Workload, repeats: number): number {
-  let top = 0;
-  for (let i = 0; i < repeats; i += 1) top = Math.max(top, fn(workload));
-  return top;
+function best(fn: () => Sample, repeats: number) {
+  const samples = Array.from({ length: repeats }, fn);
+  return { samples, bestCyclesPerSecond: Math.max(...samples.map((sample) => sample.cyclesPerSecond)) };
 }
 
 function fmt(n: number): string {
@@ -151,7 +197,7 @@ function fmt(n: number): string {
 
 function parsePositiveInt(value: string | undefined, flag: string): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error(`${flag} expects a positive integer, got ${value}.`);
   }
   return parsed;
@@ -163,6 +209,8 @@ function parseArgs(args: string[]): CompareOptions {
     udivmodsi4Region: "semantic-direct",
     isolate: false,
     quiet: false,
+    warmupCycles: 500_000,
+    json: false,
   };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -172,12 +220,22 @@ function parseArgs(args: string[]): CompareOptions {
       options.cycles = parsePositiveInt(args[++i], "--cycles");
     } else if (arg === "--case") {
       options.only = args[++i];
+      if (!options.only || options.only.startsWith("--")) throw new Error("--case expects a workload name");
     } else if (arg === "--udivmodsi4-region") {
       options.udivmodsi4Region = parseUdivmodsi4RegionMode(args[++i]);
     } else if (arg === "--isolate") {
       options.isolate = true;
     } else if (arg === "--quiet") {
       options.quiet = true;
+    } else if (arg === "--warmup-cycles") {
+      const value = Number(args[++i]);
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error("--warmup-cycles expects a nonnegative integer");
+      options.warmupCycles = value;
+    } else if (arg === "--json") {
+      options.json = true;
+    } else if (arg === "--output") {
+      options.output = args[++i];
+      if (!options.output || options.output.startsWith("--")) throw new Error("--output expects a file path");
     } else {
       throw new Error(`Unknown benchmark-compare argument "${arg}".`);
     }
@@ -192,7 +250,7 @@ function parseUdivmodsi4RegionMode(value: string | undefined): Udivmodsi4RegionM
   );
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const options = parseArgs(Bun.argv.slice(2));
   const workloads = WORKLOADS.filter((workload) => {
     return options.only === undefined || workload.name === options.only;
@@ -202,59 +260,62 @@ function main(): void {
   }));
   if (workloads.length === 0) throw new Error(`Unknown benchmark case "${options.only}".`);
 
-  if (!options.quiet) {
+  if (!options.quiet && !options.json) {
     const mode = options.isolate ? "isolated per-fixture process" : "single process";
     console.log(
-      `avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz, udivmodsi4 ${options.udivmodsi4Region}, ${mode})\n`,
+      `avrts vs avr8js  (best of ${options.repeats}, clock ${CLOCK_HZ / 1e6} MHz, udivmodsi4 ${options.udivmodsi4Region}, ${mode}; construction excluded, ${options.warmupCycles} warm-up cycles)\n`,
     );
-    const head = `${"workload".padEnd(14)}${"cycles".padStart(12)}${"avrts".padStart(16)}${"avr8js".padStart(16)}${"avrts/avr8js".padStart(16)}`;
+    const head = ["workload".padEnd(14), "cycles".padStart(12), "avrts".padStart(22), "avr8js".padStart(22), "avrts/avr8js".padStart(16)].join("  ");
     console.log(head);
     console.log("-".repeat(head.length));
   }
 
   // Isolate parent: re-invoke this script once per workload so each fixture gets a
   // fresh JSC heap (production-representative; see CompareOptions.isolate). The
-  // children print only their data row (--quiet) and we forward it verbatim.
-  if (options.isolate && options.only === undefined) {
-    for (const workload of workloads) {
-      runIsolatedChild(workload.name, options);
-    }
-    return;
-  }
-
+  // Children return JSON samples; the parent renders rows and writes one report.
+  const rows: ComparisonRow[] = [];
   for (const workload of workloads) {
-    const avrts = best(
-      (candidate) => runAvrts(candidate, options.udivmodsi4Region),
-      workload,
-      options.repeats,
-    );
-    const avr8 = best(runAvr8js, workload, options.repeats);
-    const ratio = avr8 === 0 ? 0 : avrts / avr8;
-    console.log(
-      `${workload.name.padEnd(14)}${fmt(workload.cycles).padStart(12)}${(fmt(avrts) + "/s").padStart(16)}${(fmt(avr8) + "/s").padStart(16)}${`${ratio.toFixed(2)}x`.padStart(16)}`,
+    const row = options.isolate ? runIsolatedChild(workload.name, options) : (() => {
+      const avrts = best(() => runAvrts(workload, options), options.repeats);
+      const avr8js = best(() => runAvr8js(workload, options), options.repeats);
+      return { name: workload.name, cycles: workload.cycles, avrts, avr8js, ratio: avrts.bestCyclesPerSecond / avr8js.bestCyclesPerSecond };
+    })();
+    rows.push(row);
+    if (!options.json) console.log(
+      [row.name.padEnd(14), fmt(row.cycles).padStart(12), (fmt(row.avrts.bestCyclesPerSecond) + "/s").padStart(22),
+        (fmt(row.avr8js.bestCyclesPerSecond) + "/s").padStart(22), `${row.ratio.toFixed(2)}x`.padStart(16)].join("  "),
     );
   }
+  const report = { runtime: Bun.version, clockHz: CLOCK_HZ, repeats: options.repeats,
+    warmupCycles: options.warmupCycles, includesConstruction: false, isolate: options.isolate,
+    udivmodsi4Region: options.udivmodsi4Region, rows };
+  const serialized = JSON.stringify(report, null, 2) + "\n";
+  if (options.output) await Bun.write(options.output, serialized);
+  if (options.json) process.stdout.write(serialized);
 }
 
 /** Spawn one child process to measure a single workload in a fresh heap. */
-function runIsolatedChild(name: string, options: CompareOptions): void {
+function runIsolatedChild(name: string, options: CompareOptions): ComparisonRow {
   const childArgs = [
     "run",
     import.meta.path,
     "--quiet",
+    "--json",
     "--case",
     name,
     "--repeats",
     String(options.repeats),
     "--udivmodsi4-region",
     options.udivmodsi4Region,
+    "--warmup-cycles",
+    String(options.warmupCycles),
   ];
   if (options.cycles !== undefined) childArgs.push("--cycles", String(options.cycles));
-  const result = Bun.spawnSync(["bun", ...childArgs], { stdout: "pipe", stderr: "inherit" });
+  const result = Bun.spawnSync([process.execPath, ...childArgs], { stdout: "pipe", stderr: "inherit" });
   if (!result.success) {
     throw new Error(`isolated child for "${name}" failed (exit ${result.exitCode}).`);
   }
-  process.stdout.write(result.stdout.toString().trimEnd() + "\n");
+  return (JSON.parse(result.stdout.toString()) as { rows: ComparisonRow[] }).rows[0]!;
 }
 
-main();
+if (import.meta.main) await main();

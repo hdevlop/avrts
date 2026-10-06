@@ -24,14 +24,15 @@ held-input sampling. See [the analog sleep review](analog-sleep-boundaries.md).
 
 ## Local validation
 
-All components of `bun run release:check` passed with the final implementation
-and `0.1.2` metadata. Subsequent edits only recorded documentation and samples.
+All components of `bun run release:check` passed with the final library/fixture
+implementation and `0.1.2` metadata. Later comparison display formatting passed
+focused tests and typechecking; CI checks the final pushed commit.
 
 | Check | Result |
 | --- | --- |
 | TypeScript source check | Passed |
 | Generated fast-core consistency | Passed |
-| Complete Bun source suite | 2,721 passed, zero failed; 17,573 assertions across 72 files |
+| Complete Bun source suite | 2,729 passed, zero failed; 17,610 assertions across 73 files |
 | Browser build and Chromium integration | Passed; all eight Playwright tests |
 | Library and declaration build | Passed |
 | Packed Node/Bun imports, types, browser bundle, worker URLs | Passed; 83 packed files |
@@ -39,10 +40,10 @@ and `0.1.2` metadata. Subsequent edits only recorded documentation and samples.
 | Native simavr timing fixtures | All five passed |
 | Native simavr Optiboot | Transcript, flash page, and uploaded application matched |
 
-The four new test files add 760 regressions across fast and cycle-exact execution:
+The five new test files add 768 regressions, including fast and cycle-exact execution:
 76 Timer2 signal cases, 58 wake clock cases and 354 external interrupt sleep
-cases, plus 272 analog input/sleep cases. Existing asynchronous tests explicitly
-cover the CPU synchronizer and
+cases, plus 272 analog input/sleep cases and eight benchmark harness/fixture
+cases. Existing asynchronous tests explicitly cover the CPU synchronizer and
 resumed clocks during entry. The external interrupt cases also run compiled
 power-down firmware directly and after restore with held/completed pin pulses.
 The analog probe additionally validates ADC conversion without an ADSC write
@@ -52,7 +53,8 @@ calibrate every silicon timing detail. The Timer2 firmware probe separately
 records native simavr disagreements. Neither that probe nor the new external
 interrupt/analog source regressions are counted among passing native fixtures.
 
-Local output is retained under ignored `logs/release-0.1.2-*` paths. GitHub CI
+Local output is retained under ignored `logs/release-0.1.2-*` and
+`logs/benchmark-*` paths. GitHub CI
 runs package checks on Ubuntu Node 22/24 and Windows Node 22, plus Chromium on
 Ubuntu. Its result is associated with the pushed preparation commit in Actions.
 
@@ -82,6 +84,14 @@ head `8fb5eda`: Arduino PWM +2.6%, interrupt-heavy -0.9% and repeated watchdog
 sleep/wake +0.8%. The small measured interrupt-workload cost is retained; these
 host results do not establish universal performance. Method and samples are in
 [the analog sleep review](analog-sleep-boundaries.md#focused-performance).
+
+The subsequent [external benchmark refresh](benchmark-comparison-refresh.md)
+corrects construction-inclusive timing, missing avr8js TWI, the mixed
+fixture's completed tail and differing firmware images in revision comparisons.
+Earlier mixed-fixture long-run rates above remain
+historical tail measurements. The new execution-only comparison records all
+eleven workloads and their raw samples; it is not an emulator optimization.
+The fixture/harness changes do not alter the packed library or archive digest.
 
 ## Prepared archive
 

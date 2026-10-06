@@ -3,6 +3,11 @@
 Date: 2026-10-06. Baseline: `53e977197643f2989fb5d21ebe4af120ee83af92`.
 Candidate: the Timer2 asynchronous flag/wake changes prepared for `0.1.2`.
 
+Later fixture review found that this revision's `peripheral-mix` halts after
+twelve exchanges. Its warmed long-run rate measures the completed tail, not
+continuous peripheral activity. That row is retained as historical data; see
+[the corrected comparison](benchmark-comparison-refresh.md).
+
 ## Method
 
 `scripts/benchmark-revision.ts` compared the clean detached baseline with the

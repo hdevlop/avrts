@@ -3,6 +3,8 @@
 #include <util/twi.h>
 
 #define RESULT_ADDR ((volatile uint8_t*)0x0300)
+#define MODE_ADDR ((volatile uint8_t*)0x02ff)
+#define RESULT_HALT_MODE 0x42
 #define MIX_SLAVE_ADDR 0x50
 
 volatile uint16_t timerTicks = 0;
@@ -115,8 +117,20 @@ void loop() {
     out[18] = ADCH;
     out[19] = digitalRead(2) ? 1 : 0;
     out[20] = 0x5c;
-    while (1) {
+    if (*MODE_ADDR == RESULT_HALT_MODE) {
+      while (1) {
+      }
     }
+    // Speed runs keep exercising peripherals; result oracles request a halt.
+    round = 0;
+    adcSum = 0;
+    twiMix = 0;
+    inputMix = 0;
+    pwmMix = 0;
+    timerTicks = 0;
+    TIMSK1 = _BV(OCIE1A);
+    sei();
+    return;
   }
 
   const uint16_t sample = analogRead(A0);

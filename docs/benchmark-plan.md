@@ -15,10 +15,11 @@ reveals something the others can't), and add external references so "fast" and
 
 ## Current state
 
-- Fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)) — 11 total:
-  synthetic `tight-loop`, `delay-blink`, `serial-print` (+ `serial-print-listener`),
-  `analog-write`; and real compiled sketches `sensor-format`, `float-math`,
-  `bitbang-crc`, `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`.
+- Internal fixtures (in [`scripts/benchmark.ts`](../scripts/benchmark.ts)) — 11:
+  `tight-loop`, `delay-blink`, `serial-print`, `serial-print-listener`,
+  `analog-write`, `sensor-format`, `float-math`, `bitbang-crc`, `isr-heavy`,
+  `string-heavy`, `dsp-fixed`. The external comparison also has 11 workloads:
+  it uses `peripheral-mix` instead of `serial-print-listener`.
 - Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js — pass
   `--isolate` for any real-code claim, see Methodology), `bun run bench:result`
   (defaults to all final-state oracle scenarios vs avr8js:
@@ -27,6 +28,8 @@ reveals something the others can't), and add external references so "fast" and
 - Local fixture toolchains verified on 2026-07-01: vendored `./avr-gcc/bin`
   (`avr-gcc` 15.2.0) and Arduino IDE bundled `arduino-cli` 1.5.1 with
   `arduino:avr` 1.8.8.
+  The 2026-10-06 mixed fixture was rebuilt with the installed Arduino AVR 1.8.8
+  core and its AVR GCC 7.3.0 toolchain; the formerly bundled CLI was unavailable.
 - Native simavr installed locally on 2026-07-02 and exposed through
   `bun run oracle:simavr`, which compiles/runs a tiny state-dump helper against
   the local simavr library. `bun run oracle:simavr:compare` performs a normalized
@@ -118,10 +121,9 @@ ratio. If two fixtures profile nearly identically, drop one.
 
 ## Part B — External comparison targets
 
-There is **no second mature pure-JS AVR simulator** — avr8js is the only fair
-JS-vs-JS peer; the other JS emulators are toys/abandoned and not worth wiring in.
-The valuable external references are native simulators used as *ceilings* and
-*oracles*, not as fair speed head-to-heads.
+avr8js is the installed JavaScript peer used by this comparison. Native simavr
+supplies an independent accuracy reference. WASM and additional native targets
+below remain proposed options, separate from the installed speed harness.
 
 | Target | Runtime | Role | Effort |
 |---|---|---|---|
@@ -178,8 +180,22 @@ The valuable external references are native simulators used as *ceilings* and
   badly. Use the default only for the synthetic/IO-bound fixtures, which are
   insensitive to the artifact. Every real-code ratio below is `--isolate`.
 - **Steady-state, not setup.** Use cycle budgets large enough that fixture
-  construction/startup is a small fraction (the compare harness already uses
-  longer budgets and prints the budget per row). Report the budget.
+  startup is a small fraction. The comparison now excludes construction and
+  runs 500,000 warm-up cycles per trial by default (`--warmup-cycles` overrides
+  it). Raw samples separately record construction time and actual simulated
+  cycles; `--output FILE` saves JSON and `--json` prints it. `bun run bench`
+  remains a construction-inclusive regression floor; `bench:startup` separately
+  measures construction. Their rates are not interchangeable.
+- **Hold firmware constant across revisions.** `bench:revision` loads the
+  candidate checkout's HEX for both engines and records `fixtureRoot` in JSON.
+  Fixture rebuilds must not turn an emulator comparison into different programs.
+- **Exercise the same environment and keep work active.** The comparison gives
+  both engines ADC raw 512, D2 high and the same ACKing TWI slave. Continuous
+  `peripheral-mix` resets its round accumulators; result runners select halt
+  mode with SRAM `0x02ff=0x42`. Per-sample TWI STOP counts verify that measured
+  execution still completes bus work after warm-up. Earlier mixed-fixture
+  speed runs included a halted tail; the avr8js speed runner also omitted TWI.
+  Those rates do not establish mixed-peripheral throughput.
 - **Noise.** Throughput is machine-load sensitive — a uniform dip across *all*
   fixtures is load, not a regression. Use `--repeats 5` (best-of-N) and re-run
   before believing a drop. A real regression hits *specific* fixtures.
@@ -234,7 +250,22 @@ The valuable external references are native simulators used as *ceilings* and
 
 ## Recorded fixture evidence
 
-Active sample:
+### Current 2026-10-06 comparison
+
+[The execution-only refresh](evidence/benchmark-comparison-refresh.md) uses five
+trials, 50 million measured cycles per workload/engine, explicit warm-up and
+isolated processes. It records the corrected continuous mixed fixture, matching
+TWI environment and [raw JSON samples](evidence/benchmark-comparison-2026-10-06.json).
+Seven of ten nontrivial workloads lead avr8js on this host; float-math,
+bitbang-crc and delay-blink trail. The synthetic tight-loop is bulk-skipped and
+excluded from practical speed claims. Covered result oracles still pass.
+
+The July samples below are historical. Their comparison included construction,
+used shorter budgets without explicit warm-up, and did not supply the corrected
+mixed-peripheral environment. They are retained for context and must not be
+treated as current steady-state rates or source speedup baselines.
+
+### Historical 2026-07-13 sample
 
 `bench:compare --repeats 3 --isolate`, best-of-3, 16 MHz, 2026-07-13 Windows
 release-review run; see `performance-summary.md`.
@@ -315,5 +346,6 @@ Correctness, verified 2026-07-03:
   | `string-heavy` | 766,331 | 770,012 | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | `a7 08 00 10 00 00 10 01 09 06 0b 72 30 01 00 02 00 04 00 01 5c` | 232 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
   | `dsp-fixed` | 58,052 | 100,007 | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | `a7 18 00 30 a6 c4 f8 ff ff 00 00 00 00 fe 01 00 02 00 01 08 5c` | 0 bytes | starts=0 writes=0 reads=0 stops=0 | PASS |
 - `bun run oracle:simavr:compare` passes the normalized native-state smoke check.
-- `bun run check:fast-core`, `bun run typecheck`, and `bun test` pass; the latest
-  full test run is 513 pass / 0 fail.
+- `bun run check:fast-core`, `bun run typecheck`, and `bun test` passed in that
+  historical check; its full test run was 513 pass / 0 fail. Current source,
+  browser and package evidence is in [0.1.2 preparation](evidence/release-0.1.2.md).

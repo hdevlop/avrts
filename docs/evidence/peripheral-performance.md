@@ -6,6 +6,11 @@ the disabled-SPI guard. Both used the same checked-in firmware fixtures. These
 measurements precede the Timer1 TEMP/PWM buffering follow-up; its comparison
 against `4c8ce84` is recorded in [Timer1 performance evidence](timer1-performance.md).
 
+Later fixture review found that these revisions' `peripheral-mix` halts after
+twelve exchanges. Its warmed long-run rate measures the completed tail, not
+continuous peripheral activity. That row is retained as historical data; see
+[the corrected comparison](benchmark-comparison-refresh.md).
+
 Host: Intel Core i7-7700K, Windows 10 IoT Enterprise LTSC 10.0.19044,
 Bun 1.3.14. This comparison measures source execution in Bun; it does not
 measure Node, browser workers, packed bundles, or host UI responsiveness.

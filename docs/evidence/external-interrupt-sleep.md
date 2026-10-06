@@ -80,6 +80,9 @@ comparisons ran sequentially after validation, without overlapping checks.
 
 These focused measurements showed no slowdown on this host. They include JIT
 and host variation and do not establish a universal throughput improvement.
+The mixed fixture used here halts after twelve exchanges, so its warmed
+long-run rate describes a completed tail rather than continuous peripheral
+activity. See [the later fixture correction](benchmark-comparison-refresh.md).
 
 ## Remaining boundaries
 

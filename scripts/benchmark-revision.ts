@@ -29,10 +29,11 @@ const median = (samples: number[]) => [...samples].sort((a, b) => a - b)[Math.fl
 if (args[0] === "--child") {
   const revision = resolve(args[1]!);
   const name = args[2]!;
+  const fixtureRoot = resolve(args[3] ?? revision);
   if (!(name in fixtures)) throw new Error(`Unknown workload ${name}`);
   const { AVR } = await import(pathToFileURL(join(revision, "src/index.ts")).href);
   const fixture = fixtures[name]!;
-  const hex = readFileSync(join(revision, `examples/${fixture}/${fixture}.ino.hex`), "utf8");
+  const hex = readFileSync(join(fixtureRoot, `examples/${fixture}/${fixture}.ino.hex`), "utf8");
   const cycles = 50_000_000;
   const samples: number[] = [];
   const elapsedMs: number[] = [];
@@ -59,7 +60,8 @@ if (args[0] === "--child") {
     const order = index % 2 === 0 ? [baseline, candidate] : [candidate, baseline];
     const outcomes = new Map<string, { cycles: number; samples: number[]; elapsedMs: number[]; median: number }>();
     for (const revision of order) {
-      const processResult = Bun.spawnSync([process.execPath, import.meta.path, "--child", revision, name], { stdout: "pipe", stderr: "pipe" });
+      // Hold firmware constant even when a fixture was rebuilt since baseline.
+      const processResult = Bun.spawnSync([process.execPath, import.meta.path, "--child", revision, name, candidate], { stdout: "pipe", stderr: "pipe" });
       if (processResult.exitCode !== 0) throw new Error(processResult.stderr.toString());
       outcomes.set(revision, JSON.parse(processResult.stdout.toString()));
     }
@@ -69,6 +71,6 @@ if (args[0] === "--child") {
     rows.push(row);
     console.log(`${name}: baseline ${(before.median / 1e6).toFixed(2)} Mcycles/s; current ${(after.median / 1e6).toFixed(2)} Mcycles/s; ${row.changePercent.toFixed(1)}%`);
   }
-  const result = { runtime: Bun.version, baseline, candidate, trials: 9, warmupCycles: 500_000, includesConstruction: false, rows };
+  const result = { runtime: Bun.version, baseline, candidate, fixtureRoot: candidate, trials: 9, warmupCycles: 500_000, includesConstruction: false, rows };
   if (args.includes("--output")) await Bun.write(resolve(option("--output")!), JSON.stringify(result, null, 2) + "\n");
 }

@@ -1,0 +1,846 @@
+{
+  "runtime": "1.3.14",
+  "clockHz": 16000000,
+  "repeats": 5,
+  "warmupCycles": 500000,
+  "includesConstruction": false,
+  "isolate": true,
+  "udivmodsi4Region": "semantic-direct",
+  "rows": [
+    {
+      "name": "tight-loop",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 0.009899999999987585,
+            "constructionMs": 68.0269,
+            "cyclesPerSecond": 5050505050511.384
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 0.003299999999995862,
+            "constructionMs": 57.94540000000001,
+            "cyclesPerSecond": 15151515151534.15
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 0.0035999999999489773,
+            "constructionMs": 58.613399999999984,
+            "cyclesPerSecond": 13888888889085.734
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 0.0033999999999991815,
+            "constructionMs": 62.20819999999998,
+            "cyclesPerSecond": 14705882352944.717
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 0.0027000000000043656,
+            "constructionMs": 57.149400000000014,
+            "cyclesPerSecond": 18518518518488.58
+          }
+        ],
+        "bestCyclesPerSecond": 18518518518488.58
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 537.6031,
+            "constructionMs": 2.060699999999997,
+            "cyclesPerSecond": 93005416.07739985
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 583.1339,
+            "constructionMs": 0.16229999999995925,
+            "cyclesPerSecond": 85743600.2262945
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 583.6388999999999,
+            "constructionMs": 0.22149999999987813,
+            "cyclesPerSecond": 85669409.6298242
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 567.4648000000002,
+            "constructionMs": 0.15679999999974825,
+            "cyclesPerSecond": 88111192.09508674
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 562.6769000000004,
+            "constructionMs": 0.1574000000000524,
+            "cyclesPerSecond": 88860943.10962467
+          }
+        ],
+        "bestCyclesPerSecond": 93005416.07739985
+      },
+      "ratio": 199112.25925893735
+    },
+    {
+      "name": "delay-blink",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1308.2281,
+            "constructionMs": 64.74620000000002,
+            "cyclesPerSecond": 38219634.63405196
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1107.8010000000002,
+            "constructionMs": 64.6434999999999,
+            "cyclesPerSecond": 45134460.06999451
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1053.574,
+            "constructionMs": 66.10010000000011,
+            "cyclesPerSecond": 47457511.29014193
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1037.9283,
+            "constructionMs": 61.47679999999991,
+            "cyclesPerSecond": 48172884.38902764
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1047.7192000000005,
+            "constructionMs": 60.912099999999555,
+            "cyclesPerSecond": 47722710.436155014
+          }
+        ],
+        "bestCyclesPerSecond": 48172884.38902764
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000003,
+            "elapsedMs": 976.5443999999998,
+            "constructionMs": 1.7690000000002328,
+            "cyclesPerSecond": 51200952.0509257
+          },
+          {
+            "cycles": 50000003,
+            "elapsedMs": 1013.6130000000003,
+            "constructionMs": 0.3282999999992171,
+            "cyclesPerSecond": 49328494.20834183
+          },
+          {
+            "cycles": 50000003,
+            "elapsedMs": 1021.8716000000004,
+            "constructionMs": 0.29070000000047,
+            "cyclesPerSecond": 48929829.344508626
+          },
+          {
+            "cycles": 50000003,
+            "elapsedMs": 1020.8901999999998,
+            "constructionMs": 0.33430000000043947,
+            "cyclesPerSecond": 48976866.4641898
+          },
+          {
+            "cycles": 50000003,
+            "elapsedMs": 1018.1262999999999,
+            "constructionMs": 0.3232000000007247,
+            "cyclesPerSecond": 49109823.604399584
+          }
+        ],
+        "bestCyclesPerSecond": 51200952.0509257
+      },
+      "ratio": 0.9408591531874979
+    },
+    {
+      "name": "serial-print",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 224.35170000000002,
+            "constructionMs": 63.857600000000005,
+            "cyclesPerSecond": 222864373.21402064
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 193.24769999999995,
+            "constructionMs": 89.106,
+            "cyclesPerSecond": 258735296.7202198
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 156.04290000000003,
+            "constructionMs": 67.01919999999996,
+            "cyclesPerSecond": 320424710.1277917
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 154.2518,
+            "constructionMs": 57.94579999999996,
+            "cyclesPerSecond": 324145332.50179255
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 157.9284,
+            "constructionMs": 59.46160000000009,
+            "cyclesPerSecond": 316599174.0560912
+          }
+        ],
+        "bestCyclesPerSecond": 324145332.50179255
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 711.3543999999999,
+            "constructionMs": 1.8614000000000033,
+            "cyclesPerSecond": 70288453.96893588
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 676.9189999999999,
+            "constructionMs": 0.3996999999999389,
+            "cyclesPerSecond": 73864082.7041345
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 682.7070000000003,
+            "constructionMs": 0.3417000000004009,
+            "cyclesPerSecond": 73237861.9231969
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 690.4438,
+            "constructionMs": 0.3933999999999287,
+            "cyclesPerSecond": 72417191.66715668
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 678.5778,
+            "constructionMs": 0.36889999999948486,
+            "cyclesPerSecond": 73683520.15052658
+          }
+        ],
+        "bestCyclesPerSecond": 73864082.7041345
+      },
+      "ratio": 4.388402598867565
+    },
+    {
+      "name": "analog-write",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 241.4017,
+            "constructionMs": 64.88159999999999,
+            "cyclesPerSecond": 207123649.08780676
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 173.73289999999997,
+            "constructionMs": 116.52279999999996,
+            "cyclesPerSecond": 287798114.2316741
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 165.02769999999998,
+            "constructionMs": 58.47890000000007,
+            "cyclesPerSecond": 302979445.2688852
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 160.3293,
+            "constructionMs": 61.944099999999935,
+            "cyclesPerSecond": 311858163.16793007
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 161.67740000000003,
+            "constructionMs": 57.26150000000007,
+            "cyclesPerSecond": 309257824.53206193
+          }
+        ],
+        "bestCyclesPerSecond": 311858163.16793007
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 635.95,
+            "constructionMs": 2.023100000000113,
+            "cyclesPerSecond": 78622534.79047094
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 637.6056999999998,
+            "constructionMs": 0.35009999999988395,
+            "cyclesPerSecond": 78418372.04403915
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 653.4581999999996,
+            "constructionMs": 0.3637999999996282,
+            "cyclesPerSecond": 76515989.85214362
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 638.5813000000003,
+            "constructionMs": 0.2955000000001746,
+            "cyclesPerSecond": 78298567.465098
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 636.0543999999995,
+            "constructionMs": 0.3002000000001317,
+            "cyclesPerSecond": 78609629.93102482
+          }
+        ],
+        "bestCyclesPerSecond": 78622534.79047094
+      },
+      "ratio": 3.966523898002425
+    },
+    {
+      "name": "sensor-format",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 878.368,
+            "constructionMs": 65.99389999999998,
+            "cyclesPerSecond": 56923749.499071
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 805.0242000000001,
+            "constructionMs": 62.157700000000204,
+            "cyclesPerSecond": 62109934.08645354
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 707.5785000000001,
+            "constructionMs": 73.49390000000017,
+            "cyclesPerSecond": 70663537.68521795
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 696.3946000000001,
+            "constructionMs": 63.19579999999996,
+            "cyclesPerSecond": 71798374.08273986
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 845.7897999999996,
+            "constructionMs": 62.47220000000016,
+            "cyclesPerSecond": 59116343.09139224
+          }
+        ],
+        "bestCyclesPerSecond": 71798374.08273986
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 970.8693999999996,
+            "constructionMs": 1.735000000000582,
+            "cyclesPerSecond": 51500232.67805126
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 988.2338,
+            "constructionMs": 0.6134999999994761,
+            "cyclesPerSecond": 50595314.59053516
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 939.7359999999999,
+            "constructionMs": 0.4382999999997992,
+            "cyclesPerSecond": 53206432.44485686
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 952.7071999999998,
+            "constructionMs": 0.44539999999960855,
+            "cyclesPerSecond": 52482021.75862637
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1061.2070999999996,
+            "constructionMs": 0.48950000000149885,
+            "cyclesPerSecond": 47116156.68609833
+          }
+        ],
+        "bestCyclesPerSecond": 53206432.44485686
+      },
+      "ratio": 1.3494303373403524
+    },
+    {
+      "name": "float-math",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1731.6457,
+            "constructionMs": 69.021,
+            "cyclesPerSecond": 28874266.831835173
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1757.7266999999997,
+            "constructionMs": 64.9819,
+            "cyclesPerSecond": 28445832.90451241
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1633.7527000000005,
+            "constructionMs": 64.89699999999993,
+            "cyclesPerSecond": 30604387.06543529
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1633.7044999999998,
+            "constructionMs": 61.55280000000039,
+            "cyclesPerSecond": 30605290.00195568
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1635.7257,
+            "constructionMs": 65.90810000000056,
+            "cyclesPerSecond": 30567472.284625717
+          }
+        ],
+        "bestCyclesPerSecond": 30605290.00195568
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1192.4267999999993,
+            "constructionMs": 1.9664000000011583,
+            "cyclesPerSecond": 41931295.06985253
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1252.724400000001,
+            "constructionMs": 0.5143000000007305,
+            "cyclesPerSecond": 39913008.79906224
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1248.3709,
+            "constructionMs": 0.4806000000007771,
+            "cyclesPerSecond": 40052199.230212756
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1229.3256999999994,
+            "constructionMs": 0.5123999999996158,
+            "cyclesPerSecond": 40672703.743198425
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1285.161399999999,
+            "constructionMs": 0.7774000000008527,
+            "cyclesPerSecond": 38905619.1697012
+          }
+        ],
+        "bestCyclesPerSecond": 41931295.06985253
+      },
+      "ratio": 0.7298913604020797
+    },
+    {
+      "name": "bitbang-crc",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2689.7792,
+            "constructionMs": 65.53059999999999,
+            "cyclesPerSecond": 18588886.40376132
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2826.1648000000005,
+            "constructionMs": 63.07900000000018,
+            "cyclesPerSecond": 17691820.377919927
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2839.5337999999992,
+            "constructionMs": 70.66340000000037,
+            "cyclesPerSecond": 17608524.328888077
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2654.185599999999,
+            "constructionMs": 61.3726000000006,
+            "cyclesPerSecond": 18838170.1716715
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 2668.0476,
+            "constructionMs": 60.9932000000008,
+            "cyclesPerSecond": 18740295.338059187
+          }
+        ],
+        "bestCyclesPerSecond": 18838170.1716715
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1158.8075000000008,
+            "constructionMs": 1.5583999999998923,
+            "cyclesPerSecond": 43147804.96329197
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1224.0519000000004,
+            "constructionMs": 0.38689999999951397,
+            "cyclesPerSecond": 40847941.169814765
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1194.5957999999991,
+            "constructionMs": 0.46220000000175787,
+            "cyclesPerSecond": 41855161.3859684
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1187.0799000000006,
+            "constructionMs": 0.35429999999905704,
+            "cyclesPerSecond": 42120163.94178688
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1195.9164000000019,
+            "constructionMs": 0.2947999999996682,
+            "cyclesPerSecond": 41808942.49798725
+          }
+        ],
+        "bestCyclesPerSecond": 43147804.96329197
+      },
+      "ratio": 0.43659625762418475
+    },
+    {
+      "name": "peripheral-mix",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 531.6699,
+            "constructionMs": 67.3146,
+            "cyclesPerSecond": 94043317.10333799,
+            "twiStops": 8789
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 365.75970000000007,
+            "constructionMs": 59.386999999999944,
+            "cyclesPerSecond": 136701777.15040773,
+            "twiStops": 8789
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 345.60850000000005,
+            "constructionMs": 61.434999999999945,
+            "cyclesPerSecond": 144672370.61588472,
+            "twiStops": 8789
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 456.3325,
+            "constructionMs": 65.0489,
+            "cyclesPerSecond": 109569230.76923077,
+            "twiStops": 8789
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 348.3125,
+            "constructionMs": 60.5619999999999,
+            "cyclesPerSecond": 143549258.20922303,
+            "twiStops": 8789
+          }
+        ],
+        "bestCyclesPerSecond": 144672370.61588472
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1074.2946000000002,
+            "constructionMs": 1.7031000000001768,
+            "cyclesPerSecond": 46542168.22834257,
+            "twiStops": 15635
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1097.5398000000005,
+            "constructionMs": 0.5075000000001637,
+            "cyclesPerSecond": 45556434.49103165,
+            "twiStops": 15635
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1065.7041,
+            "constructionMs": 0.4274999999997817,
+            "cyclesPerSecond": 46917338.49949532,
+            "twiStops": 15635
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1065.5033000000003,
+            "constructionMs": 0.4594999999999345,
+            "cyclesPerSecond": 46926180.33186757,
+            "twiStops": 15635
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1078.0686999999998,
+            "constructionMs": 0.3883000000005268,
+            "cyclesPerSecond": 46379233.531221166,
+            "twiStops": 15635
+          }
+        ],
+        "bestCyclesPerSecond": 46926180.33186757
+      },
+      "ratio": 3.0829777662009645
+    },
+    {
+      "name": "isr-heavy",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000004,
+            "elapsedMs": 803.0663999999999,
+            "constructionMs": 67.0861,
+            "cyclesPerSecond": 62261357.21778423
+          },
+          {
+            "cycles": 50000004,
+            "elapsedMs": 651.4558999999999,
+            "constructionMs": 64.34070000000008,
+            "cyclesPerSecond": 76751172.25893572
+          },
+          {
+            "cycles": 50000004,
+            "elapsedMs": 744.4010000000001,
+            "constructionMs": 62.15149999999994,
+            "cyclesPerSecond": 67168104.2878771
+          },
+          {
+            "cycles": 50000004,
+            "elapsedMs": 633.8163,
+            "constructionMs": 63.161099999999806,
+            "cyclesPerSecond": 78887217.00593689
+          },
+          {
+            "cycles": 50000004,
+            "elapsedMs": 638.4357999999997,
+            "constructionMs": 69.67090000000007,
+            "cyclesPerSecond": 78316416.46662048
+          }
+        ],
+        "bestCyclesPerSecond": 78887217.00593689
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000002,
+            "elapsedMs": 1079.8914,
+            "constructionMs": 1.6576000000000022,
+            "cyclesPerSecond": 46300953.966296986
+          },
+          {
+            "cycles": 50000002,
+            "elapsedMs": 1102.4757000000009,
+            "constructionMs": 0.5182999999997264,
+            "cyclesPerSecond": 45352475.34254039
+          },
+          {
+            "cycles": 50000002,
+            "elapsedMs": 1123.6963000000005,
+            "constructionMs": 0.3437999999996464,
+            "cyclesPerSecond": 44496010.176415086
+          },
+          {
+            "cycles": 50000002,
+            "elapsedMs": 1095.6266000000005,
+            "constructionMs": 0.4117999999998574,
+            "cyclesPerSecond": 45635987.662219934
+          },
+          {
+            "cycles": 50000002,
+            "elapsedMs": 1069.142100000001,
+            "constructionMs": 0.3801999999996042,
+            "cyclesPerSecond": 46766470.0510811
+          }
+        ],
+        "bestCyclesPerSecond": 46766470.0510811
+      },
+      "ratio": 1.68683282958435
+    },
+    {
+      "name": "string-heavy",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 1049.0789,
+            "constructionMs": 66.55690000000001,
+            "cyclesPerSecond": 47660857.53893249
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 880.9873,
+            "constructionMs": 66.8402000000001,
+            "cyclesPerSecond": 56754507.130806535
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 970.1265000000003,
+            "constructionMs": 64.63380000000006,
+            "cyclesPerSecond": 51539670.34196054
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 856.9769000000001,
+            "constructionMs": 67.19990000000007,
+            "cyclesPerSecond": 58344629.82607815
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 855.9989000000005,
+            "constructionMs": 62.63050000000021,
+            "cyclesPerSecond": 58411290.014508165
+          }
+        ],
+        "bestCyclesPerSecond": 58411290.014508165
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 973.3491000000004,
+            "constructionMs": 2.09059999999954,
+            "cyclesPerSecond": 51369031.93314709
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 975.6923999999999,
+            "constructionMs": 0.8966000000000349,
+            "cyclesPerSecond": 51245660.00514097
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 953.0246999999999,
+            "constructionMs": 0.8795000000000073,
+            "cyclesPerSecond": 52464538.43221483
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 968.4622000000008,
+            "constructionMs": 0.8823000000002139,
+            "cyclesPerSecond": 51628242.17610141
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 957.9632000000001,
+            "constructionMs": 0.8282999999992171,
+            "cyclesPerSecond": 52194072.79945617
+          }
+        ],
+        "bestCyclesPerSecond": 52464538.43221483
+      },
+      "ratio": 1.1133480205868322
+    },
+    {
+      "name": "dsp-fixed",
+      "cycles": 50000000,
+      "avrts": {
+        "samples": [
+          {
+            "cycles": 50000000,
+            "elapsedMs": 939.5201000000001,
+            "constructionMs": 68.90149999999998,
+            "cyclesPerSecond": 53218659.18568426
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 773.5629999999999,
+            "constructionMs": 61.02620000000002,
+            "cyclesPerSecond": 64635976.64314349
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 894.9106999999999,
+            "constructionMs": 61.183700000000044,
+            "cyclesPerSecond": 55871496.45210411
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 778.4512999999997,
+            "constructionMs": 64.03099999999995,
+            "cyclesPerSecond": 64230093.77722154
+          },
+          {
+            "cycles": 50000000,
+            "elapsedMs": 776.4170999999997,
+            "constructionMs": 63.70679999999993,
+            "cyclesPerSecond": 64398375.56385611
+          }
+        ],
+        "bestCyclesPerSecond": 64635976.64314349
+      },
+      "avr8js": {
+        "samples": [
+          {
+            "cycles": 50000001,
+            "elapsedMs": 922.2058999999999,
+            "constructionMs": 1.9620000000004438,
+            "cyclesPerSecond": 54217828.14445235
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 1002.5564999999997,
+            "constructionMs": 0.7133999999996377,
+            "cyclesPerSecond": 49872501.94876799
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 920.0028999999995,
+            "constructionMs": 0.414400000000569,
+            "cyclesPerSecond": 54347655.86065003
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 924.4218999999994,
+            "constructionMs": 0.43360000000029686,
+            "cyclesPerSecond": 54087858.58491673
+          },
+          {
+            "cycles": 50000001,
+            "elapsedMs": 925.2607000000007,
+            "constructionMs": 0.44650000000001455,
+            "cyclesPerSecond": 54038824.949552014
+          }
+        ],
+        "bestCyclesPerSecond": 54347655.86065003
+      },
+      "ratio": 1.189305695334371
+    }
+  ]
+}
