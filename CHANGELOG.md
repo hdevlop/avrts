@@ -13,6 +13,8 @@ Semantic Versioning once a version is published.
   timer-clock stage and three CPU clocks while leaving compare outputs immediate.
 - Wake from asynchronous timer conditions before CPU-visible flag delivery;
   retain pending flag stages through sleep, clock changes, gates and snapshots.
+- Restart peripheral clocks before billing wake startup and interrupt entry,
+  preserving timer phase, in-flight operations and independent PRR gates.
 
 ## 0.1.1 - 2026-10-05
 

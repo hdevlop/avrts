@@ -286,7 +286,7 @@ export class CPU {
     };
   }
 
-  /** @internal Resume clock-domain synchronizers before wake-entry cycles. */
+  /** @internal Resume peripheral clocks and synchronizers before wake-entry cycles. */
   onWakeStart(listener: (wakeCycle: number) => void): () => void {
     this.wakeStartListeners.push(listener);
     return () => {

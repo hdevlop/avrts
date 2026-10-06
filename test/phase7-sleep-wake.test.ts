@@ -75,8 +75,9 @@ describe("Phase 7 sleep and wake fidelity", () => {
     cpu.requestInterrupt(INT0_VECTOR);
     cpu.tick();
     expect(cpu.isSleeping).toBe(false);
+    expect(cpu.readData(TCNT0)).toBe(8); // Four wake clocks plus four dispatch clocks.
     avr.runCycles(3);
-    expect(cpu.readData(TCNT0)).toBe(3);
+    expect(cpu.readData(TCNT0)).toBe(11);
   });
 
   test("power-save keeps asynchronous Timer2 running but gates sync Timer2", () => {
@@ -157,9 +158,10 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
     restored.cpu.requestInterrupt(INT0_VECTOR);
     restored.cpu.tick();
+    expect(restored.cpu.readData(TCNT0)).toBe(8);
     restored.runCycles(2);
     expect(restored.cpu.isSleeping).toBe(false);
-    expect(restored.cpu.readData(TCNT0)).toBe(2);
+    expect(restored.cpu.readData(TCNT0)).toBe(10);
   });
 
   test("pin-change interrupt wakes power-down sleep", () => {

@@ -136,7 +136,11 @@ Not machine-checked; keep in sync with the implementation by review.
 - **Sleep** gates Timer0/Timer1, SPI, USART, ADC, and Timer2 by sleep mode, starts ADC
   conversion on ADC noise-reduction sleep entry, keeps asynchronous Timer2
   running in ADC noise-reduction / power-save / extended-standby, reapplies gating after
-  snapshot/restore, and adds the 4-cycle base interrupt wake latency.
+  snapshot/restore, and adds the 4-cycle base interrupt wake latency. Sleep gates
+  release at wake start, before startup/interrupt entry clocks, while PRR remains
+  independent; in-flight operations can complete during entry. The precise
+  physical startup edge has not been calibrated. See
+  [wake clock evidence](evidence/wake-clock-domains.md).
   A compiled LowPower-style watchdog sleep fixture validates repeated
   power-down wake cycles and snapshot/restore (`test/lowpower-wdt.test.ts`).
   TWI uses the host byte-operation model rather than modeling each asleep-bus

@@ -306,8 +306,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         restored.cpu.requestInterrupt(A.INT0_VECTOR);
         restored.step();
         expect(restored.cpu.isSleeping).toBe(false);
-        // The sleep controller resumes this source after CPU interrupt entry.
-        restored.runCycles(16);
+        // Eight wake/dispatch clocks already consumed part of the 17-clock transfer.
+        restored.runCycles(8);
         expect(restored.cpu.readData(A.ASSR) & bit(A.OCR2AUB)).toBe(bit(A.OCR2AUB));
         restored.runCycles(1);
         expect(restored.cpu.data[A.OCR2A]).toBe(7);

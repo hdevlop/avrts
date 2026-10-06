@@ -265,10 +265,13 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           restored.cpu.sreg.I = true;
           restored.cpu.requestInterrupt(A.INT0_VECTOR);
           restored.cpu.tick();
-          restored.runCycles(3 * period - 1);
-          expect(count(restored)).toBe(0);
+          // Eight entry clocks run the divider: one complete synchronous tap,
+          // or eight clocks toward the remaining thirty-clock TOSC deadline.
+          expect(count(restored)).toBe(asynchronous ? 0 : 1);
+          restored.runCycles(3 * period - 1 - (asynchronous ? 8 : 0));
+          expect(count(restored)).toBe(asynchronous ? 0 : 1);
           restored.runCycles(1);
-          expect(count(restored)).toBe(1);
+          expect(count(restored)).toBe(asynchronous ? 1 : 2);
         }
       });
     }
@@ -320,7 +323,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     restored.cpu.sreg.I = true;
     restored.cpu.requestInterrupt(A.INT0_VECTOR);
     restored.cpu.tick();
-    restored.runCycles(22);
+    expect(count(restored)).toBe(0);
+    restored.runCycles(14); // Eight entry clocks already advanced the resumed source.
     expect(count(restored)).toBe(0);
     restored.runCycles(1);
     expect(count(restored)).toBe(1);

@@ -102,6 +102,10 @@ The [0.1.2 signal follow-up](timer2-async-signals.md) adds the Timer2 flag
 synchronizer and separates timer-domain wake from CPU-visible flags. It records
 the native PSRASY probe disagreement and the remaining uncalibrated handshake.
 
+The [wake clock follow-up](wake-clock-domains.md) restarts peripheral clocks
+before wake startup and interrupt entry, retaining PRR and pending operation
+deadlines. It keeps the uncalibrated Timer2 acknowledgement limits explicit.
+
 The [timer boundary follow-up](timer-boundary-correctness.md) adds Timer0/Timer2
 PWM buffers and both slopes, CTC TOP+1 periods, and the ordinary compare-flag
 delay. It also fixes an I/O sampling-order mismatch in generated SBIC/SBIS.

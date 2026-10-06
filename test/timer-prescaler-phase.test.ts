@@ -148,7 +148,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           chip.cpu.writeData(A.TCCR0B, 2);
           chip.cpu.writeData(A.TCCR1B, 2);
           // Idle includes wake/interrupt cycles in the free-running divider.
-          // Deeper sleep retains phase five until the wake gate is released.
+          // Deeper sleep resumes phase five plus eight wake/dispatch clocks.
           chip.runCycles(mode === 0 ? 6 : 2);
           expect(counts(chip)).toEqual([0, 0]);
           chip.runCycles(1);

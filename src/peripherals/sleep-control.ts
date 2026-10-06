@@ -23,7 +23,9 @@ export class SleepControl {
     private readonly adc?: SleepTimer,
   ) {
     this.cpu.onSleep((mode) => this.onSleep(mode));
-    this.cpu.onWake(() => this.onWake());
+    // Wake startup and interrupt entry use active I/O clocks. Restart the
+    // domains before CPU bills those cycles, while retaining each PRR gate.
+    this.cpu.onWakeStart(() => this.onWake());
   }
 
   reset(): void {
