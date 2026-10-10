@@ -21,6 +21,8 @@ import {
 import type { CPU } from "../cpu";
 import type { TwiSnapshot } from "../snapshot";
 import type { TwiMasterHandle, TwiSlave } from "./types";
+import type { Gpio } from "./gpio";
+import { TwiWire } from "./twi-wire";
 
 // TWI status codes (upper 5 bits of TWSR).
 const STATUS = {
@@ -69,8 +71,8 @@ type SlaveAddressMatch = "own" | "generalCall";
  * Byte-level TWI (I2C) master/slave. It drives the status-code state machine the
  * Arduino Wire library expects: START -> SLA+R/W -> data -> STOP. Connect virtual
  * slaves with `connect(address, slave)`, or drive this AVR through `master()`.
- * Arbitration loss is host-injected; wire contention and analog bus effects
- * are not modeled, but AVR-visible operation timing is.
+ * Byte mode supports host-injected arbitration; optional wire mode samples a
+ * logical open-drain bus. Electrical effects remain outside both models.
  */
 export class Twi {
   private readonly slaves = new Map<number, TwiSlave>();
@@ -99,12 +101,22 @@ export class Twi {
   private pendingOperation: PendingTwiOperation | null = null;
   private powerReduced = false;
   private frozenOperationRemainingCycles = 0;
+  private wireEnabled = false;
+  private readonly wire?: TwiWire;
   private readonly onOperationCompleteEvent = (): void => {
     this.completePendingOperation();
   };
 
-  constructor(private readonly cpu: CPU) {
+  constructor(private readonly cpu: CPU, gpio?: Gpio) {
+    if (gpio) this.wire = new TwiWire(cpu, gpio, (status) => this.complete(status), () => this.doStop());
     this.reset();
+  }
+
+  /** Use open-drain SDA/PC4 and SCL/PC5 instead of virtual slave/host byte operations. */
+  useWire(enabled = true): void {
+    if (!this.wire) throw new Error("TWI wire mode requires GPIO.");
+    if (this.pendingOperation !== null || this.started || this.slaveActive || this.wire.busy()) throw new Error("Cannot change TWI wire mode during a transaction.");
+    this.wireEnabled = enabled; this.wire.use(enabled);
   }
 
   reset(): void {
@@ -119,6 +131,7 @@ export class Twi {
     this.clearSlaveState();
     this.pendingOperation = null;
     this.cpu.data[TWSR] = STATUS.IDLE;
+    this.wire?.reset();
   }
 
   /** Attach a virtual slave at a 7-bit address. */
@@ -134,6 +147,11 @@ export class Twi {
   @OnWrite(TWCR)
   onWriteTwcr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     value = (value & ~((1 << TWWC) | (1 << 1))) | (oldValue & (1 << TWWC));
+    if (this.wireEnabled) {
+      this.cpu.data[TWCR] = (value & ~(1 << TWINT)) | (oldValue & (1 << TWINT));
+      if ((value & (1 << TWEN)) === 0) this.cpu.data[TWCR] &= ~(1 << TWINT);
+      this.wire!.command(value); this.updateInterrupt(); return;
+    }
     if ((value & (1 << TWEN)) === 0) {
       this.cpu.clearClockEvent(this.onOperationCompleteEvent);
       this.pendingOperation = null;
@@ -231,6 +249,7 @@ export class Twi {
   }
 
   private hostInjectArbitrationLost(address: number | undefined, read: boolean): boolean {
+    if (this.wireEnabled) throw new Error("Arbitration is sampled from SDA in TWI wire mode.");
     if (this.slaveActive) {
       throw new Error("TWI arbitration-loss injection is only valid while firmware owns the bus as master.");
     }
@@ -260,6 +279,7 @@ export class Twi {
   }
 
   private assertHostCanDrive(action: string): void {
+    if (this.wireEnabled) throw new Error("Drive SDA/SCL pins when TWI wire mode is enabled.");
     if (this.powerReduced) {
       throw new Error(`TWI host master cannot ${action} while TWI power is reduced (PRR.PRTWI set).`);
     }
@@ -497,6 +517,7 @@ export class Twi {
 
   setPowerReduced(reduced: boolean): void {
     if (this.powerReduced === reduced) return;
+    if (this.wireEnabled) { this.powerReduced = reduced; this.wire?.setPaused(reduced); return; }
     if (reduced) {
       this.frozenOperationRemainingCycles = this.remainingCycles();
       this.powerReduced = true;
@@ -548,6 +569,7 @@ export class Twi {
       pendingHostByte: this.pendingHostByte,
       pendingHostAck: this.pendingHostAck,
       pendingArbitrationLost: this.pendingArbitrationLost,
+      wire: this.wireEnabled ? this.wire?.snapshot() : undefined,
     };
   }
 
@@ -557,6 +579,9 @@ export class Twi {
    * they must remain connected to the runtime via `avr.twi.connect(...)`.
    */
   restore(snap: TwiSnapshot): void {
+    this.wireEnabled = snap.wire !== undefined;
+    if (snap.wire) this.wire?.restore(snap.wire);
+    else this.wire?.use(false);
     this.powerReduced = false;
     this.frozenOperationRemainingCycles = 0;
     this.started = snap.started;

@@ -1,6 +1,6 @@
 # AVRts remaining work plan
 
-Created: 2026-10-06. Updated: 2026-10-10. Status: all local implementation phases selected below are implemented; local implementation, verification and artifact preparation complete. Git/CI/npm publication and physical calibration remain separate external gates. Physical/wire extensions have explicit retained or deferred scope.
+Created: 2026-10-06. Updated: 2026-10-10. Status: implementation reopened at the user's request to implement the remaining digital models. The previous candidate and acceptance receipts describe the earlier source only. Physical measurements and publication remain external gates.
 
 This is the root entry point for all known remaining work. It consolidates the existing plans, behavioral limitations, benchmark gaps, and release obligations. It does not promise that a simulator can be proven free of every unknown bug. Completion means that the selected scope has reproducible evidence and that every remaining limitation has an explicit disposition.
 
@@ -52,7 +52,7 @@ Resolve discrepancies against source and reproducible evidence, then update the 
 | 7. Measured performance improvements | After relevant correctness gates | 1; rerun after runtime changes | Profile-backed improvements without lost behavior |
 | 8. Release acceptance and publication | For each chosen release | Selected phases and current limitations documented | Verified artifact and separate publication evidence |
 
-Phases 0-4 are implemented locally. All twelve external workloads and the shared listener path are covered. Phase 5 retains the datasheet Timer1 TOP rule with a compiled disagreement probe; other uncalibrated models are explicitly dispositioned in Phase 6. Final source, browser, native, performance and package checks passed. The final archive and local handoff are recorded in [release candidate evidence](docs/evidence/release-candidate-2026-10-10.md).
+Phases 0-4 remain implemented. The formerly deferred digital models in Phases 5-6 are now implemented and undergoing fresh acceptance. All twelve external workloads retain their comparison gates. [Earlier release evidence](docs/evidence/release-candidate-2026-10-10.md) describes the pre-extension candidate; new evidence must identify the expanded source and artifact.
 
 Phases 2-6 are a fidelity roadmap, not an assertion that every item must delay an already prepared release. Define the scope of each release before implementation. A release can retain documented approximations; it must not advertise them as completed fidelity work.
 
@@ -179,18 +179,18 @@ Rollback: revert the programming-duration change and its documentation together,
 
 ## 9. Phase 5 — targeted timer, interrupt and wake calibration
 
-Status: selected TOP calibration implemented; remaining calibration extensions are explicitly retained/deferred in [scope evidence](docs/evidence/calibration-scope-2026-10-10.md). No physical calibration was run.
+Status: digital extensions implemented and under final acceptance. Timer2 clear/reset crossing and configurable clock input, interrupt synchronization, comparator delays and host calibration policies are covered by new regressions. No physical measurements were run. See [wire/clock contracts](docs/wire-models.md).
 
 Targets: [Timer2](src/peripherals/timer2.ts), [timer prescaler](src/peripherals/timer-prescaler.ts), [timer synchronization](src/peripherals/timer-sync.ts), Timer0/Timer1, [sleep control](src/peripherals/sleep-control.ts), [clock control](src/peripherals/clock-control.ts), comparator/EXTI peripherals, focused tests and native probes.
 
 Each item starts with a small firmware probe and a stated normative rule. A peer discrepancy is a finding to investigate, not an instruction to copy the peer. Mark results as datasheet-based, native-calibrated, or physically measured.
 
 - [x] Resolve and document Timer1 fast-PWM TOV timing: the existing TOP-based policy and native BOTTOM behavior differ. Verify the relevant mode-specific rule; do not globally normalize timer flags.
-- [x] Disposition: retain current tested Timer2 transfers/phase/wake model; defer clear/ack and PSRASY physical calibration. Original extension: calibrate Timer2 asynchronous acknowledgement/clear/repeated-sleep behavior within one TOSC period and PSRASY synchronization. Preserve current fractional phase, transfer-busy, wake/read and RTC behavior.
-- [x] Disposition: defer a new host clock-source contract until a caller is selected. Original extension: specify a logical external TOSC/EXCLK source and its integration only after defining a useful host input contract. Test source changes, pending transfer disposition, clock gating and snapshot phase.
-- [x] Disposition: retain tested digital sleep/startup ordering; defer fractional short-pulse and physical startup calibration. Original extension: probe external interrupt synchronization, short pulses, held low-level wake, and startup boundaries. Preserve currently proven deep-sleep edge masking and asynchronous PCINT behavior.
-- [x] Disposition: retain tested ACME/PRADC/ACIC digital behavior; defer settling and physical propagation measurements. Original extension: investigate comparator propagation/synchronization and power-up settling separately from its logical voltage model. Cover ACME with PRADC and ACIC capture ordering if the selected digital model supports it.
-- [x] Disposition: retain documented deterministic fuse/startup and wake policy with source regressions; physical startup remains uncalibrated. Original extension: define supported fuse/clock startup delays and sleep wake latency. Keep CKDIV8, watchdog, BOD handshakes and existing wake clock-domain behavior covered.
+- [x] Implement Timer2 source-edge flag-clear/reset acknowledgement and repeated-sleep behavior; preserve transfers, phase, wake/read and RTC regressions. Physical crossing latency remains unmeasured.
+- [x] Implement `avr.timer2Clock`: configurable frequency/manual EXCLK edges, defined source switching, pending transfer handling, gating and snapshot phase.
+- [x] Implement optional INT0/INT1 input sampling and pipeline delays, short-pulse filtering, held-level wake and snapshot ordering. Physical fractional phase/startup remains unmeasured.
+- [x] Implement configurable comparator propagation/settling and preserve ACME/PRADC/ACIC capture ordering. The delays are deterministic CPU-clock policies, not physical measurements.
+- [x] Preserve deterministic fuse/startup/wake policies and add a host-provided OSCCAL frequency curve for internal RC. Physical drift/startup remains unmeasured.
 - [x] Run CLKPR/PRR interaction regressions with pending EEPROM/SPM operations, Timer2 async time, watchdog and serial transfers.
 - [x] For reserved timer modes or unsupported oscillator behavior, retain an explicit deterministic approximation rather than inventing a fidelity claim.
 
@@ -200,15 +200,15 @@ Rollback: land each calibration separately; revert the individual timing policy 
 
 ## 10. Phase 6 — decide the scope of remaining wire and physical models
 
-Status: scope decisions complete; [decision record](docs/evidence/calibration-scope-2026-10-10.md) names each retained/deferred contract. No larger wire model is selected.
+Status: optional USART/SPI/TWI logical wire models are implemented, with a shared open-drain TWI bus. The earlier [decision record](docs/evidence/calibration-scope-2026-10-10.md) is historical. Physical electrical exclusions remain explicit; final acceptance is in progress.
 
 These are recorded needs or limitations, not automatic requirements for a release. Select a concrete use case and observable contract before implementing a larger model.
 
-- [x] USART: decide whether GPIO XCK, actual wire-bit RX sampling and derived framing/parity errors are needed beyond byte injection. Keep all supported modes, FIFO, error and MPCM tests.
-- [x] SPI: decide whether DORD serialization and complete GPIO pin ownership are needed beyond byte-level transfers. Keep SS faults and documented SPIF/WCOL semantics even where native simavr differs.
-- [x] TWI: decide whether silicon-oriented START/STOP timing, per-bit sleep clock stretching and real multi-master arbitration are needed. A bit-level implementation requires a shared logical bus contract and simultaneous-driver tests.
-- [x] GPIO: define ownership and contention between firmware, host inputs and peripheral outputs before expanding pin serialization. Floating voltage and resistance require a different physical model and remain outside ordinary logical pins.
-- [x] OSCCAL/DIDR: either define their supported digital effects or retain storage/mask-only behavior. Do not suggest electrical buffer suppression or oscillator calibration has been simulated without a model.
+- [x] Implement optional RXD/TXD/XCK USART signaling with sampled parity/framing errors, FIFO, MPCM, synchronous and MSPIM modes; retain byte APIs by default.
+- [x] Implement optional SPI master/slave GPIO shifts, CPOL/CPHA/DORD, SS selection, serial pin ownership, SPIF/WCOL semantics and partial snapshots.
+- [x] Implement optional open-drain TWI master/slave, sampled multi-master arbitration, per-bit stretching, START/repeated START/STOP and shared logical bus resolution.
+- [x] Implement serial alternate-function direction/output ownership and logical open-drain resolution; retain physical floating-voltage and resistance exclusions.
+- [x] Implement host-selected OSCCAL frequencies and DIDR suppression of firmware PIN reads; preserve physical analog input and startup policy boundaries.
 - [x] Fuse startup/oscillator instability: decide whether a deterministic delay policy is sufficient; physical drift, noise and register loss require separate scope and evidence.
 - [x] Document permanent exclusions: debugWIRE, analog noise/leakage/VCC-dependent electrical behavior, power/current figures, and EEPROM/flash wear unless a future project explicitly changes that scope.
 
@@ -222,9 +222,9 @@ Use this table when reconciling [limitations](docs/limitations.md). Closing an e
 
 | Known gap or approximation | Planned disposition |
 | --- | --- |
-| USART byte-frame scheduling, host-injected errors, missing GPIO XCK and bit samples | 6; retain byte-level contract until a wire use case is selected |
-| SPI byte transfers/DORD metadata; native SPIF and collision disagreements | 6; retain documented semantics and focused evidence |
-| TWI host-injected arbitration, native-oriented START/STOP, abstract sleep stretching | 6; selected timing calibration may precede a full bus model |
+| USART wire sampling/XCK/error derivation | Implemented optional wire model in 6; byte API retained by default |
+| SPI wire transfers, direction and DORD | Implemented optional GPIO shifts in 6; native SPIF/collision disagreement retained |
+| TWI arbitration, START/STOP and stretching | Implemented optional open-drain wire/shared-bus model in 6; byte timing retained by default |
 | Comparator propagation, settling, synchronized output and ACME/PRADC edge cases | 5, with electrical effects retained under 6 |
 | GPIO floating inputs, electrical pull-ups and complete serial pin ownership | 6; logical ownership can be selected independently of electrical simulation |
 | External interrupt short pulses, input synchronizers and oscillator wake details | 5 |
@@ -236,7 +236,7 @@ Use this table when reconciling [limitations](docs/limitations.md). Closing an e
 | Reserved Timer1 mode 13 and Timer0/2 modes 4/6 approximations | 5 policy review; keep explicit reserved-mode behavior |
 | Timer1 fast-PWM overflow peer disagreement and facade versus measured waveform | 1 waveform tests and 5 calibration |
 | Timer2 TOSC/EXCLK, sub-TOSC wake/ack timing, oscillator drift/instability | 5 for selected digital behavior; physical behavior retained under 6 |
-| OSCCAL storage-only and DIDR mask-only behavior | 6 |
+| OSCCAL and DIDR | Host frequency curve and firmware PIN suppression implemented in 6 |
 | SUT/CKSEL startup approximation and fuse-related physical behavior | 5 for deterministic timing; 6 for retained physical scope |
 | Flash erase/write duration and wear | 4 implemented deterministic duration/fetch interlock; wear excluded under 6 |
 | Exact sleep startup edge and per-bit TWI stretching | 5 and 6 respectively |
@@ -332,9 +332,9 @@ Consider a reproducible native-oracle CI lane after the toolchain is pinned and 
 - [x] Final archive preparation records clean source commit `5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf`, the 85-file archive identity and exact consumer smoke; publication remains separate.
 - [x] Unrelated user changes are preserved. Rollbacks use reviewed reversions of the selected changes, not destructive resets.
 
-The selected local scope is complete. Future work requires a separately selected wire/physical extension or explicit publication authorization; the user does not need to request another routine continuation.
+The earlier selected local scope was complete. The user has now selected the remaining digital extensions for implementation; the queue below supersedes their earlier deferral. Routine work continues without requiring another continuation request.
 
-## 16. Current acceptance (2026-10-10)
+## 16. Historical acceptance before digital extensions (2026-10-10)
 
 `bun run release:check` passed: TypeScript/generated checks, 2,845 tests,
 18,330 assertions across 80 files, eight Chromium tests and the 85-file packed
@@ -343,10 +343,26 @@ state, five timing probes, Optiboot and three runtime probes pass their stated
 contracts. Native programming-duration and Timer1 TOP differences, unavailable
 phase-correct PWM GPIO traces, and the peripheral-bound 5-6% performance cost
 remain explicit in the evidence. Remaining wire/physical extensions are retained
-or deferred in the scope record, not pending coding promises.
+or deferred in the historical scope record. That record predates the expanded implementation queue below.
 
 The [final candidate record](docs/evidence/release-candidate-2026-10-10.md)
 identifies source commit `5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf`, archive
 checksums, exact-archive consumer acceptance and npm dry run. It distinguishes
 these passed local gates from unrun exact-commit CI, npm publication and
 physical measurements.
+
+## 17. Expanded implementation queue
+
+The user's instruction to implement all remaining work selects the digital extensions previously deferred in Phases 5 and 6. Historical disposition checkboxes record earlier decisions, not completion of these features. Fresh acceptance and package evidence are required after the changes.
+
+- [ ] Timer2 configurable TOSC frequency, manual EXCLK edges, source changes and snapshots.
+- [ ] Timer2 asynchronous PSRASY and flag-clear acknowledgement, including repeated sleep.
+- [ ] USART RXD/TXD/XCK signaling, sampled framing/parity errors and synchronous/MSPIM clocks.
+- [ ] SPI GPIO transfers for all clock modes and bit orders, SS handling and snapshots.
+- [ ] TWI open-drain master/slave bus, sampled arbitration and clock stretching.
+- [ ] Logical DIDR suppression, interrupt input synchronization and configurable comparator timing.
+- [ ] Document supported OSCCAL calibration and fuse/startup policies without inventing physical measurements.
+- [ ] Review new models for reset, clock gating, snapshot and public API compatibility.
+- [ ] Run fresh source, browser, package and applicable native acceptance; rebuild release artifacts.
+
+Physical noise, electrical current/leakage, memory wear and debugWIRE remain the plan's permanent exclusions. Physical timing calibration requires identified hardware and captured measurements. Git/npm publication retains the explicit authorization requirements in Phase 8.

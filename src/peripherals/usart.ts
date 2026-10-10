@@ -35,6 +35,8 @@ import {
 import type { CPU } from "../cpu";
 import type { Usart0Snapshot } from "../snapshot";
 import type { SerialByteListener } from "./types";
+import type { Gpio } from "./gpio";
+import { UsartWire } from "./usart-wire";
 
 const UCSR0A_HARDWARE_MASK =
   (1 << RXC0) | (1 << TXC0) | (1 << UDRE0) | (1 << FE0) | (1 << DOR0) | (1 << UPE0);
@@ -83,8 +85,8 @@ function decodeFrame(encoded: number): RxFrame {
  * fill the AVR's double buffer and reach host listeners when the frame ends;
  * host-injected RX frames cross a simulated wire one frame at a time into the
  * hardware 2-level FIFO (RXC0/FE0/DOR0/UPE0/RXB80 reflect the FIFO head).
- * Synchronous mode changes only the bit clock (XCK is not wired to a GPIO pin);
- * MSPIM transfers exchange bytes with a host responder at frame completion.
+ * Optional wire mode drives TXD/RXD/XCK and derives RX errors from samples;
+ * default byte mode retains frame completion and MSPIM responder timing.
  */
 export class Usart0 {
   private readonly txListeners = new Set<SerialByteListener>();
@@ -99,6 +101,8 @@ export class Usart0 {
   private sleepPaused = false;
   private frozenTxRemainingCycles = 0;
   private frozenRxRemainingCycles = 0;
+  private wireEnabled = false;
+  private readonly wire?: UsartWire;
   private readonly onTxCompleteEvent = (): void => {
     this.completeTxFrame();
   };
@@ -106,8 +110,20 @@ export class Usart0 {
     this.completeRxFrame();
   };
 
-  constructor(private readonly cpu: CPU) {
+  constructor(private readonly cpu: CPU, gpio?: Gpio) {
+    if (gpio) this.wire = new UsartWire(cpu, gpio, (frame) => {
+      this.receiveIntoFifo({ value: frame.value, framingError: frame.framingError === true, parityError: frame.parityError === true });
+      this.refreshStatusFlagsAndInterrupts();
+    }, () => this.completeTxFrame());
     this.reset();
+  }
+
+  /** Opt into RXD/TXD/XCK pins. Byte injection is disabled until wire mode is released. */
+  useWire(enabled = true): void {
+    if (!this.wire) throw new Error("USART wire mode requires GPIO.");
+    if (this.txShiftByte !== null || this.rxShift !== null || this.wire.busy()) throw new Error("Cannot change USART wire mode during a frame.");
+    this.wireEnabled = enabled;
+    this.wire.use(enabled);
   }
 
   reset(): void {
@@ -126,6 +142,7 @@ export class Usart0 {
     this.cpu.data[UCSR0A] = (1 << UDRE0);
     this.cpu.data[UCSR0C] = (1 << UCSZ01) | (1 << UCSZ00);
     this.cpu.data[UDR0] = 0;
+    this.wire?.reset();
     this.updateInterrupts();
   }
 
@@ -149,6 +166,7 @@ export class Usart0 {
 
   /** Queue one RX frame with full control over the ninth bit and error flags. */
   inject(frame: UsartRxFrame): void {
+    if (this.wireEnabled) throw new Error("Drive RXD/XCK pins when USART wire mode is enabled.");
     this.rxWire.push({
       value: frame.value & 0x1ff,
       framingError: frame.framingError === true,
@@ -183,8 +201,12 @@ export class Usart0 {
     }
     // Enabling RXEN0 starts shifting any frames already queued on the wire.
     this.maybeStartRxShift();
+    this.wire?.refresh();
     this.refreshStatusFlagsAndInterrupts();
   }
+
+  @OnWrite(UCSR0C)
+  onWriteUcsr0c(): void { this.wire?.refresh(); }
 
   @OnWrite(UDR0)
   onWriteUdr0(_cpu: CPU, _addr: number, value: number): void {
@@ -252,6 +274,7 @@ export class Usart0 {
   }
 
   private maybeStartRxShift(): void {
+    if (this.wireEnabled) return;
     if (this.rxShift !== null) return;
     if (this.clockPaused()) return;
     // Frames wait on the wire while the receiver is disabled; MSPIM receives
@@ -321,6 +344,7 @@ export class Usart0 {
   private startTxFrame(byte9: number, remainingCycles = this.frameCycles()): void {
     this.txShiftByte = byte9 & 0x1ff;
     this.updateTxDataRegisterEmptyFlag();
+    if (this.wireEnabled) { this.wire!.startTx(byte9); return; }
     if (this.clockPaused()) {
       this.frozenTxRemainingCycles = remainingCycles;
       return;
@@ -334,7 +358,7 @@ export class Usart0 {
     if (byte9 !== null) {
       this.emitByte(byte9 & 0xff);
       // MSPIM clocks a byte in with every byte out, straight into the FIFO.
-      if (this.isMspim() && this.rxEnabled()) {
+      if (!this.wireEnabled && this.isMspim() && this.rxEnabled()) {
         this.receiveIntoFifo({
           value: this.mspimResponder(byte9 & 0xff) & 0xff,
           framingError: false,
@@ -439,6 +463,7 @@ export class Usart0 {
       rxRemainingCycles: this.rxRemainingCycles(),
       rxWire: this.rxWire.map(encodeFrame),
       rxOverrun: this.rxOverrun,
+      wire: this.wireEnabled ? this.wire?.snapshot() : undefined,
     };
   }
 
@@ -452,6 +477,9 @@ export class Usart0 {
     this.rxFifo.length = 0;
     this.rxShift = null;
     this.rxOverrun = false;
+    this.wireEnabled = snap.wire !== undefined;
+    if (snap.wire) this.wire?.restore(snap.wire);
+    else this.wire?.use(false);
     this.cpu.clearClockEvent(this.onRxCompleteEvent);
 
     if (snap.rxFifo !== undefined) {
@@ -477,7 +505,7 @@ export class Usart0 {
     this.txShiftByte = snap.txShiftByte ?? null;
     this.txBufferByte = snap.txBufferByte ?? null;
     this.cpu.clearClockEvent(this.onTxCompleteEvent);
-    if (this.txShiftByte !== null) {
+    if (this.txShiftByte !== null && !this.wireEnabled) {
       this.cpu.addClockEvent(this.onTxCompleteEvent, snap.txRemainingCycles ?? this.frameCycles());
     }
     this.refreshStatusFlagsAndInterrupts();
@@ -501,6 +529,7 @@ export class Usart0 {
 
   private applyClockGate(wasPaused: boolean): void {
     if (wasPaused === this.clockPaused()) return;
+    if (this.wireEnabled) { this.wire?.setPaused(this.clockPaused()); return; }
     if (this.clockPaused()) {
       this.frozenTxRemainingCycles = this.cpu.clockEventRemainingCycles(this.onTxCompleteEvent);
       this.frozenRxRemainingCycles = this.cpu.clockEventRemainingCycles(this.onRxCompleteEvent);

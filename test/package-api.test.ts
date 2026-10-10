@@ -4,7 +4,7 @@ import * as browserApi from "../src/public/browser";
 import * as advancedApi from "../src/public/advanced";
 
 test("published root stays limited to the function-first AVR facade", () => {
-  expect(Object.keys(packageRoot).sort()).toEqual(["AVR"]);
+  expect(Object.keys(packageRoot).sort()).toEqual(["AVR", "createTwiBus"]);
 });
 
 test("browser and advanced APIs require explicit subpaths", () => {

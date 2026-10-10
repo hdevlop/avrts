@@ -23,47 +23,48 @@ The [chip-level roadmap](complete-atmega328p-plan.md) records completed historic
 
 Not machine-checked; keep in sync with the implementation by review.
 
-- **USART RX** is paced by frame time through the 2-level FIFO with
-  FE0/DOR0/UPE0, MPCM filtering, 9-bit, synchronous, and MSPIM modes — but
-  framing/parity errors are host-*injected* (`usart.inject(...)`), not derived
-  from wire bits, and the synchronous XCK clock is not wired to a GPIO pin.
-  Frame scheduling is calibrated to native simavr; individual serial-bit sample
-  boundaries and electrical line behavior are not modeled.
-- **SPI** models master mode plus a byte-level host master API for firmware
-  slave mode (`avr.spi.master().transfer(byte)`). SS selection and master-mode
-  SS-fault behavior are modeled, and `SPIF` supports the documented
-  read-SPSR-then-access-SPDR clear sequence. Wire bit order (`DORD`) is exposed
-  as transfer metadata but individual bits are not serialized.
-  New bytes preserve unread status flags. The local native simavr probe clears
-  SPIF on unarmed SPDR access and does not report the tested write collisions;
-  this flag behavior is not native-oracle equivalent. See the
-  [SPI status evidence](evidence/spi-status-sequence.md).
-- **TWI** models master and slave modes (TWAR/TWAMR address match, general
-  call, host-side `twi.master()` handle). Multi-master arbitration loss is
-  reachable only via host injection, not from real wire contention. START/STOP
-  delays are calibrated to native simavr (1 cycle), not silicon
-  (~0.5-1 SCL period).
-- **Analog comparator** models ACSR flags/interrupts from host-supplied AIN0/AIN1
-  voltages and the ACME ADC mux, and the ACIC path drives the full Timer1
-  input-capture unit (ICES1 edge select, ICR1 latch, TIMER1_CAPT). This is a
-  logical voltage comparison only; electrical noise, input leakage, and
-  propagation delay are not modeled. ACME-selected host input changes are
-  evaluated immediately. Deep sleep retains the last logical output without
-  generating events; wake samples held inputs after ADC/Timer1 clocks resume.
-  Only idle allows comparator wake; other-mode flags remain available after
-  an eligible wake source resumes the CPU. Power-up settling and ACO's physical
-  1–2-clock synchronizer are not modeled. ACME operation with PRADC set remains
-  unsupported rather than modeling the hardware's unavailable ADC mux. See
-  [analog sleep evidence](evidence/analog-sleep-boundaries.md).
-- **GPIO inputs** are host-driven logical levels. Floating inputs, pull-up
-  resistance, and full serial peripheral pin overrides are not modeled.
-- **External interrupts** stop INT0/INT1 edge/toggle detection with clkI/O in
-  non-idle sleep and sample held levels at wake start. Completed asleep pulses
-  are ignored; idle, asynchronous low-level sensing and PCINT remain active.
-  Last clocked samples survive snapshots separately from raw GPIO levels.
-  Input synchronizer stages, short-pulse filtering and low-level pulse retention
-  through physical oscillator startup are not calibrated. See
-  [external interrupt sleep evidence](evidence/external-interrupt-sleep.md).
+- **USART** retains its byte-frame/FIFO API by default. `avr.serial.useWire()`
+  selects TXD/PD1, RXD/PD0 and XCK/PD4. Async RX uses three samples per bit;
+  parity/framing errors come from received bits. Synchronous external XCK and
+  master XCK/MSPIM are supported. Serial clocks pause through PRR/sleep and
+  snapshots preserve partially shifted frames. Byte injection is rejected in
+  wire mode. The legacy byte mode retains its native-oriented extra idle bit;
+  wire TX completes after its actual start/data/parity/stop bits. Physical
+  electrical timing and oscillator error tolerances are not calibrated.
+- **SPI** retains byte responder/host-master APIs by default; `avr.spi.useWire()`
+  selects SCK/PB5, MOSI/PB3 and MISO/PB4 for master/slave transfers, all four
+  clock modes and both bit orders. Pin directions follow the alternate-function
+  rules; slave MISO is an input while SS is high. Pin-driven transfers retain
+  SPIF/WCOL and SPSR-then-SPDR acknowledgement semantics, PRR/sleep gates and
+  snapshots. Byte APIs are rejected in wire mode. The local native simavr
+  SPIF/collision disagreement remains in [SPI status evidence](evidence/spi-status-sequence.md).
+  External SCK edges are logical; analog thresholds and sub-clock setup/hold
+  violations are not reproduced.
+- **TWI** retains native-oriented byte scheduling by default. `avr.twi.useWire()`
+  selects open-drain SDA/PC4 and SCL/PC5, with address/general-call matching,
+  master/slave bytes, ACK/NACK, START/repeated START/STOP, sampled arbitration
+  and clock stretching. `createTwiBus()` resolves logical wired-AND lines across
+  AVR endpoints; the caller advances their clocks. Connected bus listeners are
+  runtime-owned, while snapshots retain each AVR's driver and protocol state.
+  Bus electrical rise times, capacitance and noise remain excluded.
+- **Analog comparator** supports AIN0/AIN1, ACME and ACIC input capture. Immediate
+  logical comparison remains the default. `avr.comparator.setTiming(...)` adds
+  explicit CPU-clock propagation/settling delays and rejects short excursions.
+  Delayed flags and captures occur together and survive snapshots. Deep sleep
+  cancels pending propagation, then wake reapplies settling to held inputs.
+  These are host-selected policies, not measured physical delays. ACME with
+  PRADC and comparator wake retain the [existing digital contract](evidence/analog-sleep-boundaries.md).
+- **GPIO** resolves serial alternate-function ownership above timer/PORT outputs.
+  TWI resolves open-drain drivers against host input levels; use logical pull-ups
+  or `createTwiBus()`. Floating voltage, resistance and electrical contention
+  remain excluded. DIDR affects firmware PIN register reads, independently of
+  physical analog input values and host pin observations.
+- **External interrupts** keep asynchronous low-level wake and PCINT. Optional
+  `avr.gpio.useInterruptSynchronization()` samples INT0/INT1 on the next I/O
+  clock and publishes edges after two pipeline clocks. Sub-sample pulses are
+  rejected; snapshots preserve pending stages. Non-idle sleep discards stopped
+  clock stages and wake resamples held inputs. Physical oscillator startup and
+  fractional electrical sampling phases have not been measured.
 - **EEPROM** latches firmware programming address/data/mode and holds EEPE busy
   for deterministic typical durations: 3.4 ms atomic erase/write, 1.8 ms erase-only
   or write-only. Reads stall the CPU four clocks; accepted writes stall two.
@@ -104,8 +105,9 @@ Not machine-checked; keep in sync with the implementation by review.
   Timer2 retains its independent full divider phase across CS changes and stopped
   counters in both clock domains, including fractional TOSC periods, clock scaling,
   PRR/sleep/GTCCR gates and restore. TOSC keeps running during a divider hold.
-  Async PSRASY acknowledgement remains immediate in the GTCCR model; the silicon
-  cross-domain reset handshake and exact mux startup pipeline are not modeled.
+  Async PSRASY remains asserted until reset at the next source edge, including
+  stopped counters and snapshots. This deterministic crossing policy has not
+  been physically calibrated; exact silicon mux startup remains unmeasured.
 - **Timer0/Timer2** model normal/CTC and fixed/variable-TOP fast/phase-correct
   PWM (WGM 0/1/2/3/5/7), OCR buffers transferred at BOTTOM or TOP, both counting
   slopes, endpoint duties, OCnA toggle and force-compare strobes. Reserved WGM
@@ -133,21 +135,27 @@ Not machine-checked; keep in sync with the implementation by review.
   pending writes while retaining destinations. These are deterministic choices
   for hardware-defined corruption risks, not simulations of corrupted values.
   Power-down/standby pause the source and retain state rather than modeling
-  oscillator startup instability or possible register loss. External TOSC/EXCLK
-  pin wiring and crystal drift are not modeled. Asynchronous compare/overflow
+  oscillator startup instability or possible register loss. `avr.timer2Clock`
+  selects a configurable logical frequency or manual rising EXCLK edges under
+  AS2+EXCLK. Frequency changes retain source phase and pending transfers; manual
+  source switches retain remaining transfer edges. Crystal drift is host-selected
+  through frequency changes, not a physical oscillator model. Asynchronous compare/overflow
   conditions pass through a timer-clock stage and three CPU clocks before CPU
   flags become visible. Non-idle sleep pauses those CPU stages; enabled
   timer-domain conditions wake noise-reduction, power-save and extended-standby
   on the timer stage, with CPU synchronization completing during wake startup.
   Pending stages survive snapshots and clock changes; three CPU clocks remain
   three CPU clocks after CLKPR changes. This timing is based on the datasheet,
-  not physical-hardware calibration. The asynchronous clear/acknowledgement
-  handshake and repeated-wake behavior on re-entering sleep within one TOSC
-  period are not modeled. Exact PSRASY reset latency remains uncalibrated;
-  the native probe retains the written bit rather than providing a reliable
-  reset-completion reference.
-- **OSCCAL** is plain storage and has no oscillator effect. **DIDR0/DIDR1**
-  retain only implemented bits; they do not alter the digital/analog pin model.
+  not physical-hardware calibration. CPU flag clearing is immediate; timer-domain
+  acknowledgement waits for the next source edge. Re-entering eligible sleep
+  before that edge can cause the documented repeated wake. Exact PSRASY reset
+  latency remains physically uncalibrated; the native probe retains the written
+  bit rather than providing a trustworthy completion reference.
+- **OSCCAL** is storage by default. `avr.useOscillatorCalibration(curve)`
+  supplies a 256-entry host frequency table for the internal RC CKSEL selection.
+  OSCCAL changes then update the base clock while retaining CLKPR and peripheral
+  wall time. No generic silicon calibration curve is invented. **DIDR0/DIDR1**
+  suppress the corresponding firmware PIN reads; analog voltages remain available.
 - **Fuse / boot tier** stores fuse bytes and lock bits; applies CKDIV8,
   WDTON, EESAVE through `avr.chipErase()`, BOOTRST/BOOTSZ, SUT/CKSEL startup
   delay as a cycle-level approximation when the low fuse is explicitly
@@ -179,9 +187,9 @@ Not machine-checked; keep in sync with the implementation by review.
   [wake clock evidence](evidence/wake-clock-domains.md).
   A compiled LowPower-style watchdog sleep fixture validates repeated
   power-down wake cycles and snapshot/restore (`test/lowpower-wdt.test.ts`).
-  TWI uses the host byte-operation model rather than modeling each asleep-bus
-  clock stretch or asynchronous address-watch transition. Oscillator startup
-  and wake-source filtering are not a complete silicon model.
+  Wire TWI remains able to observe asynchronous external address clocks and
+  hold SCL at firmware byte boundaries; PRR still gates the peripheral.
+  Oscillator startup and wake-source filtering are not a complete silicon model.
 
 ## Permanent non-goals
 
@@ -190,17 +198,11 @@ Not machine-checked; keep in sync with the implementation by review.
   capacitance, noise, temperature effects.
 - Exact power/current consumption figures.
 
-## Retained scope decisions (2026-10-10)
+## Current model scope (2026-10-10)
 
-The [calibration and scope record](evidence/calibration-scope-2026-10-10.md)
-resolves the remaining queue without advertising unimplemented fidelity.
-Timer2's asynchronous clear/acknowledgement handshake, repeated sleep within
-one TOSC period, PSRASY crossing, and externally driven TOSC/EXCLK remain
-explicitly deferred. Existing digital transfers, synchronization, wake reads,
-clock phase and RTC behavior remain supported. A configurable external source
-requires a concrete client and source-switch/phase contract before implementation.
-EXTI sub-clock pulses, comparator propagation/settling and physical oscillator
-startup remain uncalibrated. Wire-level USART/SPI/TWI, electrical GPIO contention,
-OSCCAL frequency effects and DIDR input-buffer suppression remain outside the
-selected byte-level/logical-pin contract. Existing host injection APIs remain
-available; no full physical bus model is implied.
+The previous [scope decision record](evidence/calibration-scope-2026-10-10.md)
+is historical. The user selected the deferred digital models for implementation.
+[Wire and clock contracts](wire-models.md) describe their APIs and timing policies.
+Physical calibration, electrical noise/current, wear and debugWIRE require
+separate hardware evidence or remain permanent non-goals. Local tests establish
+these logical models; they do not establish every physical silicon behavior.

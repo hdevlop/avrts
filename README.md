@@ -9,6 +9,11 @@
 
 Realistic ATmega328P simulation in TypeScript.
 
+Optional [logical wire and clock models](docs/wire-models.md) add RXD/TXD/XCK,
+SPI pin transfers, open-drain TWI buses, manual Timer2 EXCLK and configurable
+timing policies. Existing byte APIs remain the default; enable a wire model
+with `avr.serial.useWire()`, `avr.spi.useWire()` or `avr.twi.useWire()`.
+
 avrts is built for chip-level fidelity, not for winning every speed chart. It
 models the MCU underneath an Arduino Uno/Nano: CPU state, IO registers,
 interrupt vectors, timers, reset sources, fuses, lock bits, sleep modes, flash

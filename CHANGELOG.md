@@ -10,12 +10,24 @@ This record does not establish an npm publication.
 
 ### Added
 
+- Optional RXD/TXD/XCK USART and SCK/MOSI/MISO SPI wire models, including
+  sampled receive errors, clock modes, bit order, pin ownership and snapshots.
+- Open-drain TWI master/slave signaling and `createTwiBus()` for shared logical
+  buses, sampled arbitration and clock stretching.
+- Configurable Timer2 oscillator frequency/manual EXCLK, interrupt input
+  synchronization, comparator propagation/settling and host OSCCAL curves.
+
 - Result/state coverage for all twelve external workloads, actual PWM/blink
   traces and the shared serial listener path, with reproducible native evidence.
 - Timer0/Timer1 external falling/rising clocks on PD4/PD5, including sampling,
   gating and pending synchronization snapshots.
 
 ### Fixed
+
+- Retain asynchronous PSRASY until source-edge reset and acknowledge Timer2
+  flag clearing across the source domain, including repeated-sleep wake.
+- Apply DIDR to firmware PIN reads and serial alternate-function directions;
+  keep serial pin ownership above timer output and release slave MISO on SS.
 
 - Model firmware EEPROM busy programming and CPU read/write stalls, retaining
   pending wall time through CLKPR, sleep, powered reset and snapshots.

@@ -133,7 +133,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           avr.runCycles(5 * period);
           avr.cpu.writeData(A.GTCCR, bit(A.PSRASY));
           avr.cpu.writeData(A.TCCR2B, 2);
-          avr.runCycles(8 * period - 1);
+          avr.runCycles((asynchronous ? 9 : 8) * period - 1);
           expect(count(avr)).toBe(0);
           avr.runCycles(1);
           expect(count(avr)).toBe(1);
@@ -202,7 +202,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       }
       const restored = A.AVR().restore(avr.snapshot());
       for (const chip of [avr, restored]) {
-        chip.runCycles(74);
+        chip.runCycles(reset ? 84 : 74);
         expect(count(chip)).toBe(0);
         chip.runCycles(1);
         expect(count(chip)).toBe(1);

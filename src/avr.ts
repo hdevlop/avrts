@@ -26,6 +26,7 @@ import {
   OCF1B,
   OCF2A,
   OCF2B,
+  OSCCAL,
   PCIF0,
   PCIF1,
   PCIF2,
@@ -253,10 +254,14 @@ export interface PortHandle {
 }
 
 export interface GpioHandle {
+  /** Opt into sampling and two pipeline clocks for INT0/INT1 edge sensing. */
+  useInterruptSynchronization(enabled?: boolean): void;
   port(name: PortName): PortHandle;
 }
 
 export interface SerialHandle {
+  /** Opt into TXD/RXD/XCK pin signaling instead of host byte injection. */
+  useWire(enabled?: boolean): void;
   /** Raw transmitted bytes, exactly as the firmware wrote them to UDR0. */
   onByte(handler: (byte: number) => void): () => void;
   /**
@@ -284,14 +289,28 @@ export interface EepromHandle {
 }
 
 export interface SpiHandle {
+  /** Opt into GPIO SCK/MOSI/MISO transfers; byte responder is bypassed. */
+  useWire(enabled?: boolean): void;
   onByte(handler: SpiByteListener): () => void;
   respondWith(responder: SpiTransferResponder): void;
   master(): SpiMasterHandle;
 }
 
 export interface TwiHandle {
+  /** Open-drain driver intent, independent of the resolved line level. */
+  readDrive(): { sdaReleased: boolean; sclReleased: boolean };
+  onDrive(handler: (drive: { sdaReleased: boolean; sclReleased: boolean }) => void): () => void;
+  /** Opt into open-drain SDA/SCL signaling. Supply logical pull-ups through setInput(true). */
+  useWire(enabled?: boolean): void;
   connect(address: number, slave: TwiSlave): void;
   master(): TwiMasterHandle;
+}
+
+export interface Timer2ClockHandle {
+  /** Positive logical source frequency, or null for explicit EXCLK edges. Default 32768 Hz. */
+  setFrequency(hz: number | null): void;
+  /** Rising edges clock Timer2 when manual source and ASSR.AS2+EXCLK are selected. */
+  setInput(high: boolean): void;
 }
 
 /** Watchpoint payload — fires on every firmware write to the watched address. */
@@ -317,6 +336,7 @@ export interface AVR {
   readonly eeprom: EepromHandle;
   readonly spi: SpiHandle;
   readonly twi: TwiHandle;
+  readonly timer2Clock: Timer2ClockHandle;
   readonly comparator: AnalogComparatorHandle;
 
   start(): this;
@@ -329,6 +349,8 @@ export interface AVR {
   use(options: AVROptions): this;
   useChip(chip: AVRChip): this;
   useClock(clockHz: number): this;
+  /** Optional host-supplied internal RC calibration curve; 256 positive frequencies, indexed by OSCCAL. */
+  useOscillatorCalibration(frequencyByCode: readonly number[] | null): this;
   useFuses(fuses: AVRFuseConfig): this;
   fuses(): AVRFuseBytes;
   useHex(hex: string): this;
@@ -388,6 +410,7 @@ class AVRRuntime implements AVR {
   readonly eeprom: EepromHandle;
   readonly spi: SpiHandle;
   readonly twi: TwiHandle;
+  readonly timer2Clock: Timer2ClockHandle;
   readonly comparator: AnalogComparatorHandle;
 
   private chip: AVRChip = "atmega328p";
@@ -411,6 +434,7 @@ class AVRRuntime implements AVR {
   private readonly timerPrescaler: TimerPrescaler;
   private readonly timer1: Timer1;
   private readonly timer2: Timer2;
+  private oscillatorCalibration: number[] | null = null;
   private readonly usart0: Usart0;
   private readonly adc: Adc;
   private readonly analogComparator: AnalogComparator;
@@ -451,7 +475,8 @@ class AVRRuntime implements AVR {
     this.timer0 = new Timer0(this.cpu, this.gpioPeripheral, this.timerPrescaler);
     this.timer1 = new Timer1(this.cpu, this.gpioPeripheral, this.timerPrescaler);
     this.timer2 = new Timer2(this.cpu, this.gpioPeripheral);
-    this.usart0 = new Usart0(this.cpu);
+    this.usart0 = new Usart0(this.cpu, this.gpioPeripheral);
+    this.cpu.installWriteHook(OSCCAL, () => this.applyOscillatorCalibration());
     this.adc = new Adc(this.cpu);
     this.eepromDevice = new Eeprom(this.cpu, () => this.selfProgramming?.updateInterrupt());
     this.spiDevice = new Spi(this.cpu, this.gpioPeripheral);
@@ -466,7 +491,7 @@ class AVRRuntime implements AVR {
       () => this.bootStartWord(),
       () => this.eepromDevice.updateInterrupt(),
     );
-    this.twiDevice = new Twi(this.cpu);
+    this.twiDevice = new Twi(this.cpu, this.gpioPeripheral);
     this.powerReduction = new PowerReduction(this.cpu, [
       { bit: PRADC, target: this.adc },
       { bit: PRUSART0, target: this.usart0 },
@@ -512,6 +537,7 @@ class AVRRuntime implements AVR {
     this.exti.attach({ cycleListener: false });
     this.usart0.onByteTransmit((byte) => this.emitSerialByte(byte));
     this.gpio = {
+      useInterruptSynchronization: (enabled = true) => this.exti.useSynchronization(enabled),
       port: (name) => ({
         read: () => this.gpioPeripheral.readPort(name),
         onChange: (handler) => this.gpioPeripheral.onPortValueChange(name, handler),
@@ -526,6 +552,7 @@ class AVRRuntime implements AVR {
       },
     };
     this.serial = {
+      useWire: (enabled = true) => this.usart0.useWire(enabled),
       onByte: (handler) => this.usart0.onByteTransmit(handler),
       onText: (handler) => {
         this.textListeners.add(handler);
@@ -552,6 +579,7 @@ class AVRRuntime implements AVR {
       dump: () => this.eepromDevice.dump(),
     };
     this.spi = {
+      useWire: (enabled = true) => this.spiDevice.useWire(enabled),
       onByte: (handler) => this.spiDevice.onByteTransmit(handler),
       respondWith: (responder) => {
         this.spiDevice.respondWith(responder);
@@ -559,12 +587,20 @@ class AVRRuntime implements AVR {
       master: () => this.spiDevice.master(),
     };
     this.twi = {
+      readDrive: () => this.gpioPeripheral.readTwiDrive(),
+      onDrive: (handler) => this.gpioPeripheral.onTwiDrive(() => handler(this.gpioPeripheral.readTwiDrive())),
+      useWire: (enabled = true) => this.twiDevice.useWire(enabled),
       connect: (address, slave) => {
         this.twiDevice.connect(address, slave);
       },
       master: () => this.twiDevice.master(),
     };
+    this.timer2Clock = {
+      setFrequency: (hz) => this.timer2.setAsyncClock(hz),
+      setInput: (high) => this.timer2.setClockInput(high),
+    };
     this.comparator = {
+      setTiming: (options) => this.analogComparator.setTiming(options),
       setInput: (input, volts) => {
         this.analogComparator.setInput(input, volts);
       },
@@ -748,6 +784,21 @@ class AVRRuntime implements AVR {
     this.baseClockHz = clockHz;
     this.applyClockDivider(this.clockDivider());
     return this;
+  }
+
+  useOscillatorCalibration(frequencyByCode: readonly number[] | null): this {
+    if (frequencyByCode !== null && (frequencyByCode.length !== 256 || !Array.from(frequencyByCode).every((hz) => Number.isFinite(hz) && hz > 0))) {
+      throw new Error("Oscillator calibration requires 256 positive finite frequencies.");
+    }
+    this.oscillatorCalibration = frequencyByCode === null ? null : [...frequencyByCode];
+    this.applyOscillatorCalibration();
+    return this;
+  }
+
+  private applyOscillatorCalibration(): void {
+    if (this.oscillatorCalibration !== null && (this.fuseBytes.low & 15) === 2) {
+      this.useClock(this.oscillatorCalibration[this.cpu.data[OSCCAL]!]!);
+    }
   }
 
   useFuses(fuses: AVRFuseConfig): this {
@@ -997,6 +1048,7 @@ class AVRRuntime implements AVR {
     this.spiDevice.reset();
     this.clockControl.reset();
     this.applyFuseClockOnReset();
+    this.applyOscillatorCalibration();
     this.chipControl.reset();
     this.selfProgramming.reset();
     this.twiDevice.reset();
@@ -1040,6 +1092,7 @@ class AVRRuntime implements AVR {
       runtime: {
         clockHz: this.clockHz,
         baseClockHz: this.baseClockHz,
+        oscillatorCalibration: this.oscillatorCalibration === null ? undefined : [...this.oscillatorCalibration],
         chip: this.chip,
         speed: this.speed,
         programSource: this.programSource,
@@ -1079,6 +1132,7 @@ class AVRRuntime implements AVR {
     this.cpu.restore(snap.cpu, (vector) => this.acknowledgeForVector(vector));
     this.chip = snap.runtime.chip;
     this.baseClockHz = snap.runtime.baseClockHz ?? snap.runtime.clockHz;
+    this.oscillatorCalibration = snap.runtime.oscillatorCalibration === undefined ? null : [...snap.runtime.oscillatorCalibration];
     this.clockHz = snap.runtime.clockHz;
     this.fuseBytes = normalizeFuses(snap.runtime.fuses);
     this.configuredFuseMask = snap.runtime.configuredFuseMask ?? 0;
@@ -1547,6 +1601,10 @@ function validateSnapshot(snap: AVRSnapshot): void {
   }
   if (!SUPPORTED_CHIPS.includes(snap.runtime.chip)) {
     throw new Error(`restore(snapshot) got a snapshot for unsupported chip "${String(snap.runtime.chip)}".`);
+  }
+  const calibration = snap.runtime.oscillatorCalibration;
+  if (calibration !== undefined && (!Array.isArray(calibration) || calibration.length !== 256 || !Array.from(calibration).every((hz) => Number.isFinite(hz) && hz > 0))) {
+    throw new Error("restore(snapshot) got an invalid oscillator calibration curve.");
   }
 }
 

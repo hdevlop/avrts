@@ -6,7 +6,7 @@ import type { Gpio } from "./gpio";
 import type { SpiByteListener, SpiMasterHandle, SpiTransferMeta, SpiTransferResponder } from "./types";
 
 /**
- * SPI master/slave byte model. Master SPDR writes clock bytes to MOSI listeners;
+ * SPI master/slave byte model with optional GPIO shifting. SPDR writes clock bytes to listeners;
  * a host master supplies slave bytes. Completion follows the configured SCK delay.
  * Host listeners and the responder run at completion, matching the SPIF edge.
  */
@@ -23,6 +23,24 @@ export class Spi {
   private powerReduced = false;
   private sleepPaused = false;
   private frozenTransferRemainingCycles = 0;
+  private wireEnabled = false;
+  private syncingPins = false;
+  private wireSubscriptions: (() => void)[] = [];
+  private wireEdge = 0;
+  private wireTx = 0;
+  private wireRx = 0;
+  private wireControl = 0;
+  private wireHalfPeriod = 2;
+  private frozenWireCycles = 0;
+  private readonly onWireEvent = (): void => {
+    if (this.pendingMode !== "master" || this.clockPaused()) return;
+    const leading = (this.wireEdge & 1) === 0;
+    this.gpio?.setPeripheralPin("B", 5, leading !== this.wireIdle());
+    this.clockWire(leading);
+    this.wireEdge++;
+    if (this.wireEdge === 16) this.completeTransfer();
+    else this.cpu.addClockEvent(this.onWireEvent, this.wireHalfPeriod);
+  };
   private readonly onTransferCompleteEvent = (): void => {
     this.completeTransfer();
   };
@@ -32,6 +50,91 @@ export class Spi {
     private readonly gpio?: Gpio,
   ) {
     this.gpio?.onPortTouched("B", () => this.checkSs());
+  }
+
+  private attachWireListeners(): void {
+    if (!this.gpio || this.wireSubscriptions.length > 0) return;
+    this.wireSubscriptions.push(this.gpio.onPinChange("B", 2, () => {
+      if (this.wireEnabled && this.pendingMosi === null) this.syncWirePins();
+    }, true));
+    this.wireSubscriptions.push(this.gpio.onPinChange("B", 5, (high) => {
+      if (this.syncingPins || !this.wireEnabled || !this.enabledSlave() || this.ssHigh() || this.clockPaused()) return;
+      if (this.pendingMosi === null) this.beginWireSlave();
+      this.clockWire(high !== this.wireIdle());
+      this.wireEdge++;
+      if (this.wireEdge === 16) this.completeTransfer();
+    }, true));
+  }
+
+  /** Use SCK/MOSI/MISO pins instead of the byte responder. Change only while idle. */
+  useWire(enabled = true): void {
+    if (!this.gpio) throw new Error("SPI wire mode requires GPIO.");
+    if (this.pendingMosi !== null) throw new Error("Cannot change SPI wire mode during a transfer.");
+    this.wireEnabled = enabled;
+    if (enabled) this.attachWireListeners();
+    else { for (const off of this.wireSubscriptions) off(); this.wireSubscriptions = []; }
+    if (!enabled) for (const bit of [2, 3, 4, 5]) this.gpio?.setPeripheralPin("B", bit, undefined);
+    this.syncWirePins();
+  }
+
+  private wireIdle(): boolean { return (this.wireControl & 8) !== 0; }
+
+  private syncWirePins(): void {
+    if (!this.wireEnabled) return;
+    this.syncingPins = true;
+    try {
+      if ((this.cpu.data[SPCR]! & (1 << SPE)) === 0) {
+        for (const bit of [2, 3, 4, 5]) this.gpio?.setPeripheralPin("B", bit, undefined);
+      } else if (this.enabledMaster()) {
+        this.gpio?.setPeripheralPin("B", 2, undefined);
+        this.gpio?.setPeripheralPin("B", 4, "input");
+        if (this.pendingMosi === null) this.gpio?.setPeripheralPin("B", 5, (this.cpu.data[SPCR]! & 8) !== 0);
+      } else {
+        if (this.pendingMosi === null) this.wireControl = this.cpu.data[SPCR]!;
+        this.gpio?.setPeripheralPin("B", 2, "input");
+        this.gpio?.setPeripheralPin("B", 3, "input");
+        this.gpio?.setPeripheralPin("B", 5, "input");
+        this.gpio?.setPeripheralPin("B", 4, this.ssHigh() ? "input" : this.outputBit(this.cpu.data[SPDR]!, 0));
+      }
+    } finally { this.syncingPins = false; }
+  }
+
+  private outputBit(value: number, index: number): boolean {
+    const bit = (this.wireControl & (1 << DORD)) !== 0 ? index : 7 - index;
+    return ((value >> bit) & 1) !== 0;
+  }
+
+  private beginWireSlave(): void {
+    this.pendingMosi = 0;
+    this.pendingMode = "slave";
+    this.beginWire();
+  }
+
+  private beginWire(): void {
+    this.wireEdge = 0;
+    this.wireRx = 0;
+    this.wireTx = this.cpu.data[SPDR]!;
+    this.wireControl = this.cpu.data[SPCR]!;
+    this.wireHalfPeriod = this.transferCycles() / 16;
+    if ((this.wireControl & 4) === 0) this.driveWireBit(0);
+  }
+
+  private driveWireBit(index: number): void {
+    this.gpio?.setPeripheralPin("B", this.pendingMode === "master" ? 3 : 4,
+      this.outputBit(this.wireTx, index));
+  }
+
+  private clockWire(leading: boolean): void {
+    const sample = leading === ((this.wireControl & 4) === 0);
+    const index = this.wireEdge >> 1;
+    if (sample) {
+      const high = this.gpio?.readPin("B", this.pendingMode === "master" ? 4 : 3) ?? true;
+      const bit = (this.wireControl & (1 << DORD)) !== 0 ? index : 7 - index;
+      if (high) this.wireRx |= 1 << bit;
+    } else {
+      const next = (this.wireControl & 4) !== 0 ? index : index + 1;
+      if (next < 8) this.driveWireBit(next);
+    }
   }
 
   reset(): void {
@@ -44,6 +147,9 @@ export class Spi {
     this.spifClearArmed = false;
     this.receivedByte = null;
     this.cpu.data[SPSR] = 0;
+    this.cpu.clearClockEvent(this.onWireEvent);
+    this.wireEdge = 0;
+    this.syncWirePins();
   }
 
   /** Observe each byte the master sends on MOSI. */
@@ -72,6 +178,7 @@ export class Spi {
       this.abortTransfer();
     }
     this.checkSs();
+    this.syncWirePins();
     this.updateInterrupt();
   }
 
@@ -93,6 +200,7 @@ export class Spi {
     }
     if (!this.enabledMaster()) {
       this.cpu.data[SPDR] = byte;
+      if (this.wireEnabled) this.syncWirePins();
       return;
     }
 
@@ -100,7 +208,11 @@ export class Spi {
     this.pendingMode = "master";
     this.cpu.data[SPDR] = byte;
     this.updateInterrupt();
-    this.scheduleTransfer(this.transferCycles());
+    if (this.wireEnabled) {
+      this.beginWire();
+      if (this.clockPaused()) this.frozenWireCycles = this.wireHalfPeriod;
+      else this.cpu.addClockEvent(this.onWireEvent, this.wireHalfPeriod);
+    } else this.scheduleTransfer(this.transferCycles());
   }
 
   @OnRead(SPSR)
@@ -126,12 +238,13 @@ export class Spi {
     const meta = this.transferMeta(mode);
     if (mode === "master") {
       for (const listener of [...this.txListeners]) listener(byte, meta);
-      this.cpu.data[SPDR] = this.responder(byte, meta) & 0xff;
+      this.cpu.data[SPDR] = this.wireEnabled ? this.wireRx : this.responder(byte, meta) & 0xff;
     } else {
-      this.cpu.data[SPDR] = byte;
+      this.cpu.data[SPDR] = this.wireEnabled ? this.wireRx : byte;
     }
     this.receivedByte = this.cpu.data[SPDR]!;
     this.cpu.data[SPSR] = this.cpu.data[SPSR]! | (1 << SPIF);
+    this.syncWirePins();
     this.updateInterrupt();
   }
 
@@ -146,6 +259,7 @@ export class Spi {
   }
 
   private hostTransfer(byte: number): number {
+    if (this.wireEnabled) throw new Error("Drive SCK/MOSI pins when SPI wire mode is enabled.");
     if (!this.enabledSlave()) {
       throw new Error("SPI host master transfer requires firmware SPI slave mode (SPE set, MSTR clear).");
     }
@@ -180,14 +294,17 @@ export class Spi {
       this.abortTransfer();
       this.cpu.data[SPCR] = this.cpu.data[SPCR]! & ~(1 << MSTR);
       this.cpu.data[SPSR] = this.cpu.data[SPSR]! | (1 << SPIF);
+      this.syncWirePins();
       this.updateInterrupt();
     } else if (high && this.pendingMode === "slave") {
       this.abortTransfer();
     }
+    if (this.wireEnabled && this.enabledSlave() && high) this.gpio?.setPeripheralPin("B", 4, "input");
   }
 
   private abortTransfer(): void {
     this.cpu.clearClockEvent(this.onTransferCompleteEvent);
+    this.cpu.clearClockEvent(this.onWireEvent);
     this.pendingMosi = null;
     this.pendingMode = null;
     this.frozenTransferRemainingCycles = 0;
@@ -215,7 +332,7 @@ export class Spi {
 
   private transferMeta(mode: "master" | "slave"): SpiTransferMeta {
     return {
-      bitOrder: (this.cpu.data[SPCR]! & (1 << DORD)) !== 0 ? "lsb-first" : "msb-first",
+      bitOrder: ((this.wireEnabled ? this.wireControl : this.cpu.data[SPCR]!) & (1 << DORD)) !== 0 ? "lsb-first" : "msb-first",
       mode,
     };
   }
@@ -235,6 +352,8 @@ export class Spi {
 
   private scheduleTransfer(cycles: number): void {
     if (this.clockPaused()) {
+      this.frozenWireCycles = this.cpu.clockEventRemainingCycles(this.onWireEvent);
+      this.cpu.clearClockEvent(this.onWireEvent);
       this.frozenTransferRemainingCycles = cycles;
       return;
     }
@@ -260,12 +379,16 @@ export class Spi {
   private applyClockGate(wasPaused: boolean): void {
     if (wasPaused === this.clockPaused()) return;
     if (this.clockPaused()) {
+      this.frozenWireCycles = this.cpu.clockEventRemainingCycles(this.onWireEvent);
+      this.cpu.clearClockEvent(this.onWireEvent);
       this.frozenTransferRemainingCycles = this.cpu.clockEventRemainingCycles(this.onTransferCompleteEvent);
       this.cpu.clearClockEvent(this.onTransferCompleteEvent);
       return;
     }
     if (this.pendingMosi !== null) {
-      this.cpu.addClockEvent(this.onTransferCompleteEvent, this.frozenTransferRemainingCycles || this.transferCycles());
+      if (this.wireEnabled) {
+        if (this.pendingMode === "master") this.cpu.addClockEvent(this.onWireEvent, this.frozenWireCycles || this.wireHalfPeriod);
+      } else this.cpu.addClockEvent(this.onTransferCompleteEvent, this.frozenTransferRemainingCycles || this.transferCycles());
     }
     this.frozenTransferRemainingCycles = 0;
   }
@@ -285,6 +408,9 @@ export class Spi {
       remainingCycles: this.remainingCycles(),
       spifClearArmed: this.spifClearArmed,
       receivedByte: this.receivedByte,
+      wire: { enabled: this.wireEnabled, edge: this.wireEdge, tx: this.wireTx, rx: this.wireRx,
+        control: this.wireControl, halfPeriod: this.wireHalfPeriod,
+        remainingCycles: this.clockPaused() ? this.frozenWireCycles : this.cpu.clockEventRemainingCycles(this.onWireEvent) },
     };
   }
 
@@ -297,9 +423,20 @@ export class Spi {
     this.pendingMode = snap.busy ? (snap.pendingMode ?? "master") : null;
     this.spifClearArmed = snap.spifClearArmed ?? false;
     this.receivedByte = snap.receivedByte ?? null;
+    this.wireEnabled = snap.wire?.enabled ?? false;
+    if (this.wireEnabled) this.attachWireListeners();
+    else { for (const off of this.wireSubscriptions) off(); this.wireSubscriptions = []; }
+    this.wireEdge = snap.wire?.edge ?? 0;
+    this.wireTx = snap.wire?.tx ?? 0;
+    this.wireRx = snap.wire?.rx ?? 0;
+    this.wireControl = snap.wire?.control ?? 0;
+    this.wireHalfPeriod = snap.wire?.halfPeriod ?? 2;
+    this.cpu.clearClockEvent(this.onWireEvent);
     this.cpu.clearClockEvent(this.onTransferCompleteEvent);
     if (this.pendingMosi !== null) {
-      this.cpu.addClockEvent(this.onTransferCompleteEvent, snap.remainingCycles ?? this.transferCycles());
+      if (this.wireEnabled) {
+        if (this.pendingMode === "master") this.cpu.addClockEvent(this.onWireEvent, snap.wire?.remainingCycles ?? this.wireHalfPeriod);
+      } else this.cpu.addClockEvent(this.onTransferCompleteEvent, snap.remainingCycles ?? this.transferCycles());
     }
   }
 }

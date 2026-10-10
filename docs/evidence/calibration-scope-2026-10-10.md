@@ -1,5 +1,10 @@
 # Calibration and retained scope - 2026-10-10
 
+Historical scope before the user selected the remaining digital extensions.
+The deferred software models below have since been implemented; see
+[current contracts](../wire-models.md) and the expanded root-plan queue.
+Physical calibration remains unrun.
+
 The selected scope is digital instruction/peripheral correctness, all current
 workload results, EEPROM/flash programming intervals and logical T0/T1 input.
 The standard [ATmega328P datasheet DS40002061B](https://ww1.microchip.com/downloads/en/DeviceDoc/ATmega48A-PA-88A-PA-168A-PA-328-P-DS-DS40002061B.pdf) is normative;
