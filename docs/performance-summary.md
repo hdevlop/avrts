@@ -200,7 +200,10 @@ All twelve external workload result/state cases and the shared listener check
 are implemented; see [current workload evidence](evidence/workload-results-2026-10-10.md).
 New EEPROM/flash programming and T0/T1 clock fidelity is covered by
 [runtime evidence](evidence/runtime-fidelity-2026-10-10.md).
-The [scope decisions](evidence/calibration-scope-2026-10-10.md) retain remaining
-physical/wire approximations explicitly. Earlier measurements above remain
+The [scope decisions](evidence/calibration-scope-2026-10-10.md) describe the
+earlier wire-model deferral. The digital extensions are now implemented;
+[expanded acceptance](evidence/digital-models-2026-10-10.md) records their source
+and narrow before/after performance comparisons. Physical calibration remains
+unrun. Earlier measurements above remain
 dated history; [current performance evidence](evidence/runtime-performance-2026-10-10.md)
 uses identical candidate firmware on both revisions.

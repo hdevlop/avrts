@@ -1,6 +1,6 @@
 # AVRts remaining work plan
 
-Created: 2026-10-06. Updated: 2026-10-10. Status: implementation reopened at the user's request to implement the remaining digital models. The previous candidate and acceptance receipts describe the earlier source only. Physical measurements and publication remain external gates.
+Created: 2026-10-06. Updated: 2026-10-10. Status: all remaining digital implementation and local acceptance completed. The expanded source and retained artifact are recorded in [current acceptance](docs/evidence/digital-models-2026-10-10.md). Physical measurements and publication remain external gates.
 
 This is the root entry point for all known remaining work. It consolidates the existing plans, behavioral limitations, benchmark gaps, and release obligations. It does not promise that a simulator can be proven free of every unknown bug. Completion means that the selected scope has reproducible evidence and that every remaining limitation has an explicit disposition.
 
@@ -52,7 +52,7 @@ Resolve discrepancies against source and reproducible evidence, then update the 
 | 7. Measured performance improvements | After relevant correctness gates | 1; rerun after runtime changes | Profile-backed improvements without lost behavior |
 | 8. Release acceptance and publication | For each chosen release | Selected phases and current limitations documented | Verified artifact and separate publication evidence |
 
-Phases 0-4 remain implemented. The formerly deferred digital models in Phases 5-6 are now implemented and undergoing fresh acceptance. All twelve external workloads retain their comparison gates. [Earlier release evidence](docs/evidence/release-candidate-2026-10-10.md) describes the pre-extension candidate; new evidence must identify the expanded source and artifact.
+Phases 0-4 remain implemented. The formerly deferred digital models in Phases 5-6 are implemented and locally validated. All twelve external workloads retain their comparison gates. [Earlier release evidence](docs/evidence/release-candidate-2026-10-10.md) describes the pre-extension candidate; [current acceptance](docs/evidence/digital-models-2026-10-10.md) identifies the expanded source and artifact.
 
 Phases 2-6 are a fidelity roadmap, not an assertion that every item must delay an already prepared release. Define the scope of each release before implementation. A release can retain documented approximations; it must not advertise them as completed fidelity work.
 
@@ -179,7 +179,7 @@ Rollback: revert the programming-duration change and its documentation together,
 
 ## 9. Phase 5 — targeted timer, interrupt and wake calibration
 
-Status: digital extensions implemented and under final acceptance. Timer2 clear/reset crossing and configurable clock input, interrupt synchronization, comparator delays and host calibration policies are covered by new regressions. No physical measurements were run. See [wire/clock contracts](docs/wire-models.md).
+Status: digital extensions implemented and locally validated; [current acceptance](docs/evidence/digital-models-2026-10-10.md). Timer2 clear/reset crossing and configurable clock input, interrupt synchronization, comparator delays and host calibration policies are covered by new regressions. No physical measurements were run. See [wire/clock contracts](docs/wire-models.md).
 
 Targets: [Timer2](src/peripherals/timer2.ts), [timer prescaler](src/peripherals/timer-prescaler.ts), [timer synchronization](src/peripherals/timer-sync.ts), Timer0/Timer1, [sleep control](src/peripherals/sleep-control.ts), [clock control](src/peripherals/clock-control.ts), comparator/EXTI peripherals, focused tests and native probes.
 
@@ -200,7 +200,7 @@ Rollback: land each calibration separately; revert the individual timing policy 
 
 ## 10. Phase 6 — decide the scope of remaining wire and physical models
 
-Status: optional USART/SPI/TWI logical wire models are implemented, with a shared open-drain TWI bus. The earlier [decision record](docs/evidence/calibration-scope-2026-10-10.md) is historical. Physical electrical exclusions remain explicit; final acceptance is in progress.
+Status: optional USART/SPI/TWI logical wire models are implemented, with a shared open-drain TWI bus. The earlier [decision record](docs/evidence/calibration-scope-2026-10-10.md) is historical. Physical electrical exclusions remain explicit; [final local acceptance](docs/evidence/digital-models-2026-10-10.md) passed.
 
 These are recorded needs or limitations, not automatic requirements for a release. Select a concrete use case and observable contract before implementing a larger model.
 
@@ -225,21 +225,21 @@ Use this table when reconciling [limitations](docs/limitations.md). Closing an e
 | USART wire sampling/XCK/error derivation | Implemented optional wire model in 6; byte API retained by default |
 | SPI wire transfers, direction and DORD | Implemented optional GPIO shifts in 6; native SPIF/collision disagreement retained |
 | TWI arbitration, START/STOP and stretching | Implemented optional open-drain wire/shared-bus model in 6; byte timing retained by default |
-| Comparator propagation, settling, synchronized output and ACME/PRADC edge cases | 5, with electrical effects retained under 6 |
-| GPIO floating inputs, electrical pull-ups and complete serial pin ownership | 6; logical ownership can be selected independently of electrical simulation |
-| External interrupt short pulses, input synchronizers and oscillator wake details | 5 |
+| Comparator propagation, settling, synchronized output and ACME/PRADC edge cases | Configurable digital timing implemented in 5 with regressions; physical electrical effects excluded under 6 |
+| GPIO floating inputs, electrical pull-ups and complete serial pin ownership | Logical serial ownership/open-drain resolution implemented in 6; electrical floating voltage/resistance excluded |
+| External interrupt short pulses, input synchronizers and oscillator wake details | Optional digital synchronization implemented in 5; deterministic startup policy retained and physical phase unmeasured |
 | EEPROM busy operations and CPU stalls | Implemented in 2; typical timing policy and powered-reset scope documented |
 | CLKPR cross-domain interactions | 2, 4 and 5 regression coverage; retain existing working clock-domain behavior |
 | PRR clock gating versus electrical power consumption | 5 regressions; current/power figures excluded under 6 |
 | Timer0/Timer1 external pin clocks | Implemented in 3; integer-phase synchronization, fractional electrical phases excluded |
-| Shared prescaler/mux startup and asynchronous PSRASY handshake | 5 |
+| Shared prescaler/mux startup and asynchronous PSRASY handshake | Digital source-edge acknowledgement implemented in 5; deterministic shared-divider policies retained |
 | Reserved Timer1 mode 13 and Timer0/2 modes 4/6 approximations | 5 policy review; keep explicit reserved-mode behavior |
 | Timer1 fast-PWM overflow peer disagreement and facade versus measured waveform | 1 waveform tests and 5 calibration |
-| Timer2 TOSC/EXCLK, sub-TOSC wake/ack timing, oscillator drift/instability | 5 for selected digital behavior; physical behavior retained under 6 |
+| Timer2 TOSC/EXCLK, sub-TOSC wake/ack timing, oscillator drift/instability | Configurable/manual source and acknowledgement implemented in 5; physical behavior unmeasured under 6 |
 | OSCCAL and DIDR | Host frequency curve and firmware PIN suppression implemented in 6 |
 | SUT/CKSEL startup approximation and fuse-related physical behavior | 5 for deterministic timing; 6 for retained physical scope |
 | Flash erase/write duration and wear | 4 implemented deterministic duration/fetch interlock; wear excluded under 6 |
-| Exact sleep startup edge and per-bit TWI stretching | 5 and 6 respectively |
+| Exact sleep startup edge and per-bit TWI stretching | Digital startup policy retained in 5; TWI wire stretching implemented in 6; physical wake phase unmeasured |
 
 ## 12. Phase 7 — measured performance work
 
@@ -267,7 +267,7 @@ Rollback: revert the optimization and regenerate the prior core where necessary.
 
 ## 13. Phase 8 — release readiness and publication
 
-Status: selected the still-unpublished 0.1.2 candidate, including all new runtime changes. Registry lookup returned 0.0.0-stage, 0.1.0 and 0.1.1; 0.1.2 remains available. Source/browser/native/package gates, clean archive preparation, exact-archive consumer smoke and npm dry run passed. See [local acceptance receipt](docs/evidence/local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication are separate external gates.
+Status: expanded 0.1.2 candidate prepared and unpublished. Registry lookup still returns 0.0.0-stage, 0.1.0 and 0.1.1. Source/browser/native/package gates, the four compiler cases initially skipped without toolchain configuration, clean 88-file archive preparation, exact-archive consumer smoke and npm dry run passed. See [current acceptance](docs/evidence/digital-models-2026-10-10.md) and [machine-readable receipt](docs/evidence/digital-models-local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication are separate external gates.
 
 Targets: [package manifest](package.json), [changelog](CHANGELOG.md), [README](README.md), release procedure/evidence, package smoke and CI.
 
@@ -329,10 +329,10 @@ Consider a reproducible native-oracle CI lane after the toolchain is pinned and 
 - [x] Documentation distinguishes historical completion, current approximations, native disagreement, and physical calibration.
 - [x] Any runtime change preserves snapshots and public APIs, or includes a deliberate versioned migration.
 - [x] Performance claims identify runtime, host, firmware, methodology, raw samples and useful work where relevant.
-- [x] Final archive preparation records clean source commit `5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf`, the 85-file archive identity and exact consumer smoke; publication remains separate.
+- [x] Final archive preparation records clean source commit `5d351936458901768b2d8a6fefa24fff5b53070a`, the 88-file archive identity and exact consumer smoke; publication remains separate.
 - [x] Unrelated user changes are preserved. Rollbacks use reviewed reversions of the selected changes, not destructive resets.
 
-The earlier selected local scope was complete. The user has now selected the remaining digital extensions for implementation; the queue below supersedes their earlier deferral. Routine work continues without requiring another continuation request.
+The earlier selected local scope and the expanded digital queue below are complete. Their acceptance records identify different source commits and artifacts. Remaining external gates are physical measurement and authorized Git/npm publication; there is no unfinished digital implementation queue.
 
 ## 16. Historical acceptance before digital extensions (2026-10-10)
 
@@ -353,16 +353,33 @@ physical measurements.
 
 ## 17. Expanded implementation queue
 
-The user's instruction to implement all remaining work selects the digital extensions previously deferred in Phases 5 and 6. Historical disposition checkboxes record earlier decisions, not completion of these features. Fresh acceptance and package evidence are required after the changes.
+Completed at the user's request. The digital extensions previously deferred in Phases 5 and 6 now have implementations, regression coverage and fresh acceptance. Historical disposition checkboxes remain earlier decisions rather than implementation evidence.
 
-- [ ] Timer2 configurable TOSC frequency, manual EXCLK edges, source changes and snapshots.
-- [ ] Timer2 asynchronous PSRASY and flag-clear acknowledgement, including repeated sleep.
-- [ ] USART RXD/TXD/XCK signaling, sampled framing/parity errors and synchronous/MSPIM clocks.
-- [ ] SPI GPIO transfers for all clock modes and bit orders, SS handling and snapshots.
-- [ ] TWI open-drain master/slave bus, sampled arbitration and clock stretching.
-- [ ] Logical DIDR suppression, interrupt input synchronization and configurable comparator timing.
-- [ ] Document supported OSCCAL calibration and fuse/startup policies without inventing physical measurements.
-- [ ] Review new models for reset, clock gating, snapshot and public API compatibility.
-- [ ] Run fresh source, browser, package and applicable native acceptance; rebuild release artifacts.
+- [x] Timer2 configurable TOSC frequency, manual EXCLK edges, source changes and snapshots.
+- [x] Timer2 asynchronous PSRASY and flag-clear acknowledgement, including repeated sleep.
+- [x] USART RXD/TXD/XCK signaling, sampled framing/parity errors and synchronous/MSPIM clocks.
+- [x] SPI GPIO transfers for all clock modes and bit orders, SS handling and snapshots.
+- [x] TWI open-drain master/slave bus, sampled arbitration and clock stretching.
+- [x] Logical DIDR suppression, interrupt input synchronization and configurable comparator timing.
+- [x] Document supported OSCCAL calibration and fuse/startup policies without inventing physical measurements.
+- [x] Review new models for reset, clock gating, snapshot and public API compatibility.
+- [x] Run fresh source, browser, package and applicable native acceptance; rebuild release artifacts.
 
 Physical noise, electrical current/leakage, memory wear and debugWIRE remain the plan's permanent exclusions. Physical timing calibration requires identified hardware and captured measurements. Git/npm publication retains the explicit authorization requirements in Phase 8.
+
+## 18. Expanded local acceptance (2026-10-10)
+
+Source commit `5d351936458901768b2d8a6fefa24fff5b53070a` passed
+`bun run release:check`: 2,973 passed, four compiler cases initially skipped,
+zero failures, 18,917 assertions across 84 files; eight Chromium tests passed.
+The installed AVR GCC 7.3 toolchain then passed all six compiler tests, including
+the four skipped cases. All twelve workload cases pass against both references;
+native state, five timing probes, three runtime probes and Optiboot pass their
+stated contracts. New wire/clock regressions exercise both execution modes.
+
+The retained 88-file archive passed Node/Bun USART wire loopback and bus imports,
+browser bundling, worker URL/asset checks, TypeScript consumer checks and npm
+dry run. [Current acceptance](docs/evidence/digital-models-2026-10-10.md) and
+[the receipt](docs/evidence/digital-models-local-acceptance-2026-10-10.json) record
+its checksums and source identity. The earlier 85-file archive is historical.
+Physical calibration, exact-commit CI, Git push and npm publication remain unrun.

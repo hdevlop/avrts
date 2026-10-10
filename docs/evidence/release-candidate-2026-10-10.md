@@ -1,5 +1,9 @@
 # Final local release candidate - 2026-10-10
 
+Historical candidate before the digital extensions. The source and archive below
+are superseded by [expanded acceptance](digital-models-2026-10-10.md); their
+original identities and results are preserved.
+
 Local implementation and acceptance are complete. Package `@hdevlop/avrts@0.1.2`
 is prepared and unpublished. Registry lookup returned 0.0.0-stage, 0.1.0 and
 0.1.1, so 0.1.2 remains available; publication was not attempted.
