@@ -365,6 +365,12 @@ bun run oracle:simavr:optiboot
 | Sleep/wake | Six sleep modes with timer clock-domain gating, ADC noise-reduction entry, async Timer2 in power-save/extended-standby, wake sources and wake latency |
 | Runtime | Public facade, events, serial text/bytes, pin/PWM/analog handles, EEPROM/SPI/TWI handles, snapshot/restore, debugger/watchpoints, browser worker runtime |
 
+Firmware EEPROM now exposes programming busy intervals and CPU access stalls.
+Flash erase/write uses a separate programming interval and RWW/NRWW fetch
+interlocks. These intervals persist through clock changes, powered reset and
+snapshots. Host EEPROM storage helpers remain immediate. Timer0/Timer1 external
+clocks use the existing PD4/PD5 logical pin inputs.
+
 The exact behavioral limits are tracked in
 [docs/limitations.md](docs/limitations.md). That file is intentionally part of
 the product: if a register or vector is not modeled, it must be documented and
@@ -416,6 +422,7 @@ Native simavr oracles:
 
 ```bash
 bun run oracle:simavr:timing    # USART/SPI/TWI timing, Timer2 async, comparator
+bun run oracle:simavr:runtime   # programming, external clocks, Timer1 TOP policy
 bun run oracle:simavr:result    # final-state fixtures against native simavr
 bun run oracle:simavr:optiboot  # stock Optiboot STK500v1 programming flow
 ```
@@ -479,7 +486,7 @@ Permanent non-goals:
 - Electrical analog effects such as rise time, drive strength, bus contention,
   capacitance, leakage, noise, and temperature drift.
 - Exact current consumption in microamps.
-- Flash wear and exact millisecond erase/write latency.
+- Flash/EEPROM wear and voltage/temperature dependent programming times.
 - Multi-master physical-wire arbitration beyond documented host injection hooks.
 
 When avrts intentionally approximates something, the row belongs in

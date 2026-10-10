@@ -162,6 +162,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         expect(target.cpu.readData(A.EECR) & bit(A.EEPE)).toBe(0);
         target.cpu.writeData(A.EECR, bit(A.EEMPE));
         target.cpu.writeData(A.EECR, bit(A.EEPE));
+        expect(target.eeprom.read(0)).toBe(0);
+        target.runCycles(54_400);
         expect(target.eeprom.read(0)).toBe(0xaa);
       });
 
@@ -311,6 +313,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       const write = (mode: number) => {
         avr.cpu.writeData(A.EECR, (mode << 4) | bit(A.EEMPE));
         avr.cpu.writeData(A.EECR, (mode << 4) | bit(A.EEPE));
+        avr.runCycles(mode === 0 ? 54_400 : 28_800);
       };
       write(2);
       expect(avr.eeprom.read(0)).toBe(0x50);

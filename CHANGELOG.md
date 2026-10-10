@@ -3,11 +3,32 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
-## Unreleased
+## 0.1.2 - 2026-10-10 (prepared, unpublished)
 
-## 0.1.2 - 2026-10-06
+The October 10 changes extend the still-unpublished October 6 candidate.
+This record does not establish an npm publication.
+
+### Added
+
+- Result/state coverage for all twelve external workloads, actual PWM/blink
+  traces and the shared serial listener path, with reproducible native evidence.
+- Timer0/Timer1 external falling/rising clocks on PD4/PD5, including sampling,
+  gating and pending synchronization snapshots.
 
 ### Fixed
+
+- Model firmware EEPROM busy programming and CPU read/write stalls, retaining
+  pending wall time through CLKPR, sleep, powered reset and snapshots.
+- Separate flash command eligibility from timed erase/write completion; block
+  unavailable instruction fetches and enforce EEPROM/SPM exclusion.
+- Use the fixed RWW/NRWW boundary independently of BOOTSZ, retain RWW blocking
+  across snapshots, and apply flash writes as bit clearing until page erase.
+- Keep powered nonvolatile programming active during reset oscillator startup,
+  while cancelling obsolete commits on explicit host chip erase/program replacement.
+- Hand off generated and profiled execution immediately when SPM arms a flash
+  fetch interlock, preventing an unavailable fetch in the same run call.
+
+### Previously prepared fixes (2026-10-06)
 
 - Synchronize asynchronous Timer2 compare and overflow flags through their
   timer-clock stage and three CPU clocks while leaving compare outputs immediate.

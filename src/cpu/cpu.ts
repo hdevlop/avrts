@@ -151,6 +151,23 @@ export class CPU {
   private cycleListenerDispatchDepth = 0;
   private readonly pendingInterrupts: PendingInterrupt[] = [];
   private interruptDeferred = false;
+  private pendingStallCycles = 0;
+  private instructionBarrier: (() => boolean) | undefined;
+
+  /** Queue a firmware access stall; instruction execution is never nested in an I/O hook. */
+  stall(cycles: number): void { this.pendingStallCycles += cycles; }
+
+  /** Internal flash fetch interlock; active only while self-programming blocks fetches. */
+  setInstructionBarrier(barrier: (() => boolean) | undefined): void { this.instructionBarrier = barrier; }
+
+  /** @internal generated-core surface: SPM can arm an interlock during a run. */
+  get hasInstructionBarrier(): boolean { return this.instructionBarrier !== undefined; }
+
+  private consumeStall(): void {
+    const cycles = this.pendingStallCycles;
+    this.pendingStallCycles = 0;
+    if (cycles) this.cycles += cycles;
+  }
   private programMemoryReadHook: ProgramMemoryReadHook | undefined;
   private spmInstructionHook: SpmInstructionHook | undefined;
   // Sparse, indexed by data-space address; peripherals install hooks here.
@@ -233,6 +250,8 @@ export class CPU {
     this.sleeping = false;
     this.pendingInterrupts.length = 0;
     this.interruptDeferred = false;
+    this.pendingStallCycles = 0;
+    this.instructionBarrier = undefined;
     this.data.fill(0);
     this.SP = RAMEND;
     // Flash may have been (re)loaded just before reset(); drop stale handlers.
@@ -574,6 +593,8 @@ export class CPU {
 
   /** Fetch, decode, and execute one instruction (or idle one cycle while asleep). */
   tick(): void {
+    this.consumeStall();
+    if (this.instructionBarrier?.()) { this.cycles += 1; return; }
     // Guard on size first: the common case has no breakpoints, so this skips
     // the Set hash lookup on every instruction.
     if (this.breakpoints.size > 0 && this.breakpoints.has(this.pc)) {
@@ -653,6 +674,7 @@ export class CPU {
   run(maxCycles: number): void {
     this._breakpointHit = false;
     const target = this._cycles + maxCycles;
+    this.consumeStall();
     if (this.canUseFastRun()) runGeneratedFastCore(this, target);
     else this.runTicksUntil(target);
     // Observers (debugger, snapshots) only ever see an in-flash PC.
@@ -666,6 +688,7 @@ export class CPU {
   profileRun(maxCycles: number, listener: ProfileRunListener): void {
     this._breakpointHit = false;
     const target = this._cycles + maxCycles;
+    this.consumeStall();
     if (this.canUseFastRun()) {
       runFastProfiled(this, target, listener);
       return;
@@ -696,6 +719,7 @@ export class CPU {
 
   private canUseFastRun(): boolean {
     return (
+      this.instructionBarrier === undefined &&
       this.breakpoints.size === 0 &&
       this.traceListeners.length === 0 &&
       !this.pauseOnUnknownOpcode
@@ -897,6 +921,9 @@ export class CPU {
    */
   /** @internal generated-core surface (see generated/cores.ts). */
   serviceInterrupts(): void {
+    // Most instructions have no access stall: avoid dispatching a helper on
+    // every generated-core instruction while preserving the IRQ boundary.
+    if (this.pendingStallCycles !== 0) this.consumeStall();
     if (this.interruptDeferred) {
       this.interruptDeferred = false;
       return;
@@ -973,6 +1000,7 @@ export class CPU {
       pendingInterrupts: this.pendingInterrupts.map((p) => p.vector),
       interruptVectorBase: this.interruptVectorBase,
       interruptDeferred: this.interruptDeferred,
+      pendingStallCycles: this.pendingStallCycles,
     };
   }
 
@@ -987,6 +1015,8 @@ export class CPU {
     this._cycles = snap.cycles;
     this.sleeping = snap.sleeping;
     this.interruptDeferred = snap.interruptDeferred ?? false;
+    this.pendingStallCycles = snap.pendingStallCycles ?? 0;
+    this.instructionBarrier = undefined;
     this.data.set(snap.data);
     this.flash.set(snap.flash);
     this.invalidateDecodeCache(); // restored flash may differ from the cached program

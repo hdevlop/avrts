@@ -78,6 +78,7 @@
     "oracle:simavr": "bun run scripts/simavr-oracle.ts",
     "oracle:simavr:compare": "bun run scripts/simavr-oracle.ts --compare-avrts",
     "oracle:simavr:result": "bun run scripts/simavr-oracle.ts --result-case all",
+    "oracle:simavr:runtime": "bun run scripts/runtime-fidelity-results.ts",
     "oracle:simavr:timing": "bun run scripts/simavr-oracle.ts --timing-case all",
     "oracle:simavr:optiboot": "bun run scripts/simavr-oracle.ts --optiboot",
     "compile": "bun run scripts/compile.ts",

@@ -1,0 +1,114 @@
+
+examples/programming-timing/programming-timing.elf:     file format elf32-avr
+
+
+Disassembly of section .bootloader:
+
+00007e00 <main>:
+    7e00:	f8 94       	cli
+    7e02:	82 e0       	ldi	r24, 0x02	; 2
+    7e04:	80 93 81 00 	sts	0x0081, r24	; 0x800081 <__DATA_REGION_ORIGIN__+0x21>
+    7e08:	27 e0       	ldi	r18, 0x07	; 7
+    7e0a:	30 e0       	ldi	r19, 0x00	; 0
+    7e0c:	32 bd       	out	0x22, r19	; 34
+    7e0e:	21 bd       	out	0x21, r18	; 33
+    7e10:	9a e5       	ldi	r25, 0x5A	; 90
+    7e12:	90 bd       	out	0x20, r25	; 32
+    7e14:	20 91 84 00 	lds	r18, 0x0084	; 0x800084 <__DATA_REGION_ORIGIN__+0x24>
+    7e18:	30 91 85 00 	lds	r19, 0x0085	; 0x800085 <__DATA_REGION_ORIGIN__+0x25>
+    7e1c:	94 e0       	ldi	r25, 0x04	; 4
+    7e1e:	9f bb       	out	0x1f, r25	; 31
+    7e20:	8f bb       	out	0x1f, r24	; 31
+    7e22:	8f b3       	in	r24, 0x1f	; 31
+    7e24:	82 70       	andi	r24, 0x02	; 2
+    7e26:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <_edata+0x201>
+
+00007e2a <.L2>:
+    7e2a:	f9 99       	sbic	0x1f, 1	; 31
+    7e2c:	fe cf       	rjmp	.-4      	; 0x7e2a <.L2>
+    7e2e:	80 91 84 00 	lds	r24, 0x0084	; 0x800084 <__DATA_REGION_ORIGIN__+0x24>
+    7e32:	90 91 85 00 	lds	r25, 0x0085	; 0x800085 <__DATA_REGION_ORIGIN__+0x25>
+    7e36:	82 1b       	sub	r24, r18
+    7e38:	93 0b       	sbc	r25, r19
+    7e3a:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <_edata+0x202>
+    7e3e:	90 93 03 03 	sts	0x0303, r25	; 0x800303 <_edata+0x203>
+    7e42:	81 e0       	ldi	r24, 0x01	; 1
+    7e44:	8f bb       	out	0x1f, r24	; 31
+    7e46:	80 b5       	in	r24, 0x20	; 32
+    7e48:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <_edata+0x204>
+    7e4c:	20 91 84 00 	lds	r18, 0x0084	; 0x800084 <__DATA_REGION_ORIGIN__+0x24>
+    7e50:	30 91 85 00 	lds	r19, 0x0085	; 0x800085 <__DATA_REGION_ORIGIN__+0x25>
+    7e54:	83 e0       	ldi	r24, 0x03	; 3
+    7e56:	e0 e0       	ldi	r30, 0x00	; 0
+    7e58:	f2 e0       	ldi	r31, 0x02	; 2
+    7e5a:	87 bf       	out	0x37, r24	; 55
+    7e5c:	e8 95       	spm
+    7e5e:	87 b7       	in	r24, 0x37	; 55
+    7e60:	81 70       	andi	r24, 0x01	; 1
+    7e62:	80 93 05 03 	sts	0x0305, r24	; 0x800305 <_edata+0x205>
+
+00007e66 <.L3>:
+    7e66:	07 b6       	in	r0, 0x37	; 55
+    7e68:	00 fc       	sbrc	r0, 0
+    7e6a:	fd cf       	rjmp	.-6      	; 0x7e66 <.L3>
+    7e6c:	80 91 84 00 	lds	r24, 0x0084	; 0x800084 <__DATA_REGION_ORIGIN__+0x24>
+    7e70:	90 91 85 00 	lds	r25, 0x0085	; 0x800085 <__DATA_REGION_ORIGIN__+0x25>
+    7e74:	82 1b       	sub	r24, r18
+    7e76:	93 0b       	sbc	r25, r19
+    7e78:	80 93 06 03 	sts	0x0306, r24	; 0x800306 <_edata+0x206>
+    7e7c:	90 93 07 03 	sts	0x0307, r25	; 0x800307 <_edata+0x207>
+    7e80:	81 e1       	ldi	r24, 0x11	; 17
+    7e82:	80 93 57 00 	sts	0x0057, r24	; 0x800057 <__TEXT_REGION_LENGTH__+0x7e0057>
+    7e86:	e8 95       	spm
+    7e88:	e0 e0       	ldi	r30, 0x00	; 0
+    7e8a:	f2 e0       	ldi	r31, 0x02	; 2
+    7e8c:	81 e0       	ldi	r24, 0x01	; 1
+    7e8e:	25 ea       	ldi	r18, 0xA5	; 165
+    7e90:	3a e5       	ldi	r19, 0x5A	; 90
+    7e92:	09 01       	movw	r0, r18
+    7e94:	87 bf       	out	0x37, r24	; 55
+    7e96:	e8 95       	spm
+    7e98:	11 24       	eor	r1, r1
+    7e9a:	85 e0       	ldi	r24, 0x05	; 5
+    7e9c:	87 bf       	out	0x37, r24	; 55
+    7e9e:	e8 95       	spm
+    7ea0:	87 b7       	in	r24, 0x37	; 55
+    7ea2:	81 70       	andi	r24, 0x01	; 1
+    7ea4:	80 93 08 03 	sts	0x0308, r24	; 0x800308 <_edata+0x208>
+
+00007ea8 <.L4>:
+    7ea8:	07 b6       	in	r0, 0x37	; 55
+    7eaa:	00 fc       	sbrc	r0, 0
+    7eac:	fd cf       	rjmp	.-6      	; 0x7ea8 <.L4>
+    7eae:	81 e1       	ldi	r24, 0x11	; 17
+    7eb0:	80 93 57 00 	sts	0x0057, r24	; 0x800057 <__TEXT_REGION_LENGTH__+0x7e0057>
+    7eb4:	e8 95       	spm
+    7eb6:	e0 e0       	ldi	r30, 0x00	; 0
+    7eb8:	f2 e0       	ldi	r31, 0x02	; 2
+    7eba:	85 91       	lpm	r24, Z+
+    7ebc:	94 91       	lpm	r25, Z
+    7ebe:	80 93 09 03 	sts	0x0309, r24	; 0x800309 <_edata+0x209>
+    7ec2:	90 93 0a 03 	sts	0x030A, r25	; 0x80030a <_edata+0x20a>
+    7ec6:	87 ea       	ldi	r24, 0xA7	; 167
+    7ec8:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <_edata+0x200>
+    7ecc:	eb e0       	ldi	r30, 0x0B	; 11
+    7ece:	f3 e0       	ldi	r31, 0x03	; 3
+
+00007ed0 <.L5>:
+    7ed0:	11 92       	st	Z+, r1
+    7ed2:	e3 31       	cpi	r30, 0x13	; 19
+    7ed4:	83 e0       	ldi	r24, 0x03	; 3
+    7ed6:	f8 07       	cpc	r31, r24
+    7ed8:	d9 f7       	brne	.-10     	; 0x7ed0 <.L5>
+    7eda:	80 e6       	ldi	r24, 0x60	; 96
+    7edc:	80 93 13 03 	sts	0x0313, r24	; 0x800313 <_edata+0x213>
+    7ee0:	8c e5       	ldi	r24, 0x5C	; 92
+    7ee2:	80 93 14 03 	sts	0x0314, r24	; 0x800314 <_edata+0x214>
+
+00007ee6 <.L6>:
+    7ee6:	ff cf       	rjmp	.-2      	; 0x7ee6 <.L6>
+
+Disassembly of section .text:
+
+00000000 <__ctors_end>:
+   0:	0c 94 00 3f 	jmp	0x7e00	; 0x7e00 <main>

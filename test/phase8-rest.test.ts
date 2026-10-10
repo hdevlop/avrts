@@ -46,6 +46,8 @@ describe("EEPROM", () => {
     // EEPE is written alone — EEMPE only needs to be armed, not repeated.
     cpu.writeData(EECR, 1 << EEMPE); // master write enable
     cpu.writeData(EECR, 1 << EEPE); // start write
+    expect(avr.eeprom.read(0x10)).toBe(0);
+    avr.runCycles(54_400);
     expect(avr.eeprom.read(0x10)).toBe(0x5a);
   });
 

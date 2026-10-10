@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-10",
+  "package": "@hdevlop/avrts",
+  "version": "0.1.2",
+  "baseCommit": "859b7fef58ac5864618c01d484c6bcf64b077d89",
+  "releaseCheck": {
+    "command": "bun run release:check",
+    "exitCode": 0,
+    "typecheck": "pass",
+    "generatedCore": "pass",
+    "tests": 2845,
+    "assertions": 18330,
+    "testFiles": 80,
+    "testSeconds": 311.85,
+    "chromiumTests": 8,
+    "chromiumSeconds": 5.1,
+    "libraryBuild": "pass",
+    "packageSmoke": {
+      "status": "pass",
+      "fileCount": 85
+    }
+  },
+  "native": {
+    "workloadResults": 12,
+    "reference": "avr8js and native simavr",
+    "state": "pass with documented normalization",
+    "timingProbes": 5,
+    "optiboot": "pass; 140 serial bytes, programmed page and app transitions",
+    "runtimeProbes": 3,
+    "runtimeTiming": "independent avrts expectations pass; native programming duration and Timer1 TOP remain explicit differences"
+  },
+  "registryVersions": [
+    "0.0.0-stage",
+    "0.1.0",
+    "0.1.1"
+  ],
+  "publication": "not performed",
+  "physicalHardware": "not measured"
+}

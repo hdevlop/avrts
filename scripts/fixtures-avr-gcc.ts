@@ -63,14 +63,15 @@ for (const source of sources) {
   const hex = join(dir, `${name}.hex`);
   const lst = join(dir, `${name}.lst`);
 
-  run(gcc, [`-mmcu=${MCU}`, "-Os", `-DF_CPU=${F_CPU}`, source, "-o", elf]);
+  const bootFlags = name === "programming-timing" ? ["-nostartfiles", "-Wl,--section-start=.bootloader=0x7e00"] : [];
+  run(gcc, [`-mmcu=${MCU}`, "-Os", `-DF_CPU=${F_CPU}`, ...bootFlags, source, "-o", elf]);
   run(objcopy, ["-O", "ihex", "-R", ".eeprom", elf, hex]);
 
   // Capture disassembly; objdump prints the .elf path it was given in the header,
   // so pass the same relative path the committed .lst already records.
   const dump = spawnSync(objdump, ["-d", elf], { encoding: "utf8" });
   if (dump.status !== 0) throw new Error(`avr-objdump -d ${elf} failed`);
-  await Bun.write(lst, dump.stdout);
+  await Bun.write(lst, dump.stdout.split("\n").map((line) => line.trimEnd()).join("\n"));
 
   console.log(`  ${name}: ${hex}, ${lst}`);
   built += 1;

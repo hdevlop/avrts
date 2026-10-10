@@ -453,7 +453,7 @@ class AVRRuntime implements AVR {
     this.timer2 = new Timer2(this.cpu, this.gpioPeripheral);
     this.usart0 = new Usart0(this.cpu);
     this.adc = new Adc(this.cpu);
-    this.eepromDevice = new Eeprom(this.cpu);
+    this.eepromDevice = new Eeprom(this.cpu, () => this.selfProgramming?.updateInterrupt());
     this.spiDevice = new Spi(this.cpu, this.gpioPeripheral);
     this.clockControl = new ClockControl(this.cpu, (divider) => this.applyClockDivider(divider));
     this.chipControl = new ChipControl(this.cpu, () => this.bootStartWord());
@@ -784,6 +784,7 @@ class AVRRuntime implements AVR {
 
   useHex(hex: string): this {
     const parsed = parseHex(hex);
+    this.selfProgramming.reset();
     this.programSource = hex;
     this.cpu.flash.set(parsed);
     this.reset();
@@ -812,14 +813,16 @@ class AVRRuntime implements AVR {
   }
 
   clearProgram(): this {
-    this.programSource = null;
-    this.cpu.flash.fill(0);
-    this.reset();
+    this.reset({ clearProgram: true });
     this.emit("clear");
     return this;
   }
 
   chipErase(): this {
+    // Host replacement owns the new images, so obsolete programming cannot
+    // commit into them after the erase/reset has returned.
+    this.selfProgramming.reset();
+    this.eepromDevice.reset();
     this.programSource = null;
     this.cpu.flash.fill(0xffff);
     this.cpu.invalidateDecodeCache();
@@ -836,6 +839,7 @@ class AVRRuntime implements AVR {
     if (this.programSource === null) return this;
     const hex = this.programSource;
     const parsed = parseHex(hex);
+    this.selfProgramming.reset();
     this.cpu.flash.set(parsed);
     this.reset();
     this.emit("load");
@@ -970,6 +974,9 @@ class AVRRuntime implements AVR {
     // until firmware clears their MCUSR bits by writing zero.
     const resetFlags = (mcusrFlags & (1 << PORF)) !== 0
       ? mcusrFlags : this.cpu.data[MCUSR]! | mcusrFlags;
+    if (options.clearProgram) this.selfProgramming.reset();
+    const pendingEeprom = this.eepromDevice.snapshot();
+    const pendingFlash = this.selfProgramming.snapshot();
     const preservedCycles = options.preserveCycles ? this.cpu.cycles : 0;
     if (options.clearProgram) {
       this.programSource = null;
@@ -990,15 +997,19 @@ class AVRRuntime implements AVR {
     this.spiDevice.reset();
     this.clockControl.reset();
     this.applyFuseClockOnReset();
-    this.applyStartupDelayOnReset();
     this.chipControl.reset();
     this.selfProgramming.reset();
     this.twiDevice.reset();
     this.powerReduction.reset();
     this.sleepControl.reset();
-    this.watchdog.reset();
     this.pcint.reset();
     this.exti.reset();
+    // Reset changes CPU state, not an already powered nonvolatile programming cycle.
+    if (pendingEeprom.pending) this.eepromDevice.restore({ ...pendingEeprom, masterWriteCycle: -1 });
+    if (pendingFlash.pendingOperation) this.selfProgramming.restore({ ...pendingFlash, pageBuffer: new Uint16Array(64).fill(0xffff) });
+    // Nonvolatile operations continue while the reset oscillator starts up.
+    this.applyStartupDelayOnReset();
+    this.watchdog.reset();
     this.setSerialText("");
     this.emit("reset");
     return this;
@@ -1418,6 +1429,8 @@ class AVRRuntime implements AVR {
     this.timeBaseCycles = this.cpu.cycles;
     this.clockHz = this.baseClockHz / normalized;
     this.watchdog.setClock(this.clockHz);
+    this.eepromDevice.setClock(this.clockHz);
+    this.selfProgramming.setClock(this.clockHz);
     this.timer2.setClock(this.clockHz);
   }
 

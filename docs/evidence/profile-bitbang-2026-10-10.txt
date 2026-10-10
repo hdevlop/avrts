@@ -1,0 +1,18 @@
+bitbang-crc (3,362,530 events, 5,000,000 cycles sampled, mode=fast)
+pc      opcode  mnemonic    kind         block                  count      cycles    events    cycle%
+-------------------------------------------------------------------------------------------------------
+0x0110  0x9a2d  SBI         instruction                       101,344     202,748      3.0%      4.1%
+0x0112  0x991c  SBIC        instruction                       101,344     202,744      3.0%      4.1%
+0x0116  0x9701  SBIW        instruction                       101,344     202,744      3.0%      4.1%
+0x0114  0x982d  CBI         instruction                       101,344     202,716      3.0%      4.1%
+0x0117  0xf799  BRNE        instruction                       101,344     190,080      3.0%      3.8%
+0x011d  0xff87  SBRS        instruction                       101,344     152,057      3.0%      3.0%
+0x010d  0xf409  BRNE        instruction                       101,344     150,472      3.0%      3.0%
+0x0115  0x9536  LSR         instruction                       101,344     101,372      3.0%      2.0%
+0x010b  0x2f4e  MOV         instruction                       101,344     101,368      3.0%      2.0%
+0x010c  0x2343  AND         instruction                       101,344     101,368      3.0%      2.0%
+0x0121  0x5091  SUBI        instruction                       101,344     101,368      3.0%      2.0%
+0x0111  0x0f22  ADD         instruction                       101,344     101,364      3.0%      2.0%
+0x0122  0xf7d1  BRNE        instruction                       101,343     190,071      3.0%      3.8%
+0x0135  0xf7a9  BRNE        instruction                       101,336     190,049      3.0%      3.8%
+0x012e  0xff57  SBRS        instruction                       101,336     151,843      3.0%      3.0%

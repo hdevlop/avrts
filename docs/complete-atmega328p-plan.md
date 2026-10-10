@@ -2,48 +2,60 @@
 
 # Complete ATmega328P Plan
 
-Status: draft roadmap. Goal is to close the gap between "validated Arduino-class
-simulator" (current state, see `real-peripheral-timing-plan.md`) and "complete
-ATmega328P", with every phase gated on external-oracle validation, not just
-internal tests.
+Status: historical implementation roadmap; phases 0-8 completed in July 2026.
+The phase records and dated measurements below describe that implementation
+sweep. Current remaining work is tracked in the
+[root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md).
 
-Definition of "complete" used here: every AVR-visible behavior of the chip —
-registers, flags, interrupts, timing, reset sources, memories, and the boot
-process — is either modeled faithfully or listed in a machine-checked
-limitations table. Electrical/analog behavior stays out of scope permanently.
+The coverage matrix classifies every register and interrupt vector; it does not
+prove every AVR-visible behavior matches silicon. Selected firmware results and
+timing probes have external-oracle coverage, with documented peer differences.
+[Behavioral limitations](limitations.md) are reviewed separately and are not
+machine-checked by the register matrix. Electrical/analog fidelity remains
+outside the project scope.
 
-## Current Evidence
+## Evidence and current proof boundaries
 
-- [x] Full instruction set with coverage harness; cycle-accurate CPU.
+The [2026-10-06 release preparation](evidence/release-0.1.2.md) records 2,743
+source tests, eight browser tests, package checks, five result fixtures in both
+references, native timing probes and Optiboot acceptance. The smaller counts in
+the phase records remain dated historical results.
+The subsequent [arithmetic result checks](evidence/arithmetic-results-2026-10-06.md)
+extend both result runners to seven scenarios; they do not change library code
+or establish complete silicon equivalence.
+
+- [x] Full instruction set with coverage harness and instruction-cycle tests.
 - [x] Timers 0/1/2 with PWM, ADC, EEPROM, watchdog, EXTI/PCINT, GPIO, sleep.
 - [x] Timed USART TX/RX, SPI master/slave, and TWI master/slave. TWI slave,
   SPI slave receive/SPIF, and USART RXC polling/data now have native simavr
   oracle rows.
 - [x] Snapshot/restore, debugger, browser runtime, compile integration.
-- [x] Known gaps (confirmed by grep/tests, 2026-07): USART RX Arduino
-  validation, timer2 async Arduino validation, comparator oracle row, and full
-  Optiboot flow.
+- [x] Former July validation gaps closed: USART RX Arduino validation (Phase 1),
+  Timer2 async Arduino validation (Phase 5), comparator oracle row (Phase 8),
+  and full Optiboot flow (Phase 6).
 
 ## Permanent Non-Goals
 
-- [ ] debugWIRE and on-chip debug hardware.
-- [ ] Electrical/analog fidelity: rise times, drive strength, bus contention,
+- debugWIRE and on-chip debug hardware.
+- Electrical/analog fidelity: rise times, drive strength, bus contention,
   capacitance, noise, temperature effects.
-- [ ] Exact power/current consumption figures (sleep *behavior* is in scope;
+- Exact power/current consumption figures (sleep *behavior* is in scope;
   microamps are not).
 
 ## Design Rules (carried over + new)
 
-- [ ] Every timed behavior is scheduled with `addClockEvent`; write hooks never
-  complete an operation instantly.
-- [ ] Every phase adds simavr oracle coverage before it is called done; avr8js
-  parity is added where avr8js models the feature.
-- [ ] Host-facing APIs follow the established handle pattern (`avr.serial`,
+- Schedule modeled transfer completion with `addClockEvent`; immediate EEPROM
+  behavior remains a documented gap in the root plan, rather than satisfying
+  this timing policy.
+- Add relevant external-oracle coverage where the reference models the feature.
+  Document disagreements and unsupported probes; internal boundary tests and
+  datasheet-based policies remain necessary when peers are incomplete.
+- Host-facing APIs follow the established handle pattern (`avr.serial`,
   `avr.spi`, `avr.twi`); slave-mode APIs extend those handles rather than
   adding new top-level objects.
-- [ ] Snapshot/restore support ships in the same phase as the feature, storing
-  remaining cycles, with optional fields for backward compatibility.
-- [ ] Fast blocks are never special-cased for a peripheral; the existing
+- Snapshot/restore support ships with the feature, preserving remaining time
+  in the relevant clock domain, with optional fields for backward compatibility.
+- Fast blocks are never special-cased for a peripheral; the existing
   event/listener guards remain the only mechanism.
 
 ## Phase 0 - Register & Vector Coverage Matrix (grounds the "100%" claim)
@@ -155,8 +167,9 @@ slave `SPDR`.
   master mode, SS driven low as input forces MSTR clear + SPIF (per
   datasheet), verified by test.
 - [x] SPIF read-clear sequence (read SPSR with SPIF set, then access SPDR) in
-  both modes — replaces the write-time-clear approximation where firmware
-  uses the documented sequence; keep write-time clear as fallback.
+  both modes. The subsequent [SPI status review](evidence/spi-status-sequence.md)
+  removed the unarmed access fallback: unread status flags are preserved, with
+  focused coverage for collisions and documented native simavr disagreements.
 - [x] DORD: byte-level model stays byte-level; expose bit order as metadata on
   the transfer callback and document that wire bit order is not serialized.
 - [x] Snapshot/restore of in-progress slave transfers.
@@ -198,6 +211,11 @@ validation added (2026-07-04): `examples/arduino-comparator-interrupt`
   `test/adc-internal.test.ts`.
 
 ## Phase 5 - Timer Completeness
+
+The immediate-latch/one-TOSC busy-clear description in this July phase record
+is historical. Current Timer2 transfers and timer/CPU flag stages are described
+in [limitations](limitations.md), [transfer evidence](evidence/timer2-async-transfers.md)
+and [signal evidence](evidence/timer2-async-signals.md).
 
 Status: core implemented (2026-07-03, Fable + Codex parallel slices). Covered
 by `test/phase5-timers.test.ts` and `test/phase5-timer-completeness.test.ts`:
@@ -363,12 +381,12 @@ Arduino library matrix.
 - [x] README rewritten: "complete ATmega328P (AVR-visible behavior)" with the
   non-goals table.
 
-## Suggested Order & Rationale
+## Original implementation order and rationale (historical)
 
 1. **Phase 0** first — cheap, and it converts "100%" from a slogan into a
    failing-test-driven checklist.
-2. **Phase 1 + 2** next — USART RX and Wire slave are the two things real
-   Arduino projects hit most often that currently don't work.
+2. **Phase 1 + 2** next — USART RX and Wire slave were common Arduino gaps
+   before this implementation sweep; both are now supported.
 3. **Phase 3 + 4** — small, independent, parallelizable.
 4. **Phase 5** — timer2 async matters for RTC/low-power sketches.
 5. **Phase 6** — biggest single phase; Optiboot is the payoff and the proof.
@@ -379,15 +397,16 @@ pattern, oracle harness) and carry low architectural risk. Phase 6 is the only
 phase that touches the CPU core (SPM, vector relocation) — plan a dedicated
 review there like the one done for peripheral timing.
 
-## Done Definition
+## Completion evidence and its limits
 
 - [x] A stock Optiboot hex boots, accepts a sketch over the simulated serial
   line, and runs it — no special-case code paths.
-- [x] Firmware cannot tell the difference between avrts and simavr for any
-  behavior in the Phase 0 matrix (oracle-verified for every timed feature; the
-  comparator rising-edge row was the last one, added in Phase 8). Remaining
-  cross-engine differences are simavr-model artifacts normalized with a printed
-  `NOTE` (e.g. SPI-slave echo byte, UART input-FIFO DOR0).
-- [x] Every remaining difference from silicon is a row in `docs/limitations.md`
-  guarded by the Phase 0 fidelity test (`test/register-matrix.test.ts`
-  cross-checks the limitations tables against the peripheral hooks both ways).
+- [x] Covered result fixtures and selected native timing probes pass with their
+  declared normalizations (for example SPI-slave host output and UART DOR0).
+  Agreement is specific to those scenarios; native SPI status, Timer1 overflow
+  and Timer2 synchronization differences are documented separately. Uncovered
+  behavior is not proven equivalent by the Phase 0 matrix.
+- [x] Register and vector classifications are cross-checked against installed
+  hooks and the unmodeled tables by `test/register-matrix.test.ts`. Behavioral
+  approximations are listed in `docs/limitations.md` and maintained by review;
+  neither complete silicon equivalence nor physical calibration is claimed.

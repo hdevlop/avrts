@@ -24,7 +24,14 @@ export interface GpioSnapshot {
   peripheralValue: Record<PortName, number>;
 }
 
+export interface TimerExternalClockSnapshot {
+  sampledHigh: boolean;
+  sampleRemainingCycles: number;
+  pulses: number[];
+}
+
 export interface Timer0Snapshot {
+  externalClock?: TimerExternalClockSnapshot;
   prescalerRemainder: number;
   /** Full divider phase for independently constructed Timer0 instances. */
   prescalerPhase?: number;
@@ -35,6 +42,7 @@ export interface Timer0Snapshot {
 }
 
 export interface Timer1Snapshot {
+  externalClock?: TimerExternalClockSnapshot;
   count: number;
   /** Full divider phase for independently constructed Timer1 instances. */
   prescalerPhase?: number;
@@ -129,6 +137,7 @@ export interface EepromSnapshot {
   cells: Uint8Array;
   /** Cycle at which EEMPE was last armed (-1 = not armed). */
   masterWriteCycle: number;
+  pending?: { address: number; value: number; mode: number; remainingMs: number };
 }
 
 /**
@@ -164,6 +173,8 @@ export interface SelfProgrammingSnapshot {
   pendingPageBase?: number;
   pendingLockValue?: number;
   pendingRemainingCycles?: number;
+  pendingRemainingMs?: number;
+  pendingPageData?: Uint16Array;
   commandClearRemainingCycles?: number;
 }
 
@@ -219,6 +230,7 @@ export interface ExternalInterruptsSnapshot {
 }
 
 export interface CpuSnapshot {
+  pendingStallCycles?: number;
   pc: number;
   /** SEI/RETI deferral when captured before the instruction's dispatch boundary. */
   interruptDeferred?: boolean;

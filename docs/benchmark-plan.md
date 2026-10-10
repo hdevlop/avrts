@@ -4,11 +4,16 @@ Companion to [`performance-summary.md`](performance-summary.md). That doc says
 *what* to optimize and why; this doc says *what to measure it against* — both the
 internal workload fixtures avrts runs and the external simulators to compare with.
 
+Status: active benchmark methodology and evidence. The consolidated implementation
+queue, dependencies and acceptance gates are in the
+[root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md).
+
 ## Why this exists
 
-The four original fixtures are synthetic (busy-wait / delay loops) and are
-**bulk-skipped** by FastBlocks, so they flatter the engine. `sensor-format` (a real
-sketch) already showed the wins don't generalize. The point of this plan is to
+The original fixtures include bulk-skipped idle/delay loops, one-shot serial
+startup output, and hardware PWM with an idle foreground. Their cycle rates
+need workload-specific interpretation. `sensor-format` (a real sketch) already
+showed the wins don't generalize. The point of this plan is to
 **stop guessing**: add fixtures whose instruction mixes are *distinct* (each one
 reveals something the others can't), and add external references so "fast" and
 "correct" are both measured against something real.
@@ -20,10 +25,12 @@ reveals something the others can't), and add external references so "fast" and
   `analog-write`, `sensor-format`, `float-math`, `bitbang-crc`, `isr-heavy`,
   `string-heavy`, `dsp-fixed`, `peripheral-bound`. The external comparison also
   has 12 workloads: it uses `peripheral-mix` instead of `serial-print-listener`.
+  The union has 13 labels; `serial-print-listener` shares the serial firmware.
 - Harness: `bun run bench` (floors), `bun run bench:compare` (vs avr8js — pass
   `--isolate` for any real-code claim, see Methodology), `bun run bench:result`
   (defaults to all final-state oracle scenarios vs avr8js:
-  `peripheral-mix`/`isr-heavy`/`string-heavy`/`dsp-fixed`/`peripheral-bound`;
+  `peripheral-mix`/`isr-heavy`/`string-heavy`/`dsp-fixed`/`peripheral-bound`/
+  `float-math`/`bitbang-crc`/`sensor-format`;
   use `--case` for one),
   `bun run profile:opcodes` (hot opcode / fast-block profile).
 - Local fixture toolchains verified on 2026-07-01: vendored `./avr-gcc/bin`
@@ -36,7 +43,7 @@ reveals something the others can't), and add external references so "fast" and
   the local simavr library. `bun run oracle:simavr:compare` performs a normalized
   avrts comparison for a simple firmware path (cycles, PC, SP, R0-R31, and SREG
   with the interrupt-enable bit masked by default). `bun run oracle:simavr:result`
-  runs the five result fixtures against native simavr and avrts. The result oracle
+  runs twelve result fixtures against native simavr and avrts. The result oracle
   compares result SRAM, selected registers, serial output, and TWI transcripts;
   `peripheral-mix` normalizes its old timer-threshold byte because timed TWI
   makes that threshold engine-dependent, and normalizes the PORTD PWM latch byte
@@ -57,6 +64,48 @@ reveals something the others can't), and add external references so "fast" and
   below; the strategy behind them is in [`performance-summary.md`](performance-summary.md).
 
 ---
+
+## Remaining result coverage and workload activity
+
+| Coverage | Workloads |
+| --- | --- |
+| Result comparisons against both avr8js and native simavr | `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`, `float-math`, `bitbang-crc`, `sensor-format` |
+| Additional completed result/state/waveform comparisons | `serial-print`, `analog-write`, `delay-blink`, `tight-loop` |
+| Shared-fixture delivery check completed | `serial-print-listener`, in fast and cycle-exact modes |
+
+The [arithmetic oracle slice](evidence/arithmetic-results-2026-10-06.md) covers
+32 float iterations and 32 bit-banged transfers, expected output bytes and both
+clock-edge counts, with four input patterns and no new normalizations. The
+[sensor-format slice](evidence/sensor-format-results-2026-10-10.md) adds complete
+history, exact UART output, counter wrap and PWM endpoints at five starting
+indices, also without new normalizations. The [completion batch](evidence/workload-results-2026-10-10.md) adds the four remaining cases and shared listener check. All twelve external fixtures now have result/state checks. Native phase-correct PWM GPIO traces remain explicitly unsupported in this build; SRAM/configuration still compare and both JS engines check all five waveforms.
+
+The current `serial-print` sketch prints `hello avrts` once at startup and then
+has an empty loop. Its listener variant uses the same sketch. After warmup,
+the timed region may contain only idle foreground/timer work, so neither rate
+establishes sustained USART transmission or listener delivery throughput.
+`analog-write` also has an empty loop, but its five hardware PWM outputs remain
+active; its appropriate fidelity check observes waveforms and timer state.
+The mixed and peripheral-bound fixtures run continuous batches in speed mode.
+Keep these activity classifications alongside any ratio, and add a separately
+named continuous serial fixture if sustained UART work is needed.
+
+### Current local toolchain boundary (2026-10-06)
+
+The vendored AVR compiler, installed Arduino AVR 1.8.8 core and its AVR GCC
+7.3.0 tools, and local MSYS2 compiler/simavr headers and static library are
+present. This is a file-availability check, not a rebuild or a native test run.
+The October fixture build used that core/toolchain with cached Uno core objects
+because Arduino CLI was unavailable; see the
+[fixture build record](../examples/arduino-peripheral-bound/README.md).
+
+Normal `bun run fixtures:arduino` regeneration requires a working Arduino CLI
+and installed Uno board core; `ARDUINO_CLI` can select the CLI. Both fixture
+scripts accept `AVR_GCC_BIN` for compiler/binutils selection. Native probes
+accept `SIMAVR_PREFIX` and `SIMAVR_CC`; the Windows harness uses local MSYS2
+bash when available. The existing CI does not provision these native dependencies.
+Committed HEX files let ordinary source/package tests run without rebuilding
+fixtures. Record the actual compiler flags and artifact digests on regeneration.
 
 ## Part A — Internal workload fixtures
 
@@ -156,11 +205,13 @@ below remain proposed options, separate from the installed speed harness.
   compares a simple firmware run against avrts for normalized core state. Raw
   peripheral I/O byte comparison remains opt-in (`--compare-dump`) because simavr
   and avrts intentionally differ in some input-latch/default-peripheral details.
-- [x] **simavr (native) as a full accuracy oracle.** Run the same `.hex` for the same
-  cycle budget and diff final RAM / register file / serial output against avrts.
+- [x] **simavr (native) result-fixture comparisons.** Run identical `.hex` inputs
+  to the declared completion marker within a bounded budget and compare result
+  RAM, selected registers and serial output against avrts.
   This is a *correctness* gate, not a speed one — it catches fidelity bugs the
   speed benchmarks are blind to. `bun run oracle:simavr:result` now covers
-  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, and `peripheral-bound`
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`,
+  `float-math`, `bitbang-crc`, and `sensor-format`
   via the native helper, with the documented `peripheral-mix` timer-threshold and PORTD
   PWM-latch normalizations.
 - [x] **simavr native peripheral-timing oracle.** `bun run oracle:simavr:timing`
@@ -218,6 +269,9 @@ below remain proposed options, separate from the installed speed harness.
 
 ## Part D — Recommended phasing
 
+This is the original fixture/tooling sequence. Its implementation milestones
+are recorded below; the October 10 completion record above closes result coverage and records current runtime/performance acceptance.
+
 1. **Add `float-math` + `bitbang-crc`** (Part A top two). *Done* — between them they
    cover two big real costs (soft-float helpers, bit-banged GPIO) and confirmed the
    remaining gap is not dispatch/decode but soft-float volume and IO-hook cost.
@@ -245,13 +299,15 @@ below remain proposed options, separate from the installed speed harness.
 - [x] Fix the `peripheral-mix` result mismatch (`bench:result`) so the mixed
   ADC/timer-interrupt/PWM/GPIO/I2C scenario matches avr8js.
 - [x] Make `bench:result` run every covered result-oracle scenario by default
-  (`peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`) while keeping
+  (`peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`,
+  `float-math`, `bitbang-crc`, `sensor-format`) while keeping
   `--case` for focused checks.
 - [x] Install/build native simavr locally and add `oracle:simavr` smoke/state-dump
   harness.
 - [x] Add `oracle:simavr:compare` normalized smoke comparison against avrts.
 - [x] Add `oracle:simavr:result` native simavr result-oracle matrix for
-  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, and `peripheral-bound`.
+  `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`,
+  `float-math`, `bitbang-crc`, and `sensor-format`.
 - [x] Decide whether the simavr-WASM ceiling is worth the one-time integration —
   not for the current non-JIT track; re-open only if "faster on real Arduino
   programs" becomes an explicit product goal.
@@ -259,6 +315,12 @@ below remain proposed options, separate from the installed speed harness.
 ## Recorded fixture evidence
 
 ### Current 2026-10-06 comparison
+
+The subsequent [arithmetic result-oracle follow-up](evidence/arithmetic-results-2026-10-06.md)
+rebuilds the float/bit-bang HEX files with finite result modes while keeping
+ordinary execution continuous. The speed records below use the preceding
+firmware images; no refreshed ratio is claimed for these two rebuilt images.
+Use recorded HEX digests and identical candidate firmware for new comparisons.
 
 The subsequent [peripheral event workload](evidence/peripheral-bound.md) adds
 the twelfth fixture and fifth result oracle. A separate isolated five-trial
@@ -297,7 +359,7 @@ release-review run; see `performance-summary.md`.
 | string-heavy    | 25,309,856    | 53,105,786     | 0.48x | real - String/format |
 | dsp-fixed       | 25,666,771    | 55,252,831     | 0.46x | real - FIR/MAC; poll-wait + umulhisi3 |
 
-Reading the active sample: performance is host- and workload-dependent.
+Reading this historical July sample: performance is host- and workload-dependent.
 `tight-loop` and `peripheral-mix` win, while the remaining workloads trail
 avr8js. Ten fixtures exceed 16M cycles/s in this matrix; `bitbang-crc` does not.
 A focused `--case bitbang-crc --repeats 10 --isolate` run measured 13,112,962
@@ -362,3 +424,14 @@ Correctness, verified 2026-07-03:
 - `bun run check:fast-core`, `bun run typecheck`, and `bun test` passed in that
   historical check; its full test run was 513 pass / 0 fail. Current source,
   browser and package evidence is in [0.1.2 preparation](evidence/release-0.1.2.md).
+
+## October 10 completion record
+
+All twelve external workload result/state cases and the shared listener check
+are implemented; see [current workload evidence](evidence/workload-results-2026-10-10.md).
+New EEPROM/flash programming and T0/T1 clock fidelity is covered by
+[runtime evidence](evidence/runtime-fidelity-2026-10-10.md).
+The [scope decisions](evidence/calibration-scope-2026-10-10.md) retain remaining
+physical/wire approximations explicitly. Earlier measurements above remain
+dated history; [current performance evidence](evidence/runtime-performance-2026-10-10.md)
+uses identical candidate firmware on both revisions.

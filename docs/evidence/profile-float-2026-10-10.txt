@@ -1,0 +1,18 @@
+float-math (3,191,421 events, 5,000,000 cycles sampled, mode=fast)
+pc      opcode  mnemonic    kind         block                  count      cycles    events    cycle%
+-------------------------------------------------------------------------------------------------------
+0x04f9  0xf04a  BRMI        instruction                        23,659      38,816      0.7%      0.8%
+0x04f8  0x2388  AND         instruction                        23,659      23,659      0.7%      0.5%
+0x0482  0xfd57  SBRC        fast-block   fp-split3-common      21,242     403,598      0.7%      8.1%
+0x03db  0xf788  BRCC        instruction                        20,208      37,910      0.6%      0.8%
+0x03d5  0xf020  BRCS        instruction                        20,208      29,862      0.6%      0.6%
+0x03d1  0x1762  CP          instruction                        20,208      20,224      0.6%      0.4%
+0x03cd  0x0f66  ADD         instruction                        20,208      20,216      0.6%      0.4%
+0x03d0  0x1fbb  ADC         instruction                        20,208      20,216      0.6%      0.4%
+0x03d3  0x0784  CPC         instruction                        20,208      20,216      0.6%      0.4%
+0x03d4  0x07ba  CPC         instruction                        20,208      20,216      0.6%      0.4%
+0x03d2  0x0773  CPC         instruction                        20,208      20,212      0.6%      0.4%
+0x03da  0x1fee  ADC         instruction                        20,208      20,212      0.6%      0.4%
+0x03ce  0x1f77  ADC         instruction                        20,208      20,208      0.6%      0.4%
+0x03cf  0x1f88  ADC         instruction                        20,208      20,208      0.6%      0.4%
+0x0553  0xf758  BRCC        instruction                        18,524      36,218      0.6%      0.7%

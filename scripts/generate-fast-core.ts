@@ -939,7 +939,23 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   {
     name: "spm",
     guard: "opcode === 0x95e8",
-    body: ["this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;"],
+    body: [
+      "this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;",
+      "if (this.hasInstructionBarrier) {",
+      "  this.serviceInterrupts();",
+      "  this.runTicksUntil(target);",
+      "  return;",
+      "}",
+    ],
+    profiledBody: [
+      "this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;",
+      "if (this.hasInstructionBarrier) {",
+      "  this.serviceInterrupts();",
+      '  listener(this.profileState(pc, opcode, before, "instruction"));',
+      "  this.runProfiledTicks(target, listener);",
+      "  return;",
+      "}",
+    ],
   },
   {
     name: "break",

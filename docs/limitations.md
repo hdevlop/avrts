@@ -1,9 +1,13 @@
 # Simulator Limitations
 
-This file is machine-checked: `test/register-matrix.test.ts` asserts that every
-ATmega328P IO register and interrupt vector is either modeled, plain storage,
-or listed here. Removing a row without modeling the register (or vice versa)
-fails the test. Planned phases refer to `docs/complete-atmega328p-plan.md`.
+The unmodeled register/vector tables are machine-checked:
+`test/register-matrix.test.ts` asserts that every ATmega328P IO register and
+interrupt vector is classified as modeled, plain storage, reserved, or listed
+here as unmodeled. Inconsistent table rows and installed hooks fail the test.
+The behavioral paragraphs below are maintained by review, not by that matrix.
+Current phase assignments for every known limitation are in the
+[root remaining-work inventory](../AVRTS-REMAINING-WORK-PLAN.md#11-full-limitation-disposition-inventory).
+The [chip-level roadmap](complete-atmega328p-plan.md) records completed historical phases.
 
 ## Unmodeled registers
 
@@ -60,12 +64,17 @@ Not machine-checked; keep in sync with the implementation by review.
   Input synchronizer stages, short-pulse filtering and low-level pulse retention
   through physical oscillator startup are not calibrated. See
   [external interrupt sleep evidence](evidence/external-interrupt-sleep.md).
-- **EEPROM** implements reads, protected writes, programming modes, and ready
-  interrupts, but completes reads/writes immediately rather than modeling CPU
-  read stalls and millisecond programming latency.
+- **EEPROM** latches firmware programming address/data/mode and holds EEPE busy
+  for deterministic typical durations: 3.4 ms atomic erase/write, 1.8 ms erase-only
+  or write-only. Reads stall the CPU four clocks; accepted writes stall two.
+  Reserved mode and busy restarts are rejected. Ready IRQs, SPM exclusion,
+  powered reset, clock changes, sleep and pending snapshots are covered.
+  Host storage helpers remain immediate. Supply-loss corruption and wear are
+  excluded; these typical durations are not a hardware guarantee. See the
+  [runtime fidelity evidence](evidence/runtime-fidelity-2026-10-10.md).
 - **CLKPR** changes the runtime's effective `clockHz` after the CLKPCE-protected
   write protocol. CPU-clocked peripherals follow that effective clock;
-  watchdog timeouts and asynchronous Timer2 preserve their remaining wall time.
+  watchdog, EEPROM/flash programming and asynchronous Timer2 preserve remaining wall time.
   Host-frame pacing uses the divided effective clock.
 - **PRR** gates the modeled peripheral clocks for ADC, USART0, SPI, TWI, and
   timers 0/1/2 by pausing scheduled operations and timer counters. The register
@@ -81,7 +90,11 @@ Not machine-checked; keep in sync with the implementation by review.
   commits, and OCR1A/B PWM buffering at the selected TOP/BOTTOM boundary are
   modeled. ICR1 is unbuffered and writable only when it defines TOP; lowering
   it below the counter can miss TOP until the counter wraps.
-  Timer0/Timer1 external T0/T1 clock inputs are not wired.
+  Timer0/Timer1 accept external falling/rising clocks on PD4/PD5 through the
+  existing logical pins. Integer-phase sampling uses the next I/O clock plus
+  two pipeline clocks; same-cycle pulses are ignored. PRR, deep sleep and mux
+  changes discard disabled-domain edges, and snapshots retain pending stages.
+  Fractional edge phases and electrical input thresholds are not modeled.
 - **Timer prescaler phase** models a shared free-running ten-bit Timer0/Timer1
   divider, with CS-independent phase, GTCCR reset/hold, sleep clock gating and
   snapshots. Counter PRR gates leave the common divider running. The exact
@@ -146,7 +159,16 @@ Not machine-checked; keep in sync with the implementation by review.
   lock-bit programming, boot-lock enforcement for cross-section SPM/LPM access,
   LPM signature/fuse/lock reads, and SPM_READY interrupts. Stock Optiboot
   STK500v1 programming is validated with avrts and a native simavr oracle.
-  Flash wear and exact millisecond erase/write latency are not modeled.
+  Erase/write operations use a deterministic 4.1 ms duration from the standard
+  datasheet's 3.7..4.5 ms range; the command window remains four CPU clocks.
+  The fixed RWW/NRWW boundary is word 0x3800, independently of BOOTSZ. NRWW
+  programming stalls all fetches; RWW programming permits NRWW execution and
+  blocks RWW fetch/LPM until completion and RWWSRE. Invalid blocked reads use
+  deterministic zero rather than undefined silicon results. Writes clear bits
+  only; erase restores ones. Programming continues through powered reset,
+  startup delay, sleep, CLKPR and snapshots. Flash wear and voltage/temperature
+  dependent programming times remain excluded. The local native build verifies
+  programming data but lacks these busy durations.
 - **Sleep** gates Timer0/Timer1, SPI, USART, ADC, and Timer2 by sleep mode, starts ADC
   conversion on idle / ADC noise-reduction sleep entry, keeps asynchronous Timer2
   running in ADC noise-reduction / power-save / extended-standby, reapplies gating after
@@ -167,3 +189,18 @@ Not machine-checked; keep in sync with the implementation by review.
 - Electrical/analog fidelity: rise times, drive strength, bus contention,
   capacitance, noise, temperature effects.
 - Exact power/current consumption figures.
+
+## Retained scope decisions (2026-10-10)
+
+The [calibration and scope record](evidence/calibration-scope-2026-10-10.md)
+resolves the remaining queue without advertising unimplemented fidelity.
+Timer2's asynchronous clear/acknowledgement handshake, repeated sleep within
+one TOSC period, PSRASY crossing, and externally driven TOSC/EXCLK remain
+explicitly deferred. Existing digital transfers, synchronization, wake reads,
+clock phase and RTC behavior remain supported. A configurable external source
+requires a concrete client and source-switch/phase contract before implementation.
+EXTI sub-clock pulses, comparator propagation/settling and physical oscillator
+startup remain uncalibrated. Wire-level USART/SPI/TWI, electrical GPIO contention,
+OSCCAL frequency effects and DIDR input-buffer suppression remain outside the
+selected byte-level/logical-pin contract. Existing host injection APIs remain
+available; no full physical bus model is implied.

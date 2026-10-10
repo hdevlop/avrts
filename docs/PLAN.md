@@ -1,5 +1,10 @@
 # Review Fix Plan
 
+Status: completed historical review. All six items below were closed through
+2026-07-13; their original problem descriptions are preserved as history.
+Use the [root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md) for current
+tasks and [release preparation](evidence/release-0.1.2.md) for later evidence.
+
 ## Implementation status (through 2026-07-13)
 
 - [x] Item 1: host loop lifecycle fixed and covered for interval, raf, and restore paths.

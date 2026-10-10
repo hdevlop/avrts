@@ -969,6 +969,11 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.executeSpmInstruction(pc);
         cpu.pc += 1;
         cpu.cycles += 4;
+        if (cpu.hasInstructionBarrier) {
+          cpu.serviceInterrupts();
+          cpu.runTicksUntil(target);
+          return;
+        }
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;
@@ -1963,6 +1968,12 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.executeSpmInstruction(pc);
         cpu.pc += 1;
         cpu.cycles += 4;
+        if (cpu.hasInstructionBarrier) {
+          cpu.serviceInterrupts();
+          listener(cpu.profileState(pc, opcode, before, "instruction"));
+          cpu.runProfiledTicks(target, listener);
+          return;
+        }
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;

@@ -1,5 +1,5 @@
 
-examples\delay-blink\build\delay-blink.ino.elf:     file format elf32-avr
+examples/delay-blink/build/delay-blink.ino.elf:     file format elf32-avr
 
 
 Disassembly of section .text:
@@ -32,8 +32,12 @@ Disassembly of section .text:
   60:	0c 94 6e 00 	jmp	0xdc	; 0xdc <__bad_interrupt>
   64:	0c 94 6e 00 	jmp	0xdc	; 0xdc <__bad_interrupt>
 
-00000068 <port_to_mode_PGM>:
-  68:	00 00 00 00 24 00 27 00 2a 00                       ....$.'.*.
+00000068 <__trampolines_end>:
+  68:	00 00       	nop
+  6a:	00 00       	nop
+  6c:	24 00       	.word	0x0024	; ????
+  6e:	27 00       	.word	0x0027	; ????
+  70:	2a 00       	.word	0x002a	; ????
 
 00000072 <port_to_output_PGM>:
   72:	00 00 00 00 25 00 28 00 2b 00                       ....%.(.+.
@@ -44,7 +48,7 @@ Disassembly of section .text:
 
 00000090 <digital_pin_to_bit_mask_PGM>:
   90:	01 02 04 08 10 20 40 80 01 02 04 08 10 20 01 02     ..... @...... ..
-  a0:	04 08 10 20                                         ... 
+  a0:	04 08 10 20                                         ...
 
 000000a4 <digital_pin_to_timer_PGM>:
   a4:	00 00 00 08 00 02 01 00 00 03 04 07 00 00 00 00     ................
@@ -68,11 +72,11 @@ Disassembly of section .text:
   cc:	1d 92       	st	X+, r1
 
 000000ce <.do_clear_bss_start>:
-  ce:	a9 30       	cpi	r26, 0x09	; 9
+  ce:	aa 30       	cpi	r26, 0x0A	; 10
   d0:	b2 07       	cpc	r27, r18
   d2:	e1 f7       	brne	.-8      	; 0xcc <.do_clear_bss_loop>
   d4:	0e 94 5d 01 	call	0x2ba	; 0x2ba <main>
-  d8:	0c 94 cc 01 	jmp	0x398	; 0x398 <_exit>
+  d8:	0c 94 f9 01 	jmp	0x3f2	; 0x3f2 <_exit>
 
 000000dc <__bad_interrupt>:
   dc:	0c 94 00 00 	jmp	0	; 0x0 <__vectors>
@@ -148,10 +152,10 @@ Disassembly of section .text:
 00000170 <micros>:
  170:	3f b7       	in	r19, 0x3f	; 63
  172:	f8 94       	cli
- 174:	80 91 05 01 	lds	r24, 0x0105	; 0x800105 <timer0_overflow_count>
- 178:	90 91 06 01 	lds	r25, 0x0106	; 0x800106 <timer0_overflow_count+0x1>
- 17c:	a0 91 07 01 	lds	r26, 0x0107	; 0x800107 <timer0_overflow_count+0x2>
- 180:	b0 91 08 01 	lds	r27, 0x0108	; 0x800108 <timer0_overflow_count+0x3>
+ 174:	80 91 06 01 	lds	r24, 0x0106	; 0x800106 <timer0_overflow_count>
+ 178:	90 91 07 01 	lds	r25, 0x0107	; 0x800107 <timer0_overflow_count+0x1>
+ 17c:	a0 91 08 01 	lds	r26, 0x0108	; 0x800108 <timer0_overflow_count+0x2>
+ 180:	b0 91 09 01 	lds	r27, 0x0109	; 0x800109 <timer0_overflow_count+0x3>
  184:	26 b5       	in	r18, 0x26	; 38
  186:	a8 9b       	sbis	0x15, 0	; 21
  188:	05 c0       	rjmp	.+10     	; 0x194 <micros+0x24>
@@ -246,11 +250,11 @@ Disassembly of section .text:
  236:	9f 93       	push	r25
  238:	af 93       	push	r26
  23a:	bf 93       	push	r27
- 23c:	80 91 01 01 	lds	r24, 0x0101	; 0x800101 <timer0_millis>
- 240:	90 91 02 01 	lds	r25, 0x0102	; 0x800102 <timer0_millis+0x1>
- 244:	a0 91 03 01 	lds	r26, 0x0103	; 0x800103 <timer0_millis+0x2>
- 248:	b0 91 04 01 	lds	r27, 0x0104	; 0x800104 <timer0_millis+0x3>
- 24c:	30 91 00 01 	lds	r19, 0x0100	; 0x800100 <timer0_fract>
+ 23c:	80 91 02 01 	lds	r24, 0x0102	; 0x800102 <timer0_millis>
+ 240:	90 91 03 01 	lds	r25, 0x0103	; 0x800103 <timer0_millis+0x1>
+ 244:	a0 91 04 01 	lds	r26, 0x0104	; 0x800104 <timer0_millis+0x2>
+ 248:	b0 91 05 01 	lds	r27, 0x0105	; 0x800105 <timer0_millis+0x3>
+ 24c:	30 91 01 01 	lds	r19, 0x0101	; 0x800101 <timer0_fract>
  250:	23 e0       	ldi	r18, 0x03	; 3
  252:	23 0f       	add	r18, r19
  254:	2d 37       	cpi	r18, 0x7D	; 125
@@ -258,22 +262,22 @@ Disassembly of section .text:
  258:	01 96       	adiw	r24, 0x01	; 1
  25a:	a1 1d       	adc	r26, r1
  25c:	b1 1d       	adc	r27, r1
- 25e:	20 93 00 01 	sts	0x0100, r18	; 0x800100 <timer0_fract>
- 262:	80 93 01 01 	sts	0x0101, r24	; 0x800101 <timer0_millis>
- 266:	90 93 02 01 	sts	0x0102, r25	; 0x800102 <timer0_millis+0x1>
- 26a:	a0 93 03 01 	sts	0x0103, r26	; 0x800103 <timer0_millis+0x2>
- 26e:	b0 93 04 01 	sts	0x0104, r27	; 0x800104 <timer0_millis+0x3>
- 272:	80 91 05 01 	lds	r24, 0x0105	; 0x800105 <timer0_overflow_count>
- 276:	90 91 06 01 	lds	r25, 0x0106	; 0x800106 <timer0_overflow_count+0x1>
- 27a:	a0 91 07 01 	lds	r26, 0x0107	; 0x800107 <timer0_overflow_count+0x2>
- 27e:	b0 91 08 01 	lds	r27, 0x0108	; 0x800108 <timer0_overflow_count+0x3>
+ 25e:	20 93 01 01 	sts	0x0101, r18	; 0x800101 <timer0_fract>
+ 262:	80 93 02 01 	sts	0x0102, r24	; 0x800102 <timer0_millis>
+ 266:	90 93 03 01 	sts	0x0103, r25	; 0x800103 <timer0_millis+0x1>
+ 26a:	a0 93 04 01 	sts	0x0104, r26	; 0x800104 <timer0_millis+0x2>
+ 26e:	b0 93 05 01 	sts	0x0105, r27	; 0x800105 <timer0_millis+0x3>
+ 272:	80 91 06 01 	lds	r24, 0x0106	; 0x800106 <timer0_overflow_count>
+ 276:	90 91 07 01 	lds	r25, 0x0107	; 0x800107 <timer0_overflow_count+0x1>
+ 27a:	a0 91 08 01 	lds	r26, 0x0108	; 0x800108 <timer0_overflow_count+0x2>
+ 27e:	b0 91 09 01 	lds	r27, 0x0109	; 0x800109 <timer0_overflow_count+0x3>
  282:	01 96       	adiw	r24, 0x01	; 1
  284:	a1 1d       	adc	r26, r1
  286:	b1 1d       	adc	r27, r1
- 288:	80 93 05 01 	sts	0x0105, r24	; 0x800105 <timer0_overflow_count>
- 28c:	90 93 06 01 	sts	0x0106, r25	; 0x800106 <timer0_overflow_count+0x1>
- 290:	a0 93 07 01 	sts	0x0107, r26	; 0x800107 <timer0_overflow_count+0x2>
- 294:	b0 93 08 01 	sts	0x0108, r27	; 0x800108 <timer0_overflow_count+0x3>
+ 288:	80 93 06 01 	sts	0x0106, r24	; 0x800106 <timer0_overflow_count>
+ 28c:	90 93 07 01 	sts	0x0107, r25	; 0x800107 <timer0_overflow_count+0x1>
+ 290:	a0 93 08 01 	sts	0x0108, r26	; 0x800108 <timer0_overflow_count+0x2>
+ 294:	b0 93 09 01 	sts	0x0109, r27	; 0x800109 <timer0_overflow_count+0x3>
  298:	bf 91       	pop	r27
  29a:	af 91       	pop	r26
  29c:	9f 91       	pop	r25
@@ -373,13 +377,46 @@ Disassembly of section .text:
  384:	80 e0       	ldi	r24, 0x00	; 0
  386:	0e 94 70 00 	call	0xe0	; 0xe0 <digitalWrite.constprop.0>
  38a:	0e 94 dd 00 	call	0x1ba	; 0x1ba <delay.constprop.1>
- 38e:	20 97       	sbiw	r28, 0x00	; 0
- 390:	a1 f3       	breq	.-24     	; 0x37a <main+0xc0>
- 392:	0e 94 00 00 	call	0	; 0x0 <__vectors>
- 396:	f1 cf       	rjmp	.-30     	; 0x37a <main+0xc0>
+ 38e:	80 91 ff 02 	lds	r24, 0x02FF	; 0x8002ff <__bss_end+0x1f5>
+ 392:	82 34       	cpi	r24, 0x42	; 66
+ 394:	49 f5       	brne	.+82     	; 0x3e8 <main+0x12e>
+ 396:	80 91 00 01 	lds	r24, 0x0100	; 0x800100 <_edata>
+ 39a:	8f 5f       	subi	r24, 0xFF	; 255
+ 39c:	80 93 00 01 	sts	0x0100, r24	; 0x800100 <_edata>
+ 3a0:	82 30       	cpi	r24, 0x02	; 2
+ 3a2:	11 f5       	brne	.+68     	; 0x3e8 <main+0x12e>
+ 3a4:	f8 94       	cli
+ 3a6:	87 ea       	ldi	r24, 0xA7	; 167
+ 3a8:	80 93 00 03 	sts	0x0300, r24	; 0x800300 <__bss_end+0x1f6>
+ 3ac:	80 91 00 01 	lds	r24, 0x0100	; 0x800100 <_edata>
+ 3b0:	80 93 01 03 	sts	0x0301, r24	; 0x800301 <__bss_end+0x1f7>
+ 3b4:	85 b1       	in	r24, 0x05	; 5
+ 3b6:	80 93 02 03 	sts	0x0302, r24	; 0x800302 <__bss_end+0x1f8>
+ 3ba:	84 b1       	in	r24, 0x04	; 4
+ 3bc:	80 93 03 03 	sts	0x0303, r24	; 0x800303 <__bss_end+0x1f9>
+ 3c0:	84 b5       	in	r24, 0x24	; 36
+ 3c2:	80 93 04 03 	sts	0x0304, r24	; 0x800304 <__bss_end+0x1fa>
+ 3c6:	85 b5       	in	r24, 0x25	; 37
+ 3c8:	80 93 05 03 	sts	0x0305, r24	; 0x800305 <__bss_end+0x1fb>
+ 3cc:	e6 e0       	ldi	r30, 0x06	; 6
+ 3ce:	f3 e0       	ldi	r31, 0x03	; 3
+ 3d0:	11 92       	st	Z+, r1
+ 3d2:	e3 31       	cpi	r30, 0x13	; 19
+ 3d4:	83 e0       	ldi	r24, 0x03	; 3
+ 3d6:	f8 07       	cpc	r31, r24
+ 3d8:	d9 f7       	brne	.-10     	; 0x3d0 <main+0x116>
+ 3da:	82 e5       	ldi	r24, 0x52	; 82
+ 3dc:	80 93 13 03 	sts	0x0313, r24	; 0x800313 <__bss_end+0x209>
+ 3e0:	8c e5       	ldi	r24, 0x5C	; 92
+ 3e2:	80 93 14 03 	sts	0x0314, r24	; 0x800314 <__bss_end+0x20a>
+ 3e6:	ff cf       	rjmp	.-2      	; 0x3e6 <main+0x12c>
+ 3e8:	20 97       	sbiw	r28, 0x00	; 0
+ 3ea:	39 f2       	breq	.-114    	; 0x37a <main+0xc0>
+ 3ec:	0e 94 00 00 	call	0	; 0x0 <__vectors>
+ 3f0:	c4 cf       	rjmp	.-120    	; 0x37a <main+0xc0>
 
-00000398 <_exit>:
- 398:	f8 94       	cli
+000003f2 <_exit>:
+ 3f2:	f8 94       	cli
 
-0000039a <__stop_program>:
- 39a:	ff cf       	rjmp	.-2      	; 0x39a <__stop_program>
+000003f4 <__stop_program>:
+ 3f4:	ff cf       	rjmp	.-2      	; 0x3f4 <__stop_program>

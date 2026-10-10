@@ -1,13 +1,20 @@
 # Real Peripheral Timing Plan
 
-Status: implemented in avrts; local TypeScript, Bun test, and native simavr timing
-oracle gates pass.
+Status: completed historical timing implementation. The original findings and
+phase records below describe the initial pass, not the current missing-feature
+list. Later source, browser, package and selected native-oracle results are
+recorded in [release preparation](evidence/release-0.1.2.md). Current work is in
+the [root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md), with approximations
+listed in [limitations](limitations.md).
 
 Goal: make USART, SPI, and TWI behave like timed AVR peripherals, not instant
 host callbacks. Firmware that polls flags, waits on interrupts, measures elapsed
 cycles, or races against a transfer should see hardware-like timing.
 
 ## Original Evidence
+
+These were the pre-implementation findings. USART, SPI and TWI transfers now
+have scheduled completion; the present-tense wording below is historical.
 
 - [x] USART0 transmit is currently functional but immediate: writing `UDR0`
   emits a byte and sets ready/complete flags right away.
@@ -40,8 +47,10 @@ cycles, or races against a transfer should see hardware-like timing.
 - [x] Original pass did not pace RX; later Phase 1 USART work superseded this
   and now paces host-injected RX through the simulated wire/FIFO.
 
-These should remain documented simulator limitations unless a later plan targets
-them directly.
+Bootloader, fuses/lock bits, SPM and injectable brown-out reset were subsequently
+implemented by the [chip-level roadmap](complete-atmega328p-plan.md). Electrical
+behavior and exact power consumption remain outside scope. Current SPM timing,
+wake and wire-level limitations are recorded in `limitations.md`.
 
 ## Design Rules
 
