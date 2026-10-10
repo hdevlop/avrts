@@ -1,6 +1,6 @@
 # AVRts remaining work plan
 
-Created: 2026-10-06. Updated: 2026-10-10. Status: all local implementation phases selected below are implemented; source/browser/native/package acceptance passed; final archive preparation is in progress. Physical/wire extensions have explicit retained or deferred scope.
+Created: 2026-10-06. Updated: 2026-10-10. Status: all local implementation phases selected below are implemented; local implementation, verification and artifact preparation complete. Git/CI/npm publication and physical calibration remain separate external gates. Physical/wire extensions have explicit retained or deferred scope.
 
 This is the root entry point for all known remaining work. It consolidates the existing plans, behavioral limitations, benchmark gaps, and release obligations. It does not promise that a simulator can be proven free of every unknown bug. Completion means that the selected scope has reproducible evidence and that every remaining limitation has an explicit disposition.
 
@@ -52,7 +52,7 @@ Resolve discrepancies against source and reproducible evidence, then update the 
 | 7. Measured performance improvements | After relevant correctness gates | 1; rerun after runtime changes | Profile-backed improvements without lost behavior |
 | 8. Release acceptance and publication | For each chosen release | Selected phases and current limitations documented | Verified artifact and separate publication evidence |
 
-Phases 0-4 are implemented locally. All twelve external workloads and the shared listener path are covered. Phase 5 retains the datasheet Timer1 TOP rule with a compiled disagreement probe; other uncalibrated models are explicitly dispositioned in Phase 6. Final source, browser, native, performance and package checks passed. Archive preparation and the local handoff are being recorded.
+Phases 0-4 are implemented locally. All twelve external workloads and the shared listener path are covered. Phase 5 retains the datasheet Timer1 TOP rule with a compiled disagreement probe; other uncalibrated models are explicitly dispositioned in Phase 6. Final source, browser, native, performance and package checks passed. The final archive and local handoff are recorded in [release candidate evidence](docs/evidence/release-candidate-2026-10-10.md).
 
 Phases 2-6 are a fidelity roadmap, not an assertion that every item must delay an already prepared release. Define the scope of each release before implementation. A release can retain documented approximations; it must not advertise them as completed fidelity work.
 
@@ -267,19 +267,19 @@ Rollback: revert the optimization and regenerate the prior core where necessary.
 
 ## 13. Phase 8 — release readiness and publication
 
-Status: selected the still-unpublished 0.1.2 candidate, including all new runtime changes. Registry lookup returned 0.0.0-stage, 0.1.0 and 0.1.1; 0.1.2 remains available. Source/browser/native/package gates passed; archive preparation is in progress. See [local acceptance receipt](docs/evidence/local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication are separate external gates.
+Status: selected the still-unpublished 0.1.2 candidate, including all new runtime changes. Registry lookup returned 0.0.0-stage, 0.1.0 and 0.1.1; 0.1.2 remains available. Source/browser/native/package gates, clean archive preparation, exact-archive consumer smoke and npm dry run passed. See [local acceptance receipt](docs/evidence/local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication are separate external gates.
 
 Targets: [package manifest](package.json), [changelog](CHANGELOG.md), [README](README.md), release procedure/evidence, package smoke and CI.
 
 - [x] Select a release scope. Decide whether to publish the already prepared `0.1.2` contents or include new runtime changes. Confirm npm registry state and version availability before choosing the final version.
-- [ ] Record the intended source commit and changelog. Update limitations and consumer-facing docs for the behavior that actually ships.
+- [x] Record the intended source commit and changelog. Update limitations and consumer-facing docs for the behavior that actually ships.
 - [x] Run the source, browser, package and native gates below. Record individual outcomes and environmental blockers accurately; native dependencies are currently local, not provided by the standard CI matrix.
-- [ ] Inspect packed exports, declarations, worker import, package file list and consumer smoke. Verify the artifact is built from the selected clean commit.
-- [ ] Repack and record filename, file count, SHA-256, npm SHA-1/integrity and package metadata. The prepared archive identity is reusable only if the packed contents are identical; runtime, README or changelog changes can invalidate it.
-- [ ] Verify CI for the exact release commit. A green result for the baseline cannot prove a later revision.
-- [ ] Complete `npm.cmd publish --dry-run` and inspect the concrete package before requesting any missing publication authorization.
-- [ ] Publish only when explicitly authorized and authentication/ownership are ready. Preserve `prepublishOnly`; never bypass the checks or expose `.npmrc` credentials.
-- [ ] After actual publication, verify registry version/integrity, install the published package in a clean consumer, run import/worker smoke, create the matching annotated tag according to the release procedure, and record provenance where available.
+- [x] Inspect packed exports, declarations, worker import, package file list and consumer smoke. Verify the artifact is built from the selected clean commit.
+- [x] Repack and record filename, file count, SHA-256, npm SHA-1/integrity and package metadata. The prepared archive identity is reusable only if the packed contents are identical; runtime, README or changelog changes can invalidate it.
+- [ ] External gate: verify CI for the exact release commit after an authorized push. Not run for the local candidate. A green result for the baseline cannot prove a later revision.
+- [x] Complete `npm.cmd publish --dry-run` and inspect the concrete package before requesting any missing publication authorization.
+- [ ] External gate: publish only when explicitly authorized and authentication/ownership are ready. Preserve `prepublishOnly`; never bypass the checks or expose `.npmrc` credentials.
+- [ ] External gate: after actual publication, verify registry version/integrity, install the published package in a clean consumer, run import/worker smoke, create the matching annotated tag according to the release procedure, and record provenance where available.
 
 Acceptance states must be separate: source validated; browser validated; native probes validated; artifact prepared; Git/CI verified; npm published; published consumer validated. Do not report a dry run, local archive, Git push, or green workflow as npm publication.
 
@@ -329,10 +329,10 @@ Consider a reproducible native-oracle CI lane after the toolchain is pinned and 
 - [x] Documentation distinguishes historical completion, current approximations, native disagreement, and physical calibration.
 - [x] Any runtime change preserves snapshots and public APIs, or includes a deliberate versioned migration.
 - [x] Performance claims identify runtime, host, firmware, methodology, raw samples and useful work where relevant.
-- [ ] Final archive preparation records the exact clean source commit and artifact; publication remains separate.
+- [x] Final archive preparation records clean source commit `5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf`, the 85-file archive identity and exact consumer smoke; publication remains separate.
 - [x] Unrelated user changes are preserved. Rollbacks use reviewed reversions of the selected changes, not destructive resets.
 
-For each completed batch, report what changed, which meaningful checks passed, what remains, and the next unchecked task. Continue through the selected scope rather than stopping after discovering a single additional bug.
+The selected local scope is complete. Future work requires a separately selected wire/physical extension or explicit publication authorization; the user does not need to request another routine continuation.
 
 ## 16. Current acceptance (2026-10-10)
 
@@ -344,3 +344,9 @@ contracts. Native programming-duration and Timer1 TOP differences, unavailable
 phase-correct PWM GPIO traces, and the peripheral-bound 5-6% performance cost
 remain explicit in the evidence. Remaining wire/physical extensions are retained
 or deferred in the scope record, not pending coding promises.
+
+The [final candidate record](docs/evidence/release-candidate-2026-10-10.md)
+identifies source commit `5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf`, archive
+checksums, exact-archive consumer acceptance and npm dry run. It distinguishes
+these passed local gates from unrun exact-commit CI, npm publication and
+physical measurements.

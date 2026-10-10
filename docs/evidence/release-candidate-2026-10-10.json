@@ -1,0 +1,465 @@
+{
+  "date": "2026-10-10",
+  "sourceCommit": "5a8480a48621f2c4bdad3c0a594c3ce08e4dc9bf",
+  "sourceWorktree": "C:/Users/hdevlop/AppData/Local/Temp/avrts-release-candidate-20261010",
+  "sourceBranch": "codex/remaining-work-candidate",
+  "sourceWorktreeCleanAtPack": true,
+  "archive": "out/release-2026-10-10/hdevlop-avrts-0.1.2.tgz",
+  "sha256": "f447f3c751a4bf80b50b9967342fcaedd2ae58c6bb9b9d4365f0e137616e6d3d",
+  "metadata": {
+    "id": "@hdevlop/avrts@0.1.2",
+    "name": "@hdevlop/avrts",
+    "version": "0.1.2",
+    "size": 297042,
+    "unpackedSize": 1597493,
+    "shasum": "6270338b0c4373e22023e4c40d6e06b13161f273",
+    "integrity": "sha512-oJ6WElXgEH4TzjVpGiQwYW5Zk6DfzPnE7CpHXTfMbrbCD5o1eSCaOMGuSa8hhbLU15DGu77688vNHKwkTd2BPA==",
+    "filename": "hdevlop-avrts-0.1.2.tgz",
+    "files": [
+      {
+        "path": "CHANGELOG.md",
+        "size": 10972,
+        "mode": 420
+      },
+      {
+        "path": "LICENSE",
+        "size": 1085,
+        "mode": 420
+      },
+      {
+        "path": "README.md",
+        "size": 17217,
+        "mode": 420
+      },
+      {
+        "path": "SECURITY.md",
+        "size": 664,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/advanced.js",
+        "size": 8520,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/advanced.js.map",
+        "size": 144,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/browser-worker.js",
+        "size": 190,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/browser-worker.js.map",
+        "size": 301,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/browser.js",
+        "size": 1064,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/browser.js.map",
+        "size": 144,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-6kya0krj.js",
+        "size": 402260,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-6kya0krj.js.map",
+        "size": 879299,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-ctjcefnn.js",
+        "size": 16546,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-ctjcefnn.js.map",
+        "size": 40704,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-jffzr2v4.js",
+        "size": 46,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-jffzr2v4.js.map",
+        "size": 144,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-t27kfr8h.js",
+        "size": 22025,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index-t27kfr8h.js.map",
+        "size": 60413,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index.js",
+        "size": 138,
+        "mode": 420
+      },
+      {
+        "path": "dist/public/index.js.map",
+        "size": 144,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/button.d.ts",
+        "size": 1071,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/index.d.ts",
+        "size": 260,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/led.d.ts",
+        "size": 532,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/logic-analyzer.d.ts",
+        "size": 849,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/pin-activity.d.ts",
+        "size": 787,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/potentiometer.d.ts",
+        "size": 651,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/pwm-meter.d.ts",
+        "size": 508,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/scope.d.ts",
+        "size": 1265,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/adapters/serial-monitor.d.ts",
+        "size": 487,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/avr.d.ts",
+        "size": 7322,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/browser-runtime.d.ts",
+        "size": 6240,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/circuit/board-ports.d.ts",
+        "size": 1827,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/circuit/document.d.ts",
+        "size": 1830,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/circuit/index.d.ts",
+        "size": 98,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/circuit/types.d.ts",
+        "size": 1766,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/component-bus.d.ts",
+        "size": 2720,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/core/decorators.d.ts",
+        "size": 1985,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/core/index.d.ts",
+        "size": 66,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/core/types.d.ts",
+        "size": 1142,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/alu.d.ts",
+        "size": 3485,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/constants.d.ts",
+        "size": 10945,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/cpu.d.ts",
+        "size": 10474,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/errors.d.ts",
+        "size": 954,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/fast-blocks.d.ts",
+        "size": 712,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/generated/cores.d.ts",
+        "size": 377,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/index.d.ts",
+        "size": 182,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/instructions.d.ts",
+        "size": 5876,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/sreg.d.ts",
+        "size": 1021,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/cpu/types.d.ts",
+        "size": 4143,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/loader/errors.d.ts",
+        "size": 175,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/loader/index.d.ts",
+        "size": 94,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/loader/intel-hex.d.ts",
+        "size": 661,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/loader/types.d.ts",
+        "size": 333,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/adc.d.ts",
+        "size": 2496,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/analog-comparator.d.ts",
+        "size": 1408,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/attach.d.ts",
+        "size": 366,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/chip-control.d.ts",
+        "size": 949,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/clock-control.d.ts",
+        "size": 530,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/eeprom.d.ts",
+        "size": 1422,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/exti.d.ts",
+        "size": 1803,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/gpio.d.ts",
+        "size": 3323,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/index.d.ts",
+        "size": 747,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/pcint.d.ts",
+        "size": 1006,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/pin-map.d.ts",
+        "size": 458,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/power-reduction.d.ts",
+        "size": 493,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/pwm.d.ts",
+        "size": 1634,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/self-programming.d.ts",
+        "size": 1765,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/sleep-control.d.ts",
+        "size": 743,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/spi.d.ts",
+        "size": 2349,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer-external-clock.d.ts",
+        "size": 764,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer-prescaler.d.ts",
+        "size": 576,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer-sync.d.ts",
+        "size": 962,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer.d.ts",
+        "size": 3132,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer1.d.ts",
+        "size": 4584,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/timer2.d.ts",
+        "size": 4727,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/twi.d.ts",
+        "size": 3184,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/types.d.ts",
+        "size": 3613,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/usart.d.ts",
+        "size": 3593,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/wall-clock-timer.d.ts",
+        "size": 534,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/peripherals/watchdog.d.ts",
+        "size": 1611,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/public/advanced.d.ts",
+        "size": 379,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/public/browser.d.ts",
+        "size": 225,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/public/index.d.ts",
+        "size": 107,
+        "mode": 420
+      },
+      {
+        "path": "dist/types/snapshot.d.ts",
+        "size": 10704,
+        "mode": 420
+      },
+      {
+        "path": "package.json",
+        "size": 4448,
+        "mode": 420
+      }
+    ],
+    "entryCount": 85,
+    "bundled": []
+  },
+  "publication": "not performed",
+  "dryRun": {
+    "command": "npm.cmd publish out/release-2026-10-10/hdevlop-avrts-0.1.2.tgz --dry-run --json --registry=https://registry.npmjs.org",
+    "exitCode": 0,
+    "metadataMatchesArchive": true,
+    "usesAlreadyValidatedTarball": true,
+    "ignoreScriptsFlagUsed": false,
+    "prepublishOnlyRetainedInManifest": true
+  },
+  "exactArchiveConsumerSmoke": {
+    "exitCode": 0,
+    "fileCount": 85,
+    "checks": "existing package-smoke checks with selected tarball: install, public/browser/advanced imports, default worker URL/import, execution and declarations"
+  },
+  "ciForSourceCommit": "not run: local branch not pushed",
+  "gitPublication": "not performed",
+  "physicalHardware": "not measured"
+}

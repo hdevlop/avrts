@@ -6,7 +6,7 @@ Prepared locally; npm publication has not been performed for this version.
 The preceding public release is `0.1.1`.
 
 This October 6 artifact record is historical. The October 10 candidate adds
-runtime fidelity and complete workload results; its [local acceptance receipt](local-acceptance-2026-10-10.json) supersedes these source counts and its new archive identity must be recorded separately. The old identity below does not identify the new candidate.
+runtime fidelity and complete workload results; its [local acceptance receipt](local-acceptance-2026-10-10.json) supersedes these source counts and its [new archive identity is recorded separately](release-candidate-2026-10-10.md). The old identity below does not identify the new candidate.
 
 The later [arithmetic result-oracle batch](arithmetic-results-2026-10-06.md)
 extends both result runners from five to seven scenarios and rebuilds the two
