@@ -68,6 +68,7 @@ function readAdcResult(avr: ReturnType<typeof AVR>): number {
 describe("Phase 4 small peripherals", () => {
   test("CLKPR uses the CLKPCE protocol and updates effective runtime clock", () => {
     const avr = AVR().useClock(16_000_000);
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(CLKPR, 3);
@@ -85,6 +86,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("CLKPR unlock expires after four cycles", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(CLKPR, 1 << CLKPCE);
@@ -97,6 +99,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("CLKPR unlock expiry preserves the previous divider", () => {
     const avr = AVR().useClock(16_000_000);
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(CLKPR, 1 << CLKPCE);
@@ -112,6 +115,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("MCUSR reset-source flags cover power-on, external reset, and watchdog reset", () => {
     const powerOn = AVR();
+    powerOn.cpu.flash.fill(0);
     expect((powerOn.cpu.readData(MCUSR) >> PORF) & 1).toBe(1);
 
     powerOn.resetExternal();
@@ -119,6 +123,7 @@ describe("Phase 4 small peripherals", () => {
     expect((powerOn.cpu.readData(MCUSR) >> PORF) & 1).toBe(1);
 
     const watchdog = AVR();
+    watchdog.cpu.flash.fill(0);
     watchdog.cpu.flash[0] = 0xcfff; // rjmp .-0, keep firmware alive until WDT expires.
     watchdog.cpu.writeData(WDTCSR, 1 << WDE);
     watchdog.runCycles(256_000);
@@ -127,6 +132,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("ADC supports temperature and bandgap internal channels", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(8).setValue(456);
@@ -143,6 +149,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("PRR gates Timer0 counting until power is restored", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -160,6 +167,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("PRR pauses scheduled USART, SPI, and TWI operations", () => {
     const serial = AVR();
+    serial.cpu.flash.fill(0);
     const serialBytes: number[] = [];
     serial.serial.onByte((byte) => serialBytes.push(byte));
     serial.cpu.writeData(UCSR0B, 1 << TXEN0);
@@ -173,6 +181,7 @@ describe("Phase 4 small peripherals", () => {
     expect(serialBytes).toEqual([0x51]);
 
     const spi = AVR();
+    spi.cpu.flash.fill(0);
     spi.cpu.writeData(DDRB, 1 << 2);
     spi.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
     spi.cpu.writeData(SPDR, 0x33);
@@ -185,6 +194,7 @@ describe("Phase 4 small peripherals", () => {
     expect((spi.cpu.data[SPSR]! >> SPIF) & 1).toBe(1);
 
     const twi = AVR();
+    twi.cpu.flash.fill(0);
     twi.cpu.writeData(TWCR, (1 << TWEN) | (1 << TWINT) | (1 << TWSTA));
     twi.cpu.writeData(PRR, 1 << PRTWI);
     twi.runCycles(5);
@@ -197,6 +207,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("PRR pauses an in-flight ADC conversion", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setValue(321);
@@ -216,6 +227,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("PRR-frozen peripheral state survives snapshot restore", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     const cpu = source.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -225,6 +237,7 @@ describe("Phase 4 small peripherals", () => {
     expect(cpu.readData(TCNT0)).toBe(12);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(50);
     expect(restored.cpu.readData(TCNT0)).toBe(12);
@@ -236,6 +249,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("ADC noise-reduction sleep starts a conversion on sleep entry", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setValue(654);
@@ -253,6 +267,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("analog comparator sets ACO, ACI, ACIC, and dispatches ACIE interrupt", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(ACSR, (1 << ACIE) | (1 << ACIS1) | (1 << ACIS0));
@@ -270,6 +285,7 @@ describe("Phase 4 small peripherals", () => {
     expect((cpu.readData(ACSR) >> ACI) & 1).toBe(0);
 
     const capture = AVR();
+    capture.cpu.flash.fill(0);
     capture.cpu.writeData(ACSR, 1 << ACIC);
     // ACIC routes ACO into the Timer1 capture unit; ICES1 selects the edge.
     capture.cpu.writeData(TCCR1B, 1 << ICES1);
@@ -280,6 +296,7 @@ describe("Phase 4 small peripherals", () => {
 
   test("analog comparator ACME uses ADC mux when ADC is disabled", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(2).setVoltage(2, 5);
@@ -303,6 +320,7 @@ describe("Phase 4 small peripherals", () => {
     source.comparator.setInput("ain1", 1);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
 
     expect(restored.status().clockHz).toBe(4_000_000);

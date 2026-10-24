@@ -14,14 +14,10 @@ import {
   SPMCSR,
 } from "../cpu";
 import type { CPU } from "../cpu";
+import { WallClockTimer } from "./wall-clock-timer";
 import type { EepromSnapshot } from "../snapshot";
 
-/**
- * EEPROM model. Firmware reads by setting the address and EERE; writes by setting
- * EEMPE then EEPE. Both complete instantly here (no multi-ms write delay), which
- * keeps blocking `eeprom_write` loops moving. Contents persist across `reset()`,
- * like real EEPROM.
- */
+/** Firmware programming uses deterministic typical RC timing; host storage helpers stay immediate. */
 export class Eeprom {
   private readonly cells = new Uint8Array(EEPROM_SIZE);
   // Cycle at which EEMPE was last armed (-1 = not armed). EEMPE stays valid for a
@@ -32,10 +28,30 @@ export class Eeprom {
     this.cpu.data[EECR] = this.cpu.data[EECR]! & ~(1 << EEMPE);
   };
 
-  constructor(private readonly cpu: CPU) {}
+  private pending: { address: number; value: number; mode: number } | undefined;
+  private readonly programming: WallClockTimer;
+
+  constructor(private readonly cpu: CPU, private readonly onReadyChange: () => void = () => {}) {
+    this.programming = new WallClockTimer(cpu, () => this.complete());
+  }
+
+  setClock(hz: number): void { this.programming.setClock(hz); }
+
+  private complete(): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    if (!pending) return;
+    const {address, value, mode} = pending;
+    this.cells[address] = mode === 0 ? value : mode === 1 ? 0xff : this.cells[address]! & value;
+    this.cpu.data[EECR] = this.cpu.data[EECR]! & ~(1 << EEPE);
+    this.updateInterrupt();
+    this.onReadyChange();
+  }
 
   reset(): void {
     this.masterWriteCycle = -1;
+    this.pending = undefined;
+    this.programming.stop();
     this.cpu.clearClockEvent(this.expireMasterWriteEvent);
     // EEPROM contents are non-volatile; nothing to clear.
   }
@@ -65,37 +81,47 @@ export class Eeprom {
   }
 
   @OnWrite(EECR)
-  onWriteEecr(_cpu: CPU, _addr: number, value: number): void {
-    const armed = this.masterWriteArmed();
-    this.cpu.clearClockEvent(this.expireMasterWriteEvent);
-    this.masterWriteCycle = -1;
-    this.cpu.data[EECR] = value & 0x3f & ~((1 << EEPE) | (1 << EERE));
-    if ((value & (1 << EERE)) !== 0) {
-      this.cpu.data[EEDR] = this.cells[this.address()]!;
+  onWriteEecr(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    if (this.pending) {
+      // EEPE cannot be cleared by software; modes and address remain latched.
+      this.cpu.data[EECR] = (oldValue & 0x30) | (1 << EEPE) | (value & (1 << EERIE));
+      this.updateInterrupt();
+      return;
     }
-    // EEMPE arms the master-write window. avr-libc does this in a separate
-    // instruction from the EEPE write (`out EECR,EEMPE` then `out EECR,EEPE`), so
-    // EEMPE need not be present in the same write that sets EEPE.
-    if ((value & (1 << EEMPE)) !== 0) {
+    const armed = this.masterWriteArmed();
+    if ((mask & (1 << EEMPE)) !== 0) {
+      this.cpu.clearClockEvent(this.expireMasterWriteEvent);
+      this.masterWriteCycle = -1;
+    }
+    this.cpu.data[EECR] = value & 0x3f & ~((1 << EEPE) | (1 << EERE));
+    const read = (value & mask & (1 << EERE)) !== 0;
+    if (read) {
+      this.cpu.data[EEDR] = this.cells[this.address()]!;
+      this.cpu.stall(4);
+    }
+    if ((value & mask & (1 << EEMPE)) !== 0) {
       this.masterWriteCycle = this.cpu.cycles;
       this.cpu.addClockEvent(this.expireMasterWriteEvent, 4);
     }
-    if ((value & (1 << EEPE)) !== 0 && armed && (this.cpu.data[SPMCSR]! & (1 << SELFPRGEN)) === 0) {
-      const address = this.address();
-      const mode = (value >> 4) & 3;
-      if (mode === 0) this.cells[address] = this.cpu.readData(EEDR);
-      else if (mode === 1) this.cells[address] = 0xff;
-      else if (mode === 2) this.cells[address] = this.cells[address]! & this.cpu.readData(EEDR);
+    const mode = (value >> 4) & 3;
+    if (!read && (value & mask & (1 << EEPE)) !== 0 && armed && mode !== 3 &&
+        (this.cpu.data[SPMCSR]! & (1 << SELFPRGEN)) === 0) {
+      this.pending = { address: this.address(), value: this.cpu.data[EEDR]!, mode };
+      this.cpu.data[EECR] = (this.cpu.data[EECR]! | (1 << EEPE)) & ~(1 << EEMPE);
       this.masterWriteCycle = -1;
       this.cpu.clearClockEvent(this.expireMasterWriteEvent);
-      this.cpu.data[EECR] = this.cpu.data[EECR]! & ~(1 << EEMPE);
+      this.programming.start(mode === 0 ? 3.4 : 1.8);
+      this.cpu.stall(2);
     }
     this.updateInterrupt();
+    this.onReadyChange();
   }
 
+  @OnWrite(EEARL)
   @OnWrite(EEARH)
-  onWriteEearh(): void {
-    this.cpu.data[EEARH] = this.cpu.data[EEARH]! & ((EEPROM_SIZE - 1) >> 8);
+  onWriteAddress(_cpu: CPU, addr: number, _value: number, oldValue: number): void {
+    if (this.pending) this.cpu.data[addr] = oldValue;
+    if (addr === EEARH) this.cpu.data[EEARH] = this.cpu.data[EEARH]! & ((EEPROM_SIZE - 1) >> 8);
   }
 
   /** True while the EEMPE master-write window is still open (4-cycle hardware window). */
@@ -123,12 +149,19 @@ export class Eeprom {
     return {
       cells: new Uint8Array(this.cells),
       masterWriteCycle: this.masterWriteCycle,
+      pending: this.pending ? { ...this.pending, remainingMs: this.programming.remainingMs() } : undefined,
     };
   }
 
   restore(snap: EepromSnapshot): void {
     this.cells.set(snap.cells);
     this.masterWriteCycle = snap.masterWriteCycle;
+    this.programming.stop();
+    this.pending = snap.pending ? { address: snap.pending.address, value: snap.pending.value, mode: snap.pending.mode } : undefined;
+    if (snap.pending) {
+      this.cpu.data[EECR] = this.cpu.data[EECR]! | (1 << EEPE);
+      this.programming.start(snap.pending.remainingMs);
+    }
     this.cpu.clearClockEvent(this.expireMasterWriteEvent);
     if (this.masterWriteArmed()) {
       this.cpu.addClockEvent(this.expireMasterWriteEvent, 4 - (this.cpu.cycles - this.masterWriteCycle));

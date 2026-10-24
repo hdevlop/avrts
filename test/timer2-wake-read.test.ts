@@ -19,7 +19,8 @@ const runTo = (avr: Avr, cycle: number) => avr.runCycles(cycle - avr.cpu.cycles)
 
 for (const timing of ["fast", "cycle-exact"] as const) {
   const make = (cs = 1) => {
-    const avr = A.AVR({ timing, clockHz: 3_276_800 }); // 100 CPU cycles per TOSC edge.
+    const avr = A.AVR({ timing, clockHz: 3_276_800 });
+    avr.cpu.flash.fill(0); // 100 CPU cycles per TOSC edge.
     avr.cpu.writeData(A.TCNT2, 40);
     avr.cpu.writeData(A.TCCR2B, cs);
     avr.cpu.writeData(A.ASSR, bit(A.AS2));
@@ -151,6 +152,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const clockHz of [256_000, 16_000_000]) {
       test(`fractional ${clockHz} Hz source refreshes on the first rounded edge`, () => {
         const avr = A.AVR({ timing, clockHz });
+        avr.cpu.flash.fill(0);
         const period = clockHz / 32768;
         avr.cpu.writeData(A.TCNT2, 40);
         avr.cpu.writeData(A.TCCR2B, 1);
@@ -307,6 +309,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("synchronous power-save does not introduce an async read window", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCNT2, 40);
       sleep(avr);
       avr.runCycles(200);

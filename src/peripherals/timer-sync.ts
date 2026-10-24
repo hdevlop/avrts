@@ -6,6 +6,7 @@ import type { CPU } from "../cpu";
 export interface PrescalerTarget {
   resetPrescaler(): void;
   setPrescalerHeld(held: boolean): void;
+  prescalerResetPending?(): boolean;
 }
 
 /**
@@ -35,7 +36,7 @@ export class TimerSync {
       if ((value & (1 << PSRASY)) !== 0) {
         for (const target of this.asyncTargets) target.resetPrescaler();
       }
-      this.cpu.data[GTCCR] = 0;
+      this.cpu.data[GTCCR] = this.asyncTargets.some((target) => target.prescalerResetPending?.()) ? 1 << PSRASY : 0;
       this.applyHolds(0);
       return;
     }

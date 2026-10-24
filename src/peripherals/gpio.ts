@@ -3,6 +3,8 @@ import {
   DDRB,
   DDRC,
   DDRD,
+  DIDR0,
+  DIDR1,
   PINB,
   PINC,
   PIND,
@@ -27,6 +29,14 @@ export class Gpio {
   private readonly touched = new Map<PortName, Set<(restored: boolean) => void>>();
   private readonly peripheralMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
   private readonly peripheralValue: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly forcedMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly drainMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly drainLow: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly ownedMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly ownedValue: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly ownedForced: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly ownedInput: Record<PortName, number> = { B: 0, C: 0, D: 0 };
+  private readonly drainListeners = new Set<() => void>();
 
   constructor(private readonly cpu: CPU) {}
 
@@ -55,14 +65,14 @@ export class Gpio {
   }
 
   // AVR writes a 1 to PINx to toggle the corresponding PORTx output latch.
-  @OnWrite(PINB) onWritePinB(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.togglePortFromPinWrite("B", value, oldValue);
+  @OnWrite(PINB) onWritePinB(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    this.togglePortFromPinWrite("B", value & mask, oldValue);
   }
-  @OnWrite(PINC) onWritePinC(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.togglePortFromPinWrite("C", value, oldValue);
+  @OnWrite(PINC) onWritePinC(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    this.togglePortFromPinWrite("C", value & mask, oldValue);
   }
-  @OnWrite(PIND) onWritePinD(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.togglePortFromPinWrite("D", value, oldValue);
+  @OnWrite(PIND) onWritePinD(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    this.togglePortFromPinWrite("D", value & mask, oldValue);
   }
 
   // Reading PINx returns the *effective* pin levels, so firmware (digitalRead,
@@ -71,10 +81,10 @@ export class Gpio {
     return this.effectivePinByte("B");
   }
   @OnRead(PINC) readPinRegC(): number {
-    return this.effectivePinByte("C");
+    return this.effectivePinByte("C") & ~this.cpu.data[DIDR0]!;
   }
   @OnRead(PIND) readPinRegD(): number {
-    return this.effectivePinByte("D");
+    return this.effectivePinByte("D") & ~((this.cpu.data[DIDR1]! & 3) << 6);
   }
 
   /** Current PORT register value. */
@@ -102,19 +112,58 @@ export class Gpio {
    * affects effective PINx reads/listeners without mutating the PORT latch.
    * Pass `undefined` to release the pin back to normal PORT/DDR behavior.
    */
-  setPeripheralOutput(port: PortName, bit: number, high: boolean | undefined): void {
+  setPeripheralOutput(port: PortName, bit: number, high: boolean | undefined, forceDirection = false): void {
     const mask = (1 << bit) & (port === "C" ? 0x7f : 0xff);
     if (mask === 0) return;
     const before = this.effectivePinByte(port);
     if (high === undefined) {
+      this.forcedMask[port] &= ~mask;
       this.peripheralMask[port] &= ~mask;
       this.peripheralValue[port] &= ~mask;
     } else {
+      this.forcedMask[port] = forceDirection ? this.forcedMask[port] | mask : this.forcedMask[port] & ~mask;
       this.peripheralMask[port] |= mask;
       this.peripheralValue[port] = high
         ? this.peripheralValue[port] | mask
         : this.peripheralValue[port] & ~mask;
     }
+    if (this.effectivePinByte(port) !== before) this.notify(port);
+  }
+
+  /** Open-drain ownership: false pulls low, true releases to external input, undefined releases ownership. */
+  setOpenDrain(port: PortName, bit: number, released: boolean | undefined): void {
+    const mask = 1 << bit;
+    const before = this.effectivePinByte(port);
+    const beforeMask = this.drainMask[port];
+    const beforeLow = this.drainLow[port];
+    if (released === undefined) {
+      this.drainMask[port] &= ~mask;
+      this.drainLow[port] &= ~mask;
+    } else {
+      this.drainMask[port] |= mask;
+      this.drainLow[port] = released ? this.drainLow[port] & ~mask : this.drainLow[port] | mask;
+    }
+    if (this.effectivePinByte(port) !== before) this.notify(port);
+    if (port === "C" && (bit === 4 || bit === 5) && (beforeMask !== this.drainMask[port] || beforeLow !== this.drainLow[port])) {
+      for (const listener of [...this.drainListeners]) listener();
+    }
+  }
+
+  readTwiDrive(): { sdaReleased: boolean; sclReleased: boolean } {
+    return { sdaReleased: (this.drainLow.C & 16) === 0, sclReleased: (this.drainLow.C & 32) === 0 };
+  }
+  onTwiDrive(listener: () => void): () => void {
+    this.drainListeners.add(listener); return () => { this.drainListeners.delete(listener); };
+  }
+
+  /** Serial alternate-function ownership takes precedence over PORT and timer outputs. */
+  setPeripheralPin(port: PortName, bit: number, state: boolean | "input" | undefined, forceDirection = false): void {
+    const mask = 1 << bit;
+    const before = this.effectivePinByte(port);
+    this.ownedMask[port] = state === undefined ? this.ownedMask[port] & ~mask : this.ownedMask[port] | mask;
+    this.ownedValue[port] = state === true ? this.ownedValue[port] | mask : this.ownedValue[port] & ~mask;
+    this.ownedForced[port] = forceDirection && state !== undefined && state !== "input" ? this.ownedForced[port] | mask : this.ownedForced[port] & ~mask;
+    this.ownedInput[port] = state === "input" ? this.ownedInput[port] | mask : this.ownedInput[port] & ~mask;
     if (this.effectivePinByte(port) !== before) this.notify(port);
   }
 
@@ -153,12 +202,17 @@ export class Gpio {
    * bits from the injected external level held in the PIN register.
    */
   private effectivePinByte(port: PortName): number {
-    const ddr = this.cpu.readData(DDR_ADDR[port]);
+    let ddr = this.cpu.readData(DDR_ADDR[port]);
+    const owned = this.ownedMask[port];
+    if (owned !== 0 || this.forcedMask[port] !== 0) ddr = (ddr | this.forcedMask[port] | this.ownedForced[port]) & ~this.ownedInput[port];
     const portReg = this.cpu.readData(PORT_ADDR[port]);
     const inputs = this.cpu.data[PIN_ADDR[port]]!;
     const peripheralMask = this.peripheralMask[port] & ddr;
-    const output = (portReg & ~peripheralMask) | (this.peripheralValue[port] & peripheralMask);
-    return ((output & ddr) | (inputs & ~ddr)) & (port === "C" ? 0x7f : 0xff);
+    const timerOutput = (portReg & ~peripheralMask) | (this.peripheralValue[port] & peripheralMask);
+    const output = owned === 0 ? timerOutput : (timerOutput & ~owned) | (this.ownedValue[port] & owned);
+    const pushPull = (output & ddr) | (inputs & ~ddr);
+    const drain = this.drainMask[port];
+    return (drain === 0 ? pushPull : (pushPull & ~drain) | (inputs & drain & ~this.drainLow[port])) & (port === "C" ? 0x7f : 0xff);
   }
 
   /** Public subscription used by the pin-change-interrupt controller. */
@@ -207,6 +261,11 @@ export class Gpio {
       },
       peripheralMask: { ...this.peripheralMask },
       peripheralValue: { ...this.peripheralValue },
+      forcedMask: { ...this.forcedMask },
+      drainMask: { ...this.drainMask },
+      drainLow: { ...this.drainLow },
+      ownedMask: { ...this.ownedMask }, ownedValue: { ...this.ownedValue },
+      ownedForced: { ...this.ownedForced }, ownedInput: { ...this.ownedInput },
     };
   }
 
@@ -216,6 +275,15 @@ export class Gpio {
    * cached levels: restoring state must not manufacture a new interrupt.
    */
   restore(snap: GpioSnapshot): void {
+    for (const port of ["B", "C", "D"] as const) {
+      this.forcedMask[port] = snap.forcedMask?.[port] ?? 0;
+      this.drainMask[port] = snap.drainMask?.[port] ?? 0;
+      this.drainLow[port] = snap.drainLow?.[port] ?? 0;
+      this.ownedMask[port] = snap.ownedMask?.[port] ?? 0;
+      this.ownedValue[port] = snap.ownedValue?.[port] ?? 0;
+      this.ownedForced[port] = snap.ownedForced?.[port] ?? 0;
+      this.ownedInput[port] = snap.ownedInput?.[port] ?? 0;
+    }
     this.cpu.data[PINB] = snap.pin.B & 0xff;
     this.cpu.data[PINC] = snap.pin.C & 0x7f;
     this.cpu.data[PORTC] = this.cpu.data[PORTC]! & 0x7f;

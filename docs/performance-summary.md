@@ -6,6 +6,10 @@ monolithic-core experiment, and the real-code dispatch + FastBlock levers — wh
 have been consolidated here and removed. (The benchmark harness / external-simulator
 methodology lives separately in [`benchmark-plan.md`](benchmark-plan.md).)
 
+Status: dated measurements and optimization rationale. Current implementation
+priorities and remaining correctness/release obligations are in the
+[root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md).
+
 ## How the engine works
 
 `CPU.run()` executes a **generated fast core** (`src/cpu/generated/cores.ts`),
@@ -32,6 +36,14 @@ five 50-million-cycle trials per workload in isolated processes.
 | formatting / ISR / DSP | sensor-format, string-heavy, isr-heavy, dsp-fixed | 1.11-1.69x |
 | soft-float / bit-banging | float-math, bitbang-crc | 0.44-0.73x |
 
+`serial-print` emits one startup line and then loops idle; its measured
+post-warmup cycle rate does not establish continuous UART throughput.
+`analog-write` has an idle foreground with active hardware PWM. The IO/peripheral
+row groups different activity patterns; see the
+[workload activity audit](benchmark-plan.md#remaining-result-coverage-and-workload-activity)
+for interpretation and outstanding result checks. The recorded ratios remain
+unchanged; this qualification narrows what they support.
+
 Seven of the ten nontrivial workloads lead the peer in cycle rate on this host;
 all ten measure over 16M cycles/s, with bit-banging closest at 18.84M. This is
 not a blanket realtime guarantee for other hosts, Node, browser workers or UI.
@@ -46,8 +58,13 @@ with actual post-warm-up serial/PWM counts retained. Its construction-inclusive
 internal rate was 13.00 Mcycles/s; the two methods are not interchangeable.
 
 The release check passed 2,743 source tests, eight browser tests and packed
-consumer checks. The five covered result fixtures still match avr8js and native
+consumer checks. Eight covered result fixtures now match avr8js and native
 simavr with existing normalizations; native timing and Optiboot checks passed.
+The [arithmetic oracle follow-up](evidence/arithmetic-results-2026-10-06.md) adds
+float/bit-bang result checks and rebuilds those two fixtures. The
+[sensor-format follow-up](evidence/sensor-format-results-2026-10-10.md) adds the
+eighth result case and rebuilds its image. The speed ratios above remain
+measurements of the preceding images, not fresh ratios for the rebuilt ones; the follow-up does not change emulator library code.
 See [release preparation](evidence/release-0.1.2.md) and the refresh for exact
 coverage. The historical source-revision samples remain in
 [peripheral patch evidence](evidence/peripheral-performance.md); their old
@@ -176,3 +193,17 @@ product goal**. Existing correctness and timing limits remain in
 - Profile first (`profile:opcodes --mode fast`); keep a change only if
   `bench:compare --isolate` is neutral-or-better. `--isolate` is mandatory for any
   real-code speed claim (the single-process default under-reports avrts ~3x).
+
+## October 10 completion record
+
+All twelve external workload result/state cases and the shared listener check
+are implemented; see [current workload evidence](evidence/workload-results-2026-10-10.md).
+New EEPROM/flash programming and T0/T1 clock fidelity is covered by
+[runtime evidence](evidence/runtime-fidelity-2026-10-10.md).
+The [scope decisions](evidence/calibration-scope-2026-10-10.md) describe the
+earlier wire-model deferral. The digital extensions are now implemented;
+[expanded acceptance](evidence/digital-models-2026-10-10.md) records their source
+and narrow before/after performance comparisons. Physical calibration remains
+unrun. Earlier measurements above remain
+dated history; [current performance evidence](evidence/runtime-performance-2026-10-10.md)
+uses identical candidate firmware on both revisions.

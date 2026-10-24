@@ -8,7 +8,11 @@ const counts = (avr: Avr) => [count0(avr), count1(avr)] as const;
 const taps = [[2, 8], [3, 64], [4, 256], [5, 1024]] as const;
 
 for (const timing of ["fast", "cycle-exact"] as const) {
-  const make = () => A.AVR({ timing });
+  const make = () => {
+    const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
+    return avr;
+  };
   describe(`${timing}: shared Timer0/1 prescaler`, () => {
     for (const [cs, divisor] of taps) {
       for (const timer of [0, 1]) {

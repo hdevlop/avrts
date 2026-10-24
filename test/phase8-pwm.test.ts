@@ -89,6 +89,7 @@ describe("Timer0 PWM", () => {
 
   test("facade exposes PWM handles for Timer0 pins", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const seen: number[] = [];
 
     avr.pwm(5).onChange((signal) => {
@@ -110,6 +111,7 @@ describe("Timer0 PWM", () => {
 
   test("PWM compare output drives the virtual output pin", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const seen: boolean[] = [];
 
     avr.pin(5).onChange((high) => seen.push(high));
@@ -132,6 +134,7 @@ describe("Timer0 PWM", () => {
 
   test("normal/CTC compare toggle drives the virtual output pin", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const seen: boolean[] = [];
 
     avr.pin(11).onChange((high) => seen.push(high));
@@ -153,6 +156,7 @@ describe("Timer0 PWM", () => {
 
   test("CTC toggle output drives every OC pin", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
 
     // Timer0: OC0A = D6, OC0B = D5.
     avr.cpu.writeData(DDRD, (1 << 6) | (1 << 5));
@@ -192,6 +196,7 @@ describe("Timer0 PWM", () => {
 
   test("normal compare clear and set modes drive virtual pins", () => {
     const clear = AVR();
+    clear.cpu.flash.fill(0);
     clear.cpu.writeData(DDRD, 1 << 5); // D5 / OC0B output
     clear.cpu.writeData(PORTD, 1 << 5); // start high from the firmware PORT latch
     clear.cpu.writeData(OCR0B, 2);
@@ -203,6 +208,7 @@ describe("Timer0 PWM", () => {
     expect(clear.pin(5).read()).toBe(false);
 
     const set = AVR();
+    set.cpu.flash.fill(0);
     set.cpu.writeData(DDRD, 1 << 5);
     set.cpu.writeData(OCR0B, 2);
     set.cpu.writeData(TCCR0A, (1 << COM0B1) | (1 << COM0B0)); // set on compare
@@ -232,6 +238,7 @@ describe("Timer0 PWM", () => {
 
   test("facade rejects pins that have no PWM output", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     expect(() => avr.pwm(7)).toThrow("PWM is not available on pin 7");
   });
 });

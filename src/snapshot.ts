@@ -22,9 +22,23 @@ export interface GpioSnapshot {
   pin: Record<PortName, number>;
   peripheralMask: Record<PortName, number>;
   peripheralValue: Record<PortName, number>;
+  forcedMask?: Record<PortName, number>;
+  drainMask?: Record<PortName, number>;
+  drainLow?: Record<PortName, number>;
+  ownedMask?: Record<PortName, number>;
+  ownedValue?: Record<PortName, number>;
+  ownedForced?: Record<PortName, number>;
+  ownedInput?: Record<PortName, number>;
+}
+
+export interface TimerExternalClockSnapshot {
+  sampledHigh: boolean;
+  sampleRemainingCycles: number;
+  pulses: number[];
 }
 
 export interface Timer0Snapshot {
+  externalClock?: TimerExternalClockSnapshot;
   prescalerRemainder: number;
   /** Full divider phase for independently constructed Timer0 instances. */
   prescalerPhase?: number;
@@ -35,6 +49,7 @@ export interface Timer0Snapshot {
 }
 
 export interface Timer1Snapshot {
+  externalClock?: TimerExternalClockSnapshot;
   count: number;
   /** Full divider phase for independently constructed Timer1 instances. */
   prescalerPhase?: number;
@@ -55,6 +70,14 @@ export interface Timer1Snapshot {
 }
 
 export interface Timer2Snapshot {
+  sourceHz?: number | null;
+  externalHigh?: boolean;
+  externalDivider?: number;
+  asyncTimerFlags?: number;
+  asyncClearMask?: number;
+  asyncClearRemaining?: number;
+  asyncResetRemaining?: number;
+  asyncWakeAwaitEdge?: boolean;
   prescalerRemainder: number;
   /** Full ten-bit divider phase in CPU cycles, including partial TOSC periods. */
   dividerPhase?: number;
@@ -69,7 +92,7 @@ export interface Timer2Snapshot {
   /** Phase within a TOSC period, in CPU cycles at the snapshot's clock rate. */
   toscPhase?: number;
   /** Separate register transfers; omitted values preserve legacy busy windows. */
-  asyncWrites?: { register: number; value?: number; remainingCycles: number }[];
+  asyncWrites?: { register: number; value?: number; remainingCycles: number; remainingEdges?: number }[];
   /** CPU-visible TCNT2 retained on asynchronous power-save entry. */
   asyncSleepCounter?: number;
   /** Remaining CPU cycles of the post-wake read synchronization window. */
@@ -81,6 +104,7 @@ export interface Timer2Snapshot {
 }
 
 export interface Usart0Snapshot {
+  wire?: import("./peripherals/usart-wire").UsartWireSnapshot;
   /** Legacy: pending RX bytes without frame metadata (kept for old snapshots). */
   rxBytes: Uint8Array;
   rxHead: number;
@@ -129,6 +153,7 @@ export interface EepromSnapshot {
   cells: Uint8Array;
   /** Cycle at which EEMPE was last armed (-1 = not armed). */
   masterWriteCycle: number;
+  pending?: { address: number; value: number; mode: number; remainingMs: number };
 }
 
 /**
@@ -137,6 +162,7 @@ export interface EepromSnapshot {
  * `avr.spi.respondWith(...)` again if they want a non-default responder.
  */
 export interface SpiSnapshot {
+  wire?: { enabled: boolean; edge: number; tx: number; rx: number; control: number; halfPeriod: number; remainingCycles: number };
   responderReset: true;
   busy?: boolean;
   pendingMosi?: number;
@@ -164,10 +190,17 @@ export interface SelfProgrammingSnapshot {
   pendingPageBase?: number;
   pendingLockValue?: number;
   pendingRemainingCycles?: number;
+  pendingRemainingMs?: number;
+  pendingPageData?: Uint16Array;
   commandClearRemainingCycles?: number;
 }
 
 export interface AnalogComparatorSnapshot {
+  propagationCycles?: number;
+  settlingCycles?: number;
+  settlingRemaining?: number;
+  pendingOutput?: boolean;
+  outputRemaining?: number;
   ain0Volts: number;
   ain1Volts: number;
   output: boolean;
@@ -175,6 +208,7 @@ export interface AnalogComparatorSnapshot {
 }
 
 export interface TwiSnapshot {
+  wire?: import("./peripherals/twi-wire").TwiWireSnapshot;
   started: boolean;
   awaitingAddress: boolean;
   reading: boolean;
@@ -214,11 +248,16 @@ export interface PcintSnapshot {
 }
 
 export interface ExternalInterruptsSnapshot {
+  synchronized?: boolean;
+  sampled?: { int0: boolean; int1: boolean };
+  sampleRemaining?: number;
+  stages?: { int0: boolean; int1: boolean; due: number }[];
   /** Last-seen effective level of INT0 (PD2) and INT1 (PD3). */
   prevPinLevels: { int0: boolean; int1: boolean };
 }
 
 export interface CpuSnapshot {
+  pendingStallCycles?: number;
   pc: number;
   /** SEI/RETI deferral when captured before the instruction's dispatch boundary. */
   interruptDeferred?: boolean;
@@ -235,6 +274,9 @@ export interface CpuSnapshot {
 }
 
 export interface RuntimeSnapshot {
+  oscillatorCalibration?: number[];
+  /** Host-provided factory OSCCAL value; legacy snapshots default to zero. */
+  oscillatorCalibrationResetCode?: number;
   clockHz: number;
   /** Undivided clock configured by useClock(); CLKPR derives clockHz from this. */
   baseClockHz?: number;

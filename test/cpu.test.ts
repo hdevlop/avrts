@@ -216,6 +216,7 @@ describe("CPU shell", () => {
 
   test("pending interrupts are deduped and serviced by vector priority", () => {
     const cpu = new CPU();
+    cpu.flash.fill(0); // Execute NOPs at the interrupt destinations.
     cpu.setExecutor(new Decoder());
     let lowAck = 0;
     let highAck = 0;
@@ -280,7 +281,7 @@ describe("SREG flags", () => {
 
 describe("fast-path opcode parity", () => {
   function runOneViaTick(opcode: number, setup?: (cpu: CPU) => void): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = opcode;
     setup?.(cpu);
@@ -289,7 +290,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function runOneViaFastRun(opcode: number, setup?: (cpu: CPU) => void): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = opcode;
     setup?.(cpu);
@@ -427,9 +428,9 @@ describe("fast-path opcode parity", () => {
   // whole flag-edge cross product, resetting state per case instead of
   // reconstructing. reset() clears the decode and fast-block caches.
   function makeSubtractParity() {
-    const tickCpu = new CPU();
+    const tickCpu = new CPU(new Uint16Array(FLASH_WORDS));
     tickCpu.setExecutor(new Decoder());
-    const fastCpu = new CPU();
+    const fastCpu = new CPU(new Uint16Array(FLASH_WORDS));
     fastCpu.setExecutor(new Decoder());
     const capture = (cpu: CPU, touched: number[]) => ({
       pc: cpu.pc,
@@ -706,7 +707,7 @@ describe("fast-path opcode parity", () => {
 
   test("ST to an IO register fires the same write hook on both paths", () => {
     const make = () => {
-      const cpu = new CPU();
+      const cpu = new CPU(new Uint16Array(FLASH_WORDS));
       cpu.setExecutor(new Decoder());
       return cpu;
     };
@@ -768,7 +769,7 @@ describe("fast-path opcode parity", () => {
   });
 
   function createZeroSbiwBreqLoop(pairLow: 24 | 26 | 28 | 30): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = sbiw(pairLow, 0);
     cpu.flash[1] = 0xf3f1; // BREQ -2
@@ -778,7 +779,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function createSbiwDecLoop(value: number, pairLow: 24 | 26 | 28 | 30 = 24): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([sbiw(pairLow, 1), brne(-2), 0x0000]);
     setWord(cpu, pairLow, value);
@@ -787,7 +788,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function createRjmpSelfLoop(): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = 0xcfff; // RJMP -1
     cpu.data[SREG_ADDR] = 0xa5;
@@ -795,7 +796,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function createShiftLeftDecLoop(count: number, counterReg = 20, width: 2 | 4 = 4): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     const body = width === 2
       ? [add(22, 22), adc(23, 23), dec(counterReg), brne(-4), 0x0000]
@@ -818,7 +819,7 @@ describe("fast-path opcode parity", () => {
     r26?: number;
     sreg?: number;
   } = {}): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       add(24, 24),
@@ -842,7 +843,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function createShiftRightDecLoop(count: number, highReg = 25, counterReg = 18): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       lsr(highReg),
@@ -871,7 +872,7 @@ describe("fast-path opcode parity", () => {
     r31?: number;
     sreg?: number;
   } = {}): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       lsr(20),
@@ -899,7 +900,7 @@ describe("fast-path opcode parity", () => {
     sreg?: number;
     returnPc?: number;
   } = {}): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       add(24, 24),
@@ -926,7 +927,7 @@ describe("fast-path opcode parity", () => {
     sreg?: number;
     returnPc?: number;
   } = {}): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       0xfd57, // SBRC r21,7
@@ -956,7 +957,7 @@ describe("fast-path opcode parity", () => {
   }
 
   function createArduinoMicrosBody(): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash.set([
       0xb73f, 0x94f8, 0x9180, 0x0105, 0x9190, 0x0106, 0x91a0, 0x0107, 0x91b0,
@@ -1042,7 +1043,7 @@ describe("fast-path opcode parity", () => {
     value?: number;
   }): CPU {
     const bit = opts.bit ?? 6;
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     // loop top at pc 0: LDS r24,POLL_ADDR (2 words); SBRC/SBRS r24,bit; RJMP -4
     cpu.flash[0] = lds(24);
@@ -1137,7 +1138,7 @@ describe("fast-path opcode parity", () => {
     nextHead?: number;
     sreg?: number;
   } = {}): CPU {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     // HardwareSerial::write wait loop:
     // LDD r24,Y+28; CPSE r24,r14; RJMP exit; IN r0,SREG; SBRC r0,7; RJMP loop
@@ -1939,8 +1940,8 @@ describe("fast-path opcode parity", () => {
       { left: 0xffff, right: 0xffff, sreg: 0xff },
     ];
     for (const { left, right, sreg } of cases) {
-      const slow = new CPU();
-      const fast = new CPU();
+      const slow = new CPU(new Uint16Array(FLASH_WORDS));
+      const fast = new CPU(new Uint16Array(FLASH_WORDS));
       loadUmulhisi3(slow);
       loadUmulhisi3(fast);
       slow.onTrace(() => {});
@@ -1957,7 +1958,7 @@ describe("fast-path opcode parity", () => {
   });
 
   test("profileRun reports the avr-libc __umulhisi3 block", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     loadUmulhisi3(cpu);
     seedUmulhisi3(cpu, 0x1234, 0x00ff, 0);
     let sawBlock = false;
@@ -1968,8 +1969,8 @@ describe("fast-path opcode parity", () => {
   });
 
   test("avr-libc __umulhisi3 block refuses to cross a clock event", () => {
-    const slow = new CPU();
-    const fast = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadUmulhisi3(slow);
     loadUmulhisi3(fast);
     slow.onTrace(() => {});
@@ -1999,8 +2000,8 @@ describe("fast-path opcode parity", () => {
       { left: 0xffff, right: 0xffff, sreg: 0x11 },
     ];
     for (const { left, right, sreg } of cases) {
-      const slow = new CPU();
-      const fast = new CPU();
+      const slow = new CPU(new Uint16Array(FLASH_WORDS));
+      const fast = new CPU(new Uint16Array(FLASH_WORDS));
       loadMulhisi3(slow);
       loadMulhisi3(fast);
       slow.onTrace(() => {});
@@ -2017,7 +2018,7 @@ describe("fast-path opcode parity", () => {
   });
 
   test("profileRun reports the avr-libc __mulhisi3 block", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     loadMulhisi3(cpu);
     seedUmulhisi3(cpu, 0x8123, 0x80ff, 0);
     let sawBlock = false;
@@ -2028,8 +2029,8 @@ describe("fast-path opcode parity", () => {
   });
 
   test("avr-libc __mulhisi3 block refuses to cross a clock event", () => {
-    const slow = new CPU();
-    const fast = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadMulhisi3(slow);
     loadMulhisi3(fast);
     slow.onTrace(() => {});
@@ -2187,8 +2188,8 @@ describe("fast-path opcode parity", () => {
 
     for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
       for (const variant of cases) {
-        const slow = new CPU();
-        const fast = new CPU();
+        const slow = new CPU(new Uint16Array(FLASH_WORDS));
+        const fast = new CPU(new Uint16Array(FLASH_WORDS));
         fast.udivmodsi4RegionMode = mode;
         loadUdivmodsi4Loop(slow);
         loadUdivmodsi4Loop(fast);
@@ -2205,10 +2206,10 @@ describe("fast-path opcode parity", () => {
         expect(Array.from(fast.data)).toEqual(Array.from(slow.data));
       }
     }
-  });
+  }, 30_000);
 
   test("profileRun reports the avr-libc __udivmodsi4 loop block", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     loadUdivmodsi4Loop(cpu);
     seedUdivmodsi4State(cpu, {
       counter: 33,
@@ -2226,8 +2227,8 @@ describe("fast-path opcode parity", () => {
 
   test("avr-libc __udivmodsi4 loop block refuses to cross a clock event", () => {
     for (const mode of ["handwritten", "generated-cfg", "semantic-direct"] as const) {
-      const slow = new CPU();
-      const fast = new CPU();
+      const slow = new CPU(new Uint16Array(FLASH_WORDS));
+      const fast = new CPU(new Uint16Array(FLASH_WORDS));
       fast.udivmodsi4RegionMode = mode;
       loadUdivmodsi4Loop(slow);
       loadUdivmodsi4Loop(fast);
@@ -2276,9 +2277,9 @@ describe("subcmp-run fast block (Step 4)", () => {
   // Several SREG seeds toggle carry-in and the previous-Z used by SBC/SBCI/CPC.
   for (const sreg of [0x00, 0x01, 0x02, 0x03, 0xe2]) {
     test(`block path matches the handler for the delay chain (SREG=0x${sreg.toString(16)})`, () => {
-      const fast = new CPU();
+      const fast = new CPU(new Uint16Array(FLASH_WORDS));
       loadChain(fast, delayChain, sreg);
-      const slow = new CPU();
+      const slow = new CPU(new Uint16Array(FLASH_WORDS));
       loadChain(slow, delayChain, sreg);
       fast.run(delayChain.length); // block executes all 8 in one dispatch
       for (let i = 0; i < delayChain.length; i += 1) slow.tick();
@@ -2287,7 +2288,7 @@ describe("subcmp-run fast block (Step 4)", () => {
   }
 
   test("the delay chain is recognized as a subcmp-run fast block", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(cpu, delayChain);
     let sawBlock = false;
     cpu.profileRun(delayChain.length, (event) => {
@@ -2298,9 +2299,9 @@ describe("subcmp-run fast block (Step 4)", () => {
 
   test("a short run (< min length) is not blocked but still correct", () => {
     const twoOps = [0x1968, 0x0979]; // only 2 sub/cmp ops, below SUBCMP_RUN_MIN
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(fast, twoOps);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(slow, twoOps);
     fast.run(twoOps.length);
     for (let i = 0; i < twoOps.length; i += 1) slow.tick();
@@ -2311,9 +2312,9 @@ describe("subcmp-run fast block (Step 4)", () => {
     const bump = (cpu: CPU) => () => {
       cpu.data[0x100] = (cpu.data[0x100]! + 1) & 0xff;
     };
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(fast, delayChain);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(slow, delayChain);
     fast.addClockEvent(bump(fast), 3); // event mid-block -> block must decline
     slow.addClockEvent(bump(slow), 3);
@@ -2324,9 +2325,9 @@ describe("subcmp-run fast block (Step 4)", () => {
   });
 
   test("block declines when a cycle listener is installed", () => {
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(fast, delayChain);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadChain(slow, delayChain);
     const fastCycles: number[] = [];
     const slowCycles: number[] = [];
@@ -2374,9 +2375,9 @@ describe("strcpy Z-to-X fast block", () => {
   }
 
   test("block path matches the handler for a null-terminated SRAM copy", () => {
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(fast);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(slow);
 
     fast.run(20);
@@ -2387,7 +2388,7 @@ describe("strcpy Z-to-X fast block", () => {
   });
 
   test("profileRun reports the string copy block", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(cpu);
     let sawBlock = false;
 
@@ -2402,9 +2403,9 @@ describe("strcpy Z-to-X fast block", () => {
     const bump = (cpu: CPU) => () => {
       cpu.data[0x400] = (cpu.data[0x400]! + 1) & 0xff;
     };
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(fast);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(slow);
     fast.addClockEvent(bump(fast), 7);
     slow.addClockEvent(bump(slow), 7);
@@ -2417,9 +2418,9 @@ describe("strcpy Z-to-X fast block", () => {
   });
 
   test("block declines when the destination has a write hook", () => {
-    const fast = new CPU();
+    const fast = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(fast);
-    const slow = new CPU();
+    const slow = new CPU(new Uint16Array(FLASH_WORDS));
     loadCopyLoop(slow);
     const fastWrites: number[] = [];
     const slowWrites: number[] = [];
@@ -2439,7 +2440,7 @@ describe("decode cache (Phase 4 predecode)", () => {
   const ldiR16 = (k: number) => 0xe000 | ((k & 0xf0) << 4) | (k & 0x0f);
 
   test("reuses the cached handler for a hot PC", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = ldiR16(0xaa);
     cpu.flash[1] = 0xcfff; // rjmp -1 (back to pc 0)
@@ -2449,7 +2450,7 @@ describe("decode cache (Phase 4 predecode)", () => {
   });
 
   test("stale cache cannot execute old code after invalidateDecodeCache()", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = ldiR16(0xaa);
     cpu.tick();
@@ -2464,7 +2465,7 @@ describe("decode cache (Phase 4 predecode)", () => {
   });
 
   test("reset() invalidates the cache so a reloaded program runs", () => {
-    const cpu = new CPU();
+    const cpu = new CPU(new Uint16Array(FLASH_WORDS));
     cpu.setExecutor(new Decoder());
     cpu.flash[0] = ldiR16(0xaa);
     cpu.tick();

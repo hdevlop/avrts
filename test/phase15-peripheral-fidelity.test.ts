@@ -30,6 +30,7 @@ function adcResult(avr: ReturnType<typeof AVR>): number {
 describe("Phase 15 peripheral fidelity", () => {
   test("ADC ADIF is sticky until firmware writes one to clear it", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setValue(321);
@@ -46,6 +47,7 @@ describe("Phase 15 peripheral fidelity", () => {
 
   test("ADC voltage inputs are sampled against the ADMUX reference selection", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setVoltage(1.1);
@@ -63,6 +65,7 @@ describe("Phase 15 peripheral fidelity", () => {
 
   test("ADC free-running auto-trigger keeps sampling after each conversion", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setValue(111);
@@ -80,6 +83,7 @@ describe("Phase 15 peripheral fidelity", () => {
 
   test("ADC Timer0 compare auto-trigger starts on a fresh OCF0A edge", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.analog(0).setValue(123);

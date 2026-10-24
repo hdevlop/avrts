@@ -5,6 +5,7 @@ import { DEFAULT_USART_FRAME_CYCLES } from "./helpers";
 const BLINK_HEX_PATH = "examples/blink/blink.hex";
 
 function transmitByte(avr: ReturnType<typeof AVR>, byte: number): void {
+  avr.cpu.flash.fill(0); // Clock-only serial fixture executes an explicit NOP program.
   avr.cpu.writeData(UDR0, byte);
   avr.runCycles(DEFAULT_USART_FRAME_CYCLES);
 }
@@ -75,7 +76,7 @@ test("useHex clears stale flash before loading a new program", () => {
   const avr = AVR(":020000000C945E\n:00000001FF\n");
   expect(avr.cpu.flash[0]).toBe(0x940c);
   avr.useHex(":00000001FF");
-  expect(avr.cpu.flash[0]).toBe(0x0000);
+  expect(avr.cpu.flash[0]).toBe(0xffff);
 });
 
 test("useHex leaves the previous program intact when parsing fails", () => {
@@ -154,6 +155,7 @@ test("writing a 1 to PINx toggles the PORTx output latch", () => {
 
 test("frame advances simulated time using speed", () => {
   const avr = AVR({ clockHz: 1_000 });
+  avr.cpu.flash.fill(0);
 
   avr.frame(5);
   expect(avr.status().cycles).toBe(5);
@@ -262,7 +264,7 @@ test("load aliases, reload, clearProgram, and loadFile cover UI loading flows", 
   expect(avr.cpu.flash[0]).toBe(0xe200);
 
   avr.clearProgram();
-  expect(avr.cpu.flash[0]).toBe(0);
+  expect(avr.cpu.flash[0]).toBe(0xffff);
   expect(avr.status().programLoaded).toBe(false);
 
   await avr.loadFile({ text: async () => first });
@@ -278,12 +280,13 @@ test("reset can clear or preserve a loaded program", () => {
   expect(avr.status().programLoaded).toBe(true);
 
   avr.reset({ clearProgram: true });
-  expect(avr.cpu.flash[0]).toBe(0);
+  expect(avr.cpu.flash[0]).toBe(0xffff);
   expect(avr.status().programLoaded).toBe(false);
 });
 
 test("pin pulse raises input, advances simulated time, then lowers it", () => {
   const avr = AVR({ clockHz: 1_000 });
+  avr.cpu.flash.fill(0);
   const seen: boolean[] = [];
 
   avr.pin(2).onChange((high) => seen.push(high));

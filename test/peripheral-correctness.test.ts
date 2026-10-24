@@ -77,6 +77,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const source of sources) {
       test(`${source.name}: control - a live request dispatches`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         source.prepare(avr, true);
         expect(avr.snapshot().cpu.pendingInterrupts).toContain(source.vector);
         avr.cpu.sreg.I = true;
@@ -87,6 +88,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         for (const cleared of ["flag", "mask"] as const) {
           test(`${source.name}: clearing ${cleared} cancels a ${restored ? "restored" : "direct"} request`, () => {
             const original = A.AVR({ timing });
+            original.cpu.flash.fill(0);
             source.prepare(original, true);
             const avr = restored ? A.AVR().restore(original.snapshot()) : original;
             expect(avr.snapshot().cpu.pendingInterrupts).toContain(source.vector);
@@ -101,6 +103,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       }
       test(`${source.name}: enabling a source with a latched flag dispatches`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         source.prepare(avr, false);
         expect(avr.snapshot().cpu.pendingInterrupts).not.toContain(source.vector);
         source.setEnabled(avr, true);
@@ -114,6 +117,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   describe(`${timing}: ADC conversion state`, () => {
     test("the first conversion takes 25 ADC clocks instead of 13", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(456);
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC)); // /2 ADC clock
       avr.runCycles(30); // Before the first conversion's 50-cycle minimum.
@@ -140,6 +144,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     });
     function warmedAdc(value = 0): Avr {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(value);
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));
       avr.runCycles(60); // Exclude first-conversion timing from these cases.
@@ -248,6 +253,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     });
     test("restoring an enabled but unused ADC retains first-conversion timing", () => {
       const source = A.AVR({ timing });
+      source.cpu.flash.fill(0);
       source.cpu.writeData(A.ADCSRA, bit(A.ADEN));
       const avr = A.AVR().restore(source.snapshot());
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));
@@ -305,6 +311,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: TWI TWINT remains set when writing zero to it`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     const twi = sources.find((source) => source.name === "TWI")!;
     twi.prepare(avr, false);
     expect(avr.cpu.readData(A.TWCR) & bit(A.TWINT)).toBe(bit(A.TWINT));
@@ -314,6 +321,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: INT0 edge latches EIFR while EIMSK is disabled`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.EICRA, 3);
     avr.pin(2).setInput(true);
     expect(avr.cpu.readData(A.EIFR) & bit(A.INTF0)).toBe(bit(A.INTF0));
@@ -322,6 +330,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const [pin, enableBit, vector] of [[2, A.INT0, A.INT0_VECTOR], [3, A.INT1, A.INT1_VECTOR]] as const) {
     test(`${timing}: INT${enableBit} low-level request is withdrawn when the pin rises`, () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.EIMSK, bit(enableBit));
       avr.runCycles(1);
       expect(avr.snapshot().cpu.pendingInterrupts).toContain(vector);
@@ -345,6 +354,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("comparator mux ignores MUX3 and accepts ADC selections 8..15", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.comparator.setInput("ain0", 1);
       for (let channel = 0; channel < 8; channel++) avr.analog(channel).setVoltage(2);
       avr.cpu.writeData(A.ADCSRB, bit(A.ACME));
@@ -357,6 +367,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const restored of [false, true]) {
       test(`SPI acknowledgement preserves WCOL without reading SPSR (${restored ? "restored" : "direct"})`, () => {
         const source = A.AVR({ timing });
+        source.cpu.flash.fill(0);
         source.cpu.writeData(A.DDRB, bit(2));
         source.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.MSTR) | bit(A.SPIE));
         source.cpu.writeData(A.SPDR, 0x55);
@@ -375,6 +386,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`TWI re-enters until firmware clears TWINT (${restored ? "restored" : "direct"})`, () => {
         const source = A.AVR({ timing });
+        source.cpu.flash.fill(0);
         source.cpu.flash[0] = 0xcfff; // Main loop.
         source.cpu.flash[A.TWI_VECTOR] = 0x9518; // RETI without clearing TWINT.
         source.cpu.writeData(A.TWCR, bit(A.TWEN) | bit(A.TWIE) | bit(A.TWSTA) | bit(A.TWINT));
@@ -398,6 +410,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("SPSR writes preserve read-only flags and cannot fabricate SPI interrupts", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.DDRB, bit(2));
       avr.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.MSTR) | bit(A.SPIE));
       avr.cpu.writeData(A.SPSR, bit(A.SPIF) | bit(A.WCOL) | 0x3e);
@@ -414,6 +427,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("restoring a legacy TWI snapshot reasserts an uncleared TWINT", () => {
       const source = A.AVR({ timing });
+      source.cpu.flash.fill(0);
       source.cpu.writeData(A.TWCR, bit(A.TWEN) | bit(A.TWIE) | bit(A.TWSTA) | bit(A.TWINT));
       source.runCycles(1);
       const snapshot = source.snapshot();
@@ -426,6 +440,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("external ADC triggers need ADATE, not ADSC, and clear busy after completion", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(345);
       avr.cpu.writeData(A.ADCSRB, bit(A.ADTS0) | bit(A.ADTS1)); // Timer0 compare A.
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADATE));
@@ -446,6 +461,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("ADSC starts a single conversion with an external auto-trigger selected", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(345);
       avr.cpu.writeData(A.ADCSRB, bit(A.ADTS0) | bit(A.ADTS1));
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADATE) | bit(A.ADSC));
@@ -456,6 +472,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("free-running mode waits for ADSC before its first conversion", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADATE));
       avr.runCycles(60);
       expect(avr.cpu.readData(A.ADCSRA) & (bit(A.ADSC) | bit(A.ADIF))).toBe(0);
@@ -466,6 +483,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("analog comparator events trigger ADC conversions independently of ACIE", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(345);
       avr.comparator.setInput("ain1", 1);
       avr.cpu.writeData(A.ACSR, bit(A.ACIS0) | bit(A.ACIS1));
@@ -479,6 +497,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("an external trigger edge during conversion is ignored until a fresh edge", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.comparator.setInput("ain1", 1);
       avr.cpu.writeData(A.ACSR, bit(A.ACIS0) | bit(A.ACIS1));
       avr.cpu.writeData(A.ADCSRB, bit(A.ADTS0));
@@ -499,6 +518,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("ADLAR changes the existing result immediately, including while read-locked", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(0x2ab);
       warm(avr);
       avr.cpu.readData(A.ADCL);
@@ -520,6 +540,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const first of [true, false]) {
       test(`ADC holds the input at the ${first ? "first" : "normal"} conversion sampling boundary`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         if (!first) warm(avr);
         avr.analog(0).setValue(100);
         avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));
@@ -536,6 +557,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const beforeSample of [true, false]) {
       test(`ADC sample timing and held value survive power reduction and restore (${beforeSample ? "before" : "after"} sampling)`, () => {
         const source = A.AVR({ timing });
+        source.cpu.flash.fill(0);
         warm(source);
         source.analog(0).setValue(100);
         source.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));

@@ -15,6 +15,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const interrupts of [false, true]) {
         test(`sleep ${mode}, I=${Number(interrupts)} clocks timers throughout wake and interrupt entry`, () => {
           const avr = A.AVR({ timing });
+          avr.cpu.flash.fill(0);
           avr.cpu.writeData(A.TCCR0B, 1);
           avr.cpu.writeData(A.TCCR1B, 1);
           avr.cpu.writeData(A.TCCR2B, 1);
@@ -44,6 +45,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         for (const gated of [false, true]) {
           test(`${source} completion during wake, I=${Number(interrupts)}, PRR=${Number(gated)}`, () => {
             const avr = A.AVR({ timing });
+            avr.cpu.flash.fill(0);
             const duration = source === "SPI" ? 32 : source === "USART" ? 176 : 50;
             const flagAddr = source === "SPI" ? A.SPSR : source === "USART" ? A.UCSR0A : A.ADCSRA;
             const flagBit = source === "SPI" ? A.SPIF : source === "USART" ? A.TXC0 : A.ADIF;
@@ -90,6 +92,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("wake without ISR advances the stopped counters' common divider", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.runCycles(3);
       avr.cpu.writeData(A.SMCR, (2 << 1) | 1);
       avr.cpu.sleep();
@@ -111,6 +114,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const gated of [false, true]) {
         test(`Timer2 asynchronous wake restarts synchronous timers, I=${Number(interrupts)}, PRTIM0=${Number(gated)}`, () => {
           const avr = A.AVR({ timing, clockHz: 1_638_400 });
+          avr.cpu.flash.fill(0);
           avr.cpu.writeData(A.OCR2A, 2);
           avr.cpu.writeData(A.OCR2B, 250);
           avr.cpu.writeData(A.TCCR2B, 1);

@@ -37,6 +37,8 @@ export interface AnalogChannelHandle {
 }
 
 export interface AnalogComparatorHandle {
+  /** Deterministic CPU-clock delays; defaults to the existing immediate logical comparison. */
+  setTiming(options: { propagationCycles: number; settlingCycles?: number }): void;
   setInput(input: "ain0" | "ain1", volts: number): void;
   readOutput(): boolean;
 }

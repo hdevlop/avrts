@@ -31,7 +31,8 @@ import {
   TWSR,
   UDRE0,
 } from "../src/cpu";
-import { compareDspFixed, compareIsrHeavy, comparePeripheralMix, compareStringHeavy, comparePeripheralBound } from "./benchmark-results";
+import { compareDspFixed, compareIsrHeavy, comparePeripheralMix, compareStringHeavy, comparePeripheralBound,
+  compareFloatMath, compareBitbangCrc, compareSensorFormat, compareSerialPrint, compareAnalogWrite, compareDelayBlink, compareTightLoop, defaultResultBudget, tracePinsFor, type PinTrace, resultLengthFor, validateResultExpectations, type BitbangTrace } from "./benchmark-results";
 
 interface Options {
   hex: string;
@@ -43,6 +44,9 @@ interface Options {
   pokes: string[];
   adc0Raw?: number;
   d2High?: boolean;
+  bitbangInput?: number;
+  sensorStart?: number;
+  tracePins?: number[];
   untilResult?: string;
   flushCycles: number;
   twiSlave?: number;
@@ -77,6 +81,9 @@ interface SimavrState {
   registers: number[];
   dumps: Record<string, number[]>;
   serial: number[];
+  bitbang?: BitbangTrace;
+  pins?: PinTrace;
+  unsupportedPinTrace?: number[];
   flash?: number[];
   optiboot?: OptibootScriptState;
   twi: TwiTranscript;
@@ -104,7 +111,6 @@ interface CompareResult {
 const DEFAULT_HEX = "examples/timer0-overflow-blink/timer0-overflow-blink.hex";
 const CLOCK_HZ = 16_000_000;
 const RESULT_ADDR = 0x0300;
-const RESULT_LEN = 21;
 const RESULT_START = 0xa7;
 const RESULT_END = 0x5c;
 const RESULT_MODE_ADDR = 0x02ff;
@@ -113,7 +119,7 @@ const STRING_HEAVY_SERIAL_FLUSH_CYCLES = 500_000;
 const DEFAULT_MAX_CYCLES = 5_000_000;
 const DEFAULT_ANALOG_RAW = 512;
 const DEFAULT_D2_HIGH = true;
-const RESULT_SCENARIOS = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed", "peripheral-bound"] as const;
+const RESULT_SCENARIOS = ["peripheral-mix", "isr-heavy", "string-heavy", "dsp-fixed", "peripheral-bound", "float-math", "bitbang-crc", "sensor-format", "serial-print", "analog-write", "delay-blink", "tight-loop"] as const;
 const TIMING_RESULT_ADDR = 0x0300;
 const TIMING_RESULT_LEN = 40;
 const TIMING_MAX_CYCLES = 1_000_000;
@@ -191,6 +197,9 @@ interface ScenarioOutcome {
   registers: Record<string, number>;
   twi: TwiTranscript;
   serial: number[];
+  bitbang?: BitbangTrace;
+  pins?: PinTrace;
+  unsupportedPinTrace?: number[];
 }
 
 interface TimingOutcome {
@@ -298,14 +307,28 @@ const RESULT_HEX_PATHS: Record<ResultScenario, string> = {
   "string-heavy": "examples/arduino-string-heavy/arduino-string-heavy.ino.hex",
   "dsp-fixed": "examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex",
   "peripheral-bound": "examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex",
+  "float-math": "examples/arduino-float-math/arduino-float-math.ino.hex",
+  "bitbang-crc": "examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex",
+  "sensor-format": "examples/arduino-sensor-format/arduino-sensor-format.ino.hex",
+  "serial-print": "examples/arduino-serial-print/arduino-serial-print.ino.hex",
+  "analog-write": "examples/arduino-analog-write/arduino-analog-write.ino.hex",
+  "delay-blink": "examples/delay-blink/delay-blink.ino.hex",
+  "tight-loop": "examples/tight-loop/tight-loop.hex",
 };
 
-const RESULT_AVRTS_COMPARE: Record<ResultScenario, (options: { maxCycles: number; analogRaw: number; d2High: boolean }) => { avrts: ScenarioOutcome }> = {
+const RESULT_AVRTS_COMPARE: Record<ResultScenario, (options: { maxCycles: number; analogRaw: number; d2High: boolean; bitbangInput: number; sensorStart: number }) => { avrts: ScenarioOutcome }> = {
   "peripheral-mix": comparePeripheralMix,
   "isr-heavy": compareIsrHeavy,
   "string-heavy": compareStringHeavy,
   "dsp-fixed": compareDspFixed,
   "peripheral-bound": comparePeripheralBound,
+  "float-math": compareFloatMath,
+  "bitbang-crc": compareBitbangCrc,
+  "sensor-format": compareSensorFormat,
+  "serial-print": compareSerialPrint,
+  "analog-write": compareAnalogWrite,
+  "delay-blink": compareDelayBlink,
+  "tight-loop": compareTightLoop,
 };
 
 const PERIPHERAL_MIX_TIMER_THRESHOLD_RESULT_INDEX = 6;
@@ -354,6 +377,10 @@ function parseArgs(args: string[]): Options {
       options.analogRaw = parseAnalog(args[++i], "--analog");
     } else if (arg === "--d2") {
       options.d2High = parseBoolean(args[++i], "--d2");
+    } else if (arg === "--sensor-start") {
+      options.sensorStart = parseAddress(args[++i], "--sensor-start", 0xffff);
+    } else if (arg === "--bitbang-input") {
+      options.bitbangInput = parseByteMask(args[++i], "--bitbang-input");
     } else if (arg === "--until-result") {
       options.untilResult = required(args[++i], "--until-result");
     } else if (arg === "--flush-cycles") {
@@ -440,8 +467,8 @@ function parseBoolean(value: string | undefined, flag: string): boolean {
 
 function parseResultCase(value: string | undefined): ResultCase {
   if (value === "all") return value;
-  if (value === "peripheral-bound" || value === "peripheral-mix" || value === "isr-heavy" || value === "string-heavy" || value === "dsp-fixed") return value;
-  throw new Error(`--result-case expects all, peripheral-mix, isr-heavy, string-heavy, dsp-fixed, or peripheral-bound, got ${value}.`);
+  if (RESULT_SCENARIOS.includes(value as ResultScenario)) return value as ResultScenario;
+  throw new Error(`--result-case expects all or ${RESULT_SCENARIOS.join(", ")}, got ${value}.`);
 }
 
 function parseTimingCase(value: string | undefined): TimingCase {
@@ -588,6 +615,8 @@ function runOracle(options: Options): SimavrState {
   for (const poke of options.pokes) args.push("--poke", poke);
   if (options.adc0Raw !== undefined) args.push("--adc0-raw", String(options.adc0Raw));
   if (options.d2High !== undefined) args.push("--d2", options.d2High ? "high" : "low");
+  if (options.bitbangInput !== undefined) args.push("--bitbang-input", String(options.bitbangInput));
+  if (options.tracePins?.length) args.push("--trace-pins", options.tracePins.join(","));
   if (options.untilResult) args.push("--until-result", options.untilResult);
   if (options.flushCycles) args.push("--flush-cycles", String(options.flushCycles));
   if (options.twiSlave !== undefined) args.push("--twi-slave", String(options.twiSlave));
@@ -676,12 +705,15 @@ function optionsForResultScenario(base: Options, scenario: ResultScenario): Opti
     ...base,
     hex: RESULT_HEX_PATHS[scenario],
     freq: CLOCK_HZ,
-    cycles: base.cyclesSet ? base.cycles : DEFAULT_MAX_CYCLES,
-    dumps: ["result:0x300:21", "data:0:1024"],
-    pokes: [`0x${RESULT_MODE_ADDR.toString(16)}:0x${RESULT_HALT_MODE.toString(16)}`],
+    cycles: base.cyclesSet ? base.cycles : defaultResultBudget(scenario),
+    tracePins: tracePinsFor(scenario),
+    dumps: [`result:0x300:${resultLengthFor(scenario)}`, "data:0:1024"],
+    pokes: [`0x${RESULT_MODE_ADDR.toString(16)}:0x${RESULT_HALT_MODE.toString(16)}`,
+      ...(scenario === "sensor-format" ? [`0x2fc:${(base.sensorStart ?? 0) & 0xff}`, `0x2fd:${(base.sensorStart ?? 0) >> 8}`] : [])],
     adc0Raw: base.analogRaw,
     d2High: base.d2High ?? DEFAULT_D2_HIGH,
-    untilResult: `0x${RESULT_ADDR.toString(16)}:${RESULT_LEN}:0x${RESULT_START.toString(16)}:0x${RESULT_END.toString(16)}`,
+    bitbangInput: scenario === "bitbang-crc" ? (base.bitbangInput ?? 0x96) : undefined,
+    untilResult: scenario === "tight-loop" ? undefined : `0x${RESULT_ADDR.toString(16)}:${resultLengthFor(scenario)}:0x${RESULT_START.toString(16)}:0x${RESULT_END.toString(16)}`,
     flushCycles: scenario === "string-heavy" ? STRING_HEAVY_SERIAL_FLUSH_CYCLES : 0,
     twiSlave: scenario === "peripheral-mix" ? 0x50 : undefined,
     compareAvrts: false,
@@ -689,15 +721,21 @@ function optionsForResultScenario(base: Options, scenario: ResultScenario): Opti
   };
 }
 
-function simavrOutcome(simavr: SimavrState): ScenarioOutcome {
+function simavrOutcome(simavr: SimavrState, scenario: string): ScenarioOutcome {
   const data = simavr.dumps.data ?? [];
   return {
-    completed: simavr.completed,
+    completed: scenario === "tight-loop" ? simavr.cycles >= simavr.targetCycles : simavr.completed,
     cycles: simavr.cycles,
-    result: simavr.dumps.result ?? [],
-    registers: readRegisters(data),
+    result: scenario === "tight-loop" ? [simavr.pcWords, simavr.sp & 255, simavr.sp >> 8, simavr.sreg, ...simavr.registers] : simavr.dumps.result ?? [],
+    registers: scenario === "tight-loop" ? {} : readRegisters(data),
     twi: simavr.twi,
     serial: simavr.serial,
+    bitbang: simavr.bitbang,
+    pins: simavr.pins,
+    // This native build emits no GPIO edges for phase-correct PWM. Preserve raw
+    // traces and declare that limitation; configuration/result comparisons and
+    // the fast-PWM pin still apply. A nonempty trace must pass the normal checks.
+    unsupportedPinTrace: scenario === "analog-write" ? [3, 9, 10, 11].filter((pin) => !simavr.pins?.[pin]?.length) : undefined,
   };
 }
 
@@ -725,14 +763,17 @@ function compareResultScenario(
 ): { pass: boolean; differences: string[]; normalizations: string[]; simavr: ScenarioOutcome; avrts: ScenarioOutcome; raw: SimavrState } {
   const options = optionsForResultScenario(base, scenario);
   const raw = runOracle(options);
-  const simavr = simavrOutcome(raw);
+  const simavr = simavrOutcome(raw, scenario);
   const avrts = RESULT_AVRTS_COMPARE[scenario]({
     maxCycles: options.cycles,
     analogRaw: options.adc0Raw ?? DEFAULT_ANALOG_RAW,
     d2High: options.d2High ?? DEFAULT_D2_HIGH,
+    bitbangInput: options.bitbangInput ?? 0x96,
+    sensorStart: options.sensorStart ?? 0,
   }).avrts;
   const differences: string[] = [];
   const normalizations: string[] = [];
+  if (simavr.unsupportedPinTrace?.length) normalizations.push(`Native GPIO traces unavailable for phase-correct PWM pins ${simavr.unsupportedPinTrace.join(",")}; SRAM/configuration still compared; waveform checked in avrts/avr8js.`);
 
   if (!simavr.completed) differences.push(`simavr did not write the result marker within ${simavr.cycles} cycles`);
   if (!avrts.completed) differences.push(`avrts did not write the result marker within ${avrts.cycles} cycles`);
@@ -745,6 +786,14 @@ function compareResultScenario(
   const avrtsRegisters = comparableRegisters(scenario, avrts, normalizations);
   if (JSON.stringify(simavrRegisters) !== JSON.stringify(avrtsRegisters)) {
     differences.push(`registers: simavr=${stableJson(simavrRegisters)} avrts=${stableJson(avrtsRegisters)}`);
+  }
+  if (JSON.stringify(simavr.bitbang) !== JSON.stringify(avrts.bitbang)) {
+    differences.push(`bitbang: simavr=${JSON.stringify(simavr.bitbang)} avrts=${JSON.stringify(avrts.bitbang)}`);
+  }
+  for (const [engine, outcome] of [["simavr", simavr], ["avrts", avrts]] as const) {
+    for (const error of validateResultExpectations(scenario, outcome, options.bitbangInput ?? 0x96, options.sensorStart ?? 0)) {
+      differences.push(`${engine}: ${error}`);
+    }
   }
 
   return { pass: differences.length === 0, differences, normalizations: [...new Set(normalizations)], simavr, avrts, raw };
@@ -1492,6 +1541,7 @@ function printScenarioOutcome(label: string, outcome: ScenarioOutcome): void {
   );
   console.log(`       twi starts=${outcome.twi.starts.length} writes=${outcome.twi.writes.length} reads=${outcome.twi.reads.length} stops=${outcome.twi.stops}`);
   console.log(`       serial bytes=${outcome.serial.length}`);
+  if (outcome.bitbang) console.log(`       bitbang rising=${outcome.bitbang.risingEdges} falling=${outcome.bitbang.fallingEdges} bytes=${outcome.bitbang.mosi.length}`);
 }
 
 function read16(bytes: number[], offset: number): number {

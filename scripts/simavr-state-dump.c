@@ -47,6 +47,35 @@ typedef struct byte_buffer_t {
   uint32_t capacity;
 } byte_buffer_t;
 
+typedef struct pin_event_t { uint64_t cycle; uint8_t high; } pin_event_t;
+typedef struct pin_trace_t {
+  avr_t *avr; uint8_t pin; uint8_t high;
+  pin_event_t *events; uint32_t length; uint32_t capacity;
+} pin_trace_t;
+static void pin_trace_hook(struct avr_irq_t *irq, uint32_t value, void *param) {
+  (void)irq;
+  pin_trace_t *trace = (pin_trace_t*)param;
+  uint8_t high = value & 1;
+  if (high == trace->high) return;
+  trace->high = high;
+  if (trace->length == trace->capacity) {
+    trace->capacity = trace->capacity ? trace->capacity * 2 : 64;
+    trace->events = realloc(trace->events, trace->capacity * sizeof(pin_event_t));
+    if (!trace->events) { fprintf(stderr, "pin trace allocation failed\n"); exit(1); }
+  }
+  trace->events[trace->length++] = (pin_event_t){(uint64_t)trace->avr->cycle, high};
+}
+
+typedef struct bitbang_t {
+  avr_t *avr;
+  uint8_t input;
+  uint8_t clock;
+  uint8_t byte;
+  uint32_t rising_edges;
+  uint32_t falling_edges;
+  byte_buffer_t mosi;
+} bitbang_t;
+
 typedef struct start_buffer_t {
   uint8_t *addresses;
   uint8_t *reads;
@@ -164,7 +193,7 @@ static void usage(const char *app) {
   fprintf(stderr,
           "Usage: %s --hex FILE [--mcu atmega328p] [--freq 16000000] "
           "[--cycles N] [--dump label:addr:length] [--poke addr:value] "
-          "[--adc0-raw N] [--d2 high|low] "
+          "[--adc0-raw N] [--d2 high|low] [--bitbang-input N] "
           "[--until-result addr:length:start:end] [--flush-cycles N] "
           "[--uart-rx-script] [--optiboot-script] [--spi-master-script] [--twi-slave addr] [--twi-master-script addr] "
           "[--twi-master-start-cycle N]\n",
@@ -350,6 +379,29 @@ static uint8_t next_twi_read(twi_slave_t *slave) {
   uint8_t last = slave->writes.length ? slave->writes.data[slave->writes.length - 1] : 0;
   uint8_t prev = slave->writes.length > 1 ? slave->writes.data[slave->writes.length - 2] : 0;
   return (uint8_t)(0xa5 ^ last ^ prev ^ ((slave->writes.length * 17) & 0xff));
+}
+
+static void bitbang_drive_input(bitbang_t *script, uint8_t high) {
+  avr_ioport_external_t external = {.name = 'B', .mask = (1 << 4), .value = high ? (1 << 4) : 0};
+  avr_ioctl(script->avr, AVR_IOCTL_IOPORT_SET_EXTERNAL('B'), &external);
+  avr_raise_irq(avr_io_getirq(script->avr, AVR_IOCTL_IOPORT_GETIRQ('B'), IOPORT_IRQ_PIN4), high);
+}
+
+static void bitbang_clock_hook(struct avr_irq_t *irq, uint32_t value, void *param) {
+  (void)irq;
+  bitbang_t *script = (bitbang_t *)param;
+  uint8_t high = value & 1;
+  if (high == script->clock) return;
+  script->clock = high;
+  if (high) {
+    uint8_t bit = script->rising_edges & 7;
+    bitbang_drive_input(script, !!(script->input & (0x80 >> bit)));
+    script->byte = (uint8_t)((script->byte << 1) | !!(script->avr->data[0x25] & (1 << 3)));
+    script->rising_edges++;
+    if (bit == 7) append_byte(&script->mosi, script->byte);
+  } else {
+    script->falling_edges++;
+  }
 }
 
 static void uart_output_hook(struct avr_irq_t *irq, uint32_t value, void *param) {
@@ -753,6 +805,10 @@ int main(int argc, char **argv) {
   int poke_count = 0;
   int adc0_raw = -1;
   int d2 = -1;
+  int bitbang_input = -1;
+  const char *trace_pins = NULL;
+  pin_trace_t pin_traces[20] = {0};
+  int pin_trace_count = 0;
   int twi_slave_enabled = 0;
   uint8_t twi_slave_address = 0;
   int uart_rx_script_enabled = 0;
@@ -796,6 +852,15 @@ int main(int argc, char **argv) {
       adc0_raw = (int)parsed;
     } else if (!strcmp(argv[i], "--d2") && i + 1 < argc) {
       d2 = parse_bool_pin(argv[++i], "--d2");
+    } else if (!strcmp(argv[i], "--trace-pins") && i + 1 < argc) {
+      trace_pins = argv[++i];
+    } else if (!strcmp(argv[i], "--bitbang-input") && i + 1 < argc) {
+      uint32_t parsed = parse_u32(argv[++i], "--bitbang-input");
+      if (parsed > 255) {
+        fprintf(stderr, "--bitbang-input expects 0..255\n");
+        return 2;
+      }
+      bitbang_input = (int)parsed;
     } else if (!strcmp(argv[i], "--until-result") && i + 1 < argc) {
       until_result = parse_until_result(argv[++i]);
     } else if (!strcmp(argv[i], "--flush-cycles") && i + 1 < argc) {
@@ -872,6 +937,28 @@ int main(int argc, char **argv) {
     };
     avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL('D'), &external);
     avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('D'), IOPORT_IRQ_PIN2), d2 ? 1 : 0);
+  }
+
+  if (trace_pins) {
+    char *list = strdup(trace_pins);
+    for (char *token = strtok(list, ","); token; token = strtok(NULL, ",")) {
+      int pin = atoi(token);
+      if (pin < 0 || pin > 19 || pin_trace_count >= 20) { fprintf(stderr, "invalid trace pin\n"); return 1; }
+      pin_trace_t *trace = &pin_traces[pin_trace_count++];
+      trace->avr = avr; trace->pin = (uint8_t)pin;
+      char port = pin < 8 ? 'D' : pin < 14 ? 'B' : 'C';
+      int bit = pin < 8 ? pin : pin < 14 ? pin - 8 : pin - 14;
+      avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ(port), bit), pin_trace_hook, trace);
+    }
+    free(list);
+  }
+  bitbang_t bitbang;
+  memset(&bitbang, 0, sizeof(bitbang));
+  if (bitbang_input >= 0) {
+    bitbang.avr = avr;
+    bitbang.input = (uint8_t)bitbang_input;
+    bitbang_drive_input(&bitbang, !!(bitbang.input & 0x80));
+    avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ('B'), IOPORT_IRQ_PIN5), bitbang_clock_hook, &bitbang);
   }
 
   byte_buffer_t serial;
@@ -960,8 +1047,27 @@ int main(int argc, char **argv) {
   }
   printf("},\"serial\":");
   print_byte_array(serial.data, serial.length);
+  if (pin_trace_count) {
+    printf(",\"pins\":{");
+    for (int i = 0; i < pin_trace_count; i++) {
+      pin_trace_t *trace = &pin_traces[i];
+      if (i) printf(",");
+      printf("\"%u\":[", trace->pin);
+      for (uint32_t j = 0; j < trace->length; j++) {
+        if (j) printf(",");
+        printf("{\"cycle\":%" PRIu64 ",\"high\":%s}", trace->events[j].cycle, trace->events[j].high ? "true" : "false");
+      }
+      printf("]");
+    }
+    printf("}");
+  }
   printf(",\"flash\":");
   print_byte_array(avr->flash, 128);
+  if (bitbang_input >= 0) {
+    printf(",\"bitbang\":{\"risingEdges\":%" PRIu32 ",\"fallingEdges\":%" PRIu32 ",\"mosi\":", bitbang.rising_edges, bitbang.falling_edges);
+    print_byte_array(bitbang.mosi.data, bitbang.mosi.length);
+    printf("}");
+  }
   printf(",\"optiboot\":{\"phase\":%u,\"sawPortBHigh\":%s,\"sawPortBLowAfterHigh\":%s}",
          optiboot_script.phase,
          optiboot_script.saw_portb_high ? "true" : "false",
@@ -994,7 +1100,9 @@ int main(int argc, char **argv) {
   printf("\n");
 
   avr_terminate(avr);
+  for (int i = 0; i < pin_trace_count; i++) free(pin_traces[i].events);
   free(serial.data);
+  free(bitbang.mosi.data);
   free(spi_master.outputs.data);
   free(twi_slave.starts.addresses);
   free(twi_slave.starts.reads);

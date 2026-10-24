@@ -35,6 +35,7 @@ describe("Phase 6 chip-level tier", () => {
 
   test("MCUCR IVCE/IVSEL relocates interrupt vectors to the boot section", () => {
     const avr = AVR().useFuses({ high: 0xfe }).reset();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(MCUCR, 1 << IVCE);
@@ -50,6 +51,7 @@ describe("Phase 6 chip-level tier", () => {
 
   test("MCUCR protected windows expire if the second write is too late", () => {
     const avr = AVR().useFuses({ high: 0xfe }).reset();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(MCUCR, 1 << IVCE);
@@ -81,6 +83,7 @@ describe("Phase 6 chip-level tier", () => {
 
   test("WDTON fuse forces watchdog system-reset mode", () => {
     const avr = AVR().useClock(1_000).useFuses({ high: 0xef }).reset();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     expect((cpu.readData(WDTCSR) >> WDE) & 1).toBe(1);

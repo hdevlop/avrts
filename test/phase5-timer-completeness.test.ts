@@ -54,6 +54,7 @@ function readTcnt1(avr: ReturnType<typeof AVR>): number {
 describe("Phase 5 timer completeness", () => {
   test("Timer1 FOC1A strobe drives compare output in non-PWM mode", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, 1 << 1); // PB1 / OC1A / Arduino D9.
@@ -67,6 +68,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 input capture latches ICP1 edges and requests TIMER1_CAPT", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x0000; // NOP, so interrupt dispatch has a safe instruction.
@@ -87,6 +89,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 input-capture noise canceler delays capture by four cycles", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     avr.pin(8).setInput(false);
@@ -103,6 +106,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 CTC mode 12 clears at ICR1 TOP while OCR1A/OCR1B still compare", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR1B, (1 << WGM13) | (1 << WGM12)); // ICR1 is writable as TOP.
@@ -126,6 +130,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 fast PWM mode 14 uses ICR1 TOP for wrap, overflow, pins, and duty", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, (1 << 1) | (1 << 2)); // PB1/PB2 = OC1A/OC1B.
@@ -168,6 +173,7 @@ describe("Phase 5 timer completeness", () => {
     ["phase correct", (1 << WGM13) | (1 << WGM11)],
   ])("Timer1 %s PWM uses ICR1 TOP on both slopes", (_name, wgmBits) => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, 1 << 1); // PB1 / OC1A / Arduino D9.
@@ -212,6 +218,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 fast PWM mode 5 wraps at the fixed 8-bit TOP and sets TOV1 at TOP", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR1A, 1 << WGM10);
@@ -230,6 +237,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 phase-correct mode 1 dual-slopes at the fixed 8-bit TOP with TOV1 at BOTTOM", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR1A, 1 << WGM10);
@@ -249,6 +257,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 fast PWM mode 15 uses OCR1A as TOP", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(OCR1AH, 0);
@@ -269,6 +278,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 phase/frequency-correct mode 9 dual-slopes at OCR1A", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(OCR1AH, 0);
@@ -289,6 +299,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 fast PWM mode 7 reports the 10-bit TOP for duty", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, 1 << 1); // PB1 / OC1A.
@@ -306,6 +317,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer1 reserved mode 13 free-runs to the 16-bit MAX (documented approximation)", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR1A, 1 << WGM10);
@@ -318,6 +330,7 @@ describe("Phase 5 timer completeness", () => {
 
   test("Timer2 async mode uses the TOSC cycle ratio and ASSR busy flags", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const busyMask =
       (1 << TCN2UB) | (1 << OCR2AUB) | (1 << OCR2BUB) | (1 << TCR2AUB) | (1 << TCR2BUB);

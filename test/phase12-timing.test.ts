@@ -36,16 +36,19 @@ const NOP = 0x0000;
 describe("Phase 12 — timing mode API", () => {
   test("default timing is 'fast'", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     expect(avr.cpu.timing).toBe("fast");
   });
 
   test("constructor option sets timing to cycle-exact", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     expect(avr.cpu.timing).toBe("cycle-exact");
   });
 
   test("useTiming() switches timing mode at runtime", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.useTiming("cycle-exact");
     expect(avr.cpu.timing).toBe("cycle-exact");
     avr.useTiming("fast");
@@ -54,11 +57,13 @@ describe("Phase 12 — timing mode API", () => {
 
   test("useTiming() rejects unknown modes", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     expect(() => avr.useTiming("bogus" as never)).toThrow();
   });
 
   test("AVROptions.timing is wired through use()", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.use({ timing: "cycle-exact" });
     expect(avr.cpu.timing).toBe("cycle-exact");
   });
@@ -66,7 +71,8 @@ describe("Phase 12 — timing mode API", () => {
 
 describe("Phase 12 — fast vs cycle-exact notification granularity", () => {
   test("fast mode coalesces multi-cycle instructions into one listener call", () => {
-    const avr = AVR(); // fast mode default
+    const avr = AVR();
+    avr.cpu.flash.fill(0); // fast mode default
     const calls: number[] = [];
     avr.cpu.onCycles((cycles) => calls.push(cycles));
 
@@ -79,6 +85,7 @@ describe("Phase 12 — fast vs cycle-exact notification granularity", () => {
 
   test("cycle-exact mode emits one listener call per simulated cycle", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     const calls: number[] = [];
     avr.cpu.onCycles((cycles) => calls.push(cycles));
 
@@ -91,6 +98,7 @@ describe("Phase 12 — fast vs cycle-exact notification granularity", () => {
 
   test("NOP is still 1 cycle in cycle-exact mode (1 listener call)", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     const calls: number[] = [];
     avr.cpu.onCycles((cycles) => calls.push(cycles));
     avr.cpu.tick(); // NOP at flash[0]
@@ -99,6 +107,7 @@ describe("Phase 12 — fast vs cycle-exact notification granularity", () => {
 
   test("interrupt dispatch bills 4 cycles per-cycle in cycle-exact mode", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     // Configure a simple Timer0 overflow on a fresh AVR.
     avr.cpu.writeData(TCCR0B, 1 << CS00); // /1
     avr.cpu.writeData(TIMSK0, 1 << TOIE0);
@@ -119,6 +128,7 @@ describe("Phase 12 — fast vs cycle-exact notification granularity", () => {
 describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
   test("Timer0 overflow flag is set at exact cycle 256 with prescaler /1", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0B, 1 << CS00); // /1
     avr.cpu.sreg.I = false; // do not dispatch — keep the flag set
 
@@ -136,6 +146,7 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
 
   test("Timer0 overflow flag is set at exact cycle 2048 with prescaler /8", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0B, 1 << CS01); // /8
     avr.cpu.sreg.I = false;
 
@@ -152,6 +163,7 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
 
   test("Timer0 compare flag A follows equality by one /1 timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0A, 1 << WGM01); // CTC mode
     avr.cpu.writeData(TCCR0B, 1 << CS00); // /1
     avr.cpu.writeData(OCR0A, 100);
@@ -171,6 +183,7 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
 
   test("Timer0 compare flag A follows equality by one /8 timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0A, 1 << WGM01); // CTC mode
     avr.cpu.writeData(TCCR0B, 1 << CS01); // /8
     avr.cpu.writeData(OCR0A, 50);
@@ -192,6 +205,7 @@ describe("Phase 12 — Timer0 cycle-exact boundaries", () => {
 describe("Phase 12 — Timer1/Timer2 cycle-exact boundaries", () => {
   test("Timer1 compare flag A follows equality by one timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, (1 << WGM12) | (1 << CS10)); // CTC, /1
     avr.cpu.writeData(OCR1AH, 0);
     avr.cpu.writeData(OCR1AL, 50);
@@ -210,6 +224,7 @@ describe("Phase 12 — Timer1/Timer2 cycle-exact boundaries", () => {
 
   test("Timer2 compare flag A follows equality by one timer clock", () => {
     const avr = AVR({ timing: "cycle-exact" });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR2A, 1 << WGM21); // CTC
     avr.cpu.writeData(TCCR2B, 1 << CS20); // /1
     avr.cpu.writeData(OCR2A, 50);
@@ -266,6 +281,7 @@ describe("Phase 12 — golden Timer0 fixture (existing fast-mode tests stay gree
 describe("Phase 12 — snapshot / restore for timing mode", () => {
   test("snapshot captures timing; restore re-applies it", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.useTiming("cycle-exact");
     const snap = avr.snapshot();
     expect(snap.runtime.timing).toBe("cycle-exact");

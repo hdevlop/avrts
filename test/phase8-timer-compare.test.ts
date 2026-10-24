@@ -66,6 +66,7 @@ function installProgram(avr: ReturnType<typeof AVR>, vector: number): void {
 describe("timer compare-match interrupts", () => {
   test("Timer0 COMPA wins priority and COMPB remains flagged", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     installProgram(avr, TIMER0_COMPA_VECTOR);
 
@@ -88,6 +89,7 @@ describe("timer compare-match interrupts", () => {
 
   test("Timer1 COMPA wins priority and COMPB remains flagged", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     installProgram(avr, TIMER1_COMPA_VECTOR);
 
@@ -112,6 +114,7 @@ describe("timer compare-match interrupts", () => {
 
   test("Timer2 COMPA wins priority and COMPB remains flagged", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     installProgram(avr, TIMER2_COMPA_VECTOR);
 
@@ -134,6 +137,7 @@ describe("timer compare-match interrupts", () => {
 
   test("CTC mode resets each timer at OCRnA after the compare match", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(OCR0A, 3);

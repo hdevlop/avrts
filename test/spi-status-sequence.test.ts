@@ -15,6 +15,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const mode of ["master", "slave"] as const) {
     const setup = () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.DDRB, mode === "master" ? bit(2) : 0);
       avr.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.SPIE) | (mode === "master" ? bit(A.MSTR) : 0));
       avr.cpu.writeData(A.SPDR, 0x11);

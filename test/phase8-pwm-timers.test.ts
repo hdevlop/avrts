@@ -41,6 +41,7 @@ function makeCpu(): CPU {
 describe("Timer1 PWM (pins 9, 10)", () => {
   test("analogWrite on pin 9 (OC1A) reports phase-correct PWM duty", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     // The Arduino core path: 8-bit phase-correct PWM, non-inverting OC1A.
     cpu.writeData(TCCR1A, (1 << WGM10) | (1 << COM1A1));
@@ -61,6 +62,7 @@ describe("Timer1 PWM (pins 9, 10)", () => {
 
   test("pin 10 (OC1B) emits a PWM change when the OCR1B buffer transfers", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const seen: number[] = [];
     avr.pwm(10).onChange((signal) => seen.push(signal.duty));
 
@@ -77,6 +79,7 @@ describe("Timer1 PWM (pins 9, 10)", () => {
 describe("Timer2 PWM (pins 11, 3)", () => {
   test("analogWrite on pin 11 (OC2A) and pin 3 (OC2B) report duty", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(TCCR2A, (1 << WGM20) | (1 << COM2A1) | (1 << COM2B1));
     cpu.writeData(OCR2A, 51); // analogWrite(11, 51)
@@ -117,6 +120,7 @@ describe("Timer1 counting + overflow", () => {
 
   test("enabled overflow interrupt jumps to the TIMER1_OVF vector", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.flash[0] = 0x9478; // sei
     cpu.flash[1] = 0xcfff; // rjmp -1

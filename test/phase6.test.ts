@@ -80,6 +80,7 @@ describe("Timer0", () => {
 
   test("enabled overflow interrupt jumps through the facade-wired Timer0", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -105,6 +106,7 @@ describe("Timer0", () => {
 
   test("runFor advances cycles using the configured clock", () => {
     const avr = AVR({ clockHz: 1_000 });
+    avr.cpu.flash.fill(0);
     avr.runFor(3);
     expect(avr.status().cycles).toBe(3);
   });

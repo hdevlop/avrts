@@ -14,6 +14,7 @@ describe("interrupt instruction boundaries", () => {
     for (const engine of ["step", "run", "profile"] as const) {
       test(`${engine}/${timing}: SEI and RETI allow the following instruction before dispatch`, () => {
         const avr = AVR({ timing });
+        avr.cpu.flash.fill(0);
         const cpu = avr.cpu;
         cpu.flash.set([0x9478, 0xe401, 0x9503]); // SEI; LDI r16,0x41; INC r16
         cpu.flash[WDT_VECTOR] = 0x9518; // RETI
@@ -42,6 +43,7 @@ describe("interrupt instruction boundaries", () => {
 
     test(`${timing}: a pending interrupt still permits SEI; SLEEP to enter sleep`, () => {
       const avr = AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.flash.set([0x9478, 0x9588]);
       avr.cpu.writeData(SMCR, 1 << SE);
       let entries = 0;
@@ -59,6 +61,7 @@ describe("interrupt instruction boundaries", () => {
 
   test("reset discards pending interrupts", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.requestInterrupt(ADC_VECTOR);
     avr.reset();
     avr.cpu.sreg.I = true;
@@ -105,6 +108,7 @@ describe("withdrawn timer interrupts", () => {
     for (const cleared of ["flag", "mask"] as const) {
       test(`${source.name}: clearing ${cleared} cancels an overflow/compare/capture request`, () => {
         const avr = AVR();
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(source.mask, 1 << source.bit);
         avr.cpu.writeData(source.control, 1);
         source.prepare(avr);

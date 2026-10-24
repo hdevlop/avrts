@@ -80,6 +80,7 @@ describe("ADC", () => {
 
   test("facade analog input drives firmware-visible ADC registers", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
 
     avr.analog(3).setVoltage(2.5, 5);
     avr.cpu.writeData(ADMUX, 3);
@@ -92,6 +93,7 @@ describe("ADC", () => {
 
   test("ADC interrupt jumps to the ADC vector and RETI resumes", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -113,6 +115,7 @@ describe("ADC", () => {
 
   test("restored auto-trigger state starts conversion from restored register data", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     const cpu = source.cpu;
 
     source.analog(0).setValue(321);
@@ -120,6 +123,7 @@ describe("ADC", () => {
     cpu.writeData(ADCSRA, (1 << ADEN) | (1 << ADATE));
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.cpu.data[TIFR0] = restored.cpu.data[TIFR0]! | (1 << TOV0);
     restored.runCycles(54); // Trigger at cycle 1, three sync cycles, then 25 ADC clocks at /2.

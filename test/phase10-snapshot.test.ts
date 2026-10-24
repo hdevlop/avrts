@@ -77,12 +77,14 @@ function compareDirectAndRestoredInterruptAck(
   flagMask: number,
 ): void {
   const direct = AVR();
+  direct.cpu.flash.fill(0);
   setup(direct);
   expect(direct.cpu.readData(flagAddress) & flagMask).toBe(flagMask);
   servicePending(direct, vector);
   expect(direct.cpu.readData(flagAddress) & flagMask).toBe(0);
 
   const restored = AVR();
+  restored.cpu.flash.fill(0);
   setup(restored);
   const snap = restored.snapshot();
   restored.restore(snap);
@@ -184,6 +186,7 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
 
   test("pending interrupts survive restore so they fire on the next tick", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.flash[0] = 0xcfff; // rjmp -1 main loop
     avr.cpu.flash[TIMER0_COMPA_VECTOR] = 0xcfff; // rjmp -1 in handler
     avr.cpu.sreg.I = true;
@@ -197,12 +200,14 @@ describe("Phase 10 — snapshot / restore (CPU)", () => {
 
   test("restore does not tick cycle listeners or advance timer state", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.cpu.writeData(TCCR0B, 1 << CS00); // Timer0 /1
     source.runCycles(10);
     expect(source.cpu.readData(TCNT0)).toBe(10);
     const snap = source.snapshot();
 
     const target = AVR();
+    target.cpu.flash.fill(0);
     let deliveredCycles = 0;
     target.cpu.onCycles((cycles) => {
       deliveredCycles += cycles;
@@ -319,6 +324,7 @@ describe("Phase 10 — snapshot / restore (GPIO and pins)", () => {
 
   test("restore to a visibly-different pin state fires onChange", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const events: Array<[boolean, number]> = [];
     avr.pin(2).onChange((high, event) => events.push([high, event.cycles]));
 
@@ -337,6 +343,7 @@ describe("Phase 10 — snapshot / restore (GPIO and pins)", () => {
 
   test("restoring the same snapshot does not double-fire pin listeners", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const events: boolean[] = [];
     avr.pin(13).onChange((high) => events.push(high));
 
@@ -354,6 +361,7 @@ describe("Phase 10 — snapshot / restore (GPIO and pins)", () => {
 
   test("restore does not duplicate pin listeners when invoked twice", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     let count = 0;
     avr.pin(13).onChange(() => {
       count += 1;
@@ -399,6 +407,7 @@ describe("Phase 10 — snapshot / restore (Timers)", () => {
   ] as const) {
     test(`${name} snapshot synchronizes counters before capturing CPU data`, () => {
       const avr = AVR();
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(control, select); // /64; snapshot between scheduled events.
       avr.runCycles(100);
       const snapshot = avr.snapshot(); // No prior TCNT read to synchronize it.
@@ -416,6 +425,7 @@ describe("Phase 10 — snapshot / restore (Timers)", () => {
 
   test("Timer0 continues from a restored prescaler remainder", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     // Configure Timer0 with prescaler /8 so 1 timer tick = 8 CPU cycles.
     avr.cpu.writeData(TCCR0B, (1 << CS01)); // TCCR0B = 0b010 -> /8
 
@@ -435,6 +445,7 @@ describe("Phase 10 — snapshot / restore (Timers)", () => {
 
   test("Timer1 count survives snapshot/restore", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, (1 << CS10)); // /1 prescaler
     avr.runCycles(0x1234);
 
@@ -496,6 +507,7 @@ describe("Phase 10 — snapshot / restore (Timers)", () => {
 describe("Phase 10 — snapshot / restore (EEPROM and ADC)", () => {
   test("EEPROM survives a normal reset()", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.eeprom.write(0x10, 0x55);
     avr.reset();
     expect(avr.eeprom.read(0x10)).toBe(0x55);
@@ -503,6 +515,7 @@ describe("Phase 10 — snapshot / restore (EEPROM and ADC)", () => {
 
   test("snapshot/restore reverts EEPROM to the snapshotted image", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.eeprom.write(0x10, 0x55);
     const snap = avr.snapshot();
     avr.eeprom.write(0x10, 0xaa);
@@ -513,6 +526,7 @@ describe("Phase 10 — snapshot / restore (EEPROM and ADC)", () => {
 
   test("ADC channel values round-trip", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.analog(3).setValue(0x200);
     avr.analog(5).setValue(0x3ff);
     const snap = avr.snapshot();
@@ -546,6 +560,7 @@ describe("Phase 10 — snapshot / restore (Runtime state)", () => {
 
   test("restore emits one UI refresh event without replaying serial text", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const events: Array<{ type: string; serial: string; cycles: number }> = [];
     const textEvents: string[] = [];
 
@@ -572,6 +587,7 @@ describe("Phase 10 — snapshot / restore (Runtime state)", () => {
 
   test("running/paused flags re-arm the loop after restore", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.start();
     expect(avr.status().running).toBe(true);
 
@@ -586,6 +602,7 @@ describe("Phase 10 — snapshot / restore (Runtime state)", () => {
 
   test("restore cancels an active loop if the snapshot said not running", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.start();
     const snapRunning = avr.snapshot();
     avr.stop();
@@ -604,6 +621,7 @@ describe("Phase 10 — snapshot / restore (Runtime state)", () => {
 describe("Phase 10 — snapshot shape is plain data", () => {
   test("snapshot is fully serializable (no functions, no class instances)", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(OCR0A, 0x80);
     avr.cpu.writeData(PORTB, 0x20);
     avr.analog(0).setValue(0x123);

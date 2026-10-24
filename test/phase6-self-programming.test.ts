@@ -30,6 +30,12 @@ function runSpm(avr: ReturnType<typeof AVR>, control: number, pc = BOOT_256_WORD
   avr.cpu.pc = pc;
   avr.cpu.writeData(SPMCSR, control);
   avr.cpu.tick();
+  if ((control & ((1 << PGERS) | (1 << PGWRT) | (1 << BLBSET))) !== 0) {
+    // Functional checks wait for the physical programming cycle; deadline
+    // boundaries and blocked fetches are covered in programming-timing.test.ts.
+    avr.cpu.cycles += 65_600;
+    avr.cpu.serviceInterrupts();
+  }
 }
 
 describe("Phase 6 self-programming", () => {
@@ -148,6 +154,8 @@ describe("Phase 6 self-programming", () => {
   test("SPM command window and page buffer survive snapshot restore", () => {
     const source = AVR().useFuses({ high: 0xfe });
     const sourceCpu = source.cpu;
+    sourceCpu.flash.fill(0); // Execute NOPs while the command window expires.
+    sourceCpu.flash[TARGET_WORD_ADDRESS] = 0xffff;
 
     sourceCpu.data[0] = 0xef;
     sourceCpu.data[1] = 0xbe;

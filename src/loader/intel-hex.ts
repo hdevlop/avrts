@@ -57,9 +57,11 @@ export function loadHex(hexText: string, flash: Uint16Array): HexLoadResult {
       case REC_EOF:
         return { bytesLoaded, maxByteAddress };
       case REC_EXT_SEGMENT:
+        if (count !== 2) throw new IntelHexError(`Line ${lineNo}: extended segment address requires exactly 2 data bytes`);
         baseAddress = ((bytes[4]! << 8) | bytes[5]!) << 4;
         break;
       case REC_EXT_LINEAR:
+        if (count !== 2) throw new IntelHexError(`Line ${lineNo}: extended linear address requires exactly 2 data bytes`);
         baseAddress = ((bytes[4]! << 8) | bytes[5]!) * 0x10000;
         break;
       case REC_START_SEGMENT:
@@ -77,7 +79,7 @@ export function loadHex(hexText: string, flash: Uint16Array): HexLoadResult {
 
 /** Convenience: allocate a full-size flash and load `hexText` into it. */
 export function parseHex(hexText: string): Uint16Array {
-  const flash = new Uint16Array(FLASH_WORDS);
+  const flash = new Uint16Array(FLASH_WORDS).fill(0xffff);
   loadHex(hexText, flash);
   return flash;
 }

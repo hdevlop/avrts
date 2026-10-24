@@ -13,6 +13,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const source of ["RX", "UDRE", "TX"] as const) {
         test(`${path}: USART ${source} request follows its enable and live flag with I clear`, () => {
           const avr = A.AVR({ timing });
+          avr.cpu.flash.fill(0);
           const mask = source === "RX" ? A.RXCIE0 : source === "UDRE" ? A.UDRIE0 : A.TXCIE0;
           const vector = source === "RX" ? A.USART_RX_VECTOR : source === "UDRE" ? A.USART_UDRE_VECTOR : A.USART_TX_VECTOR;
           const control = bit(A.RXEN0) | bit(A.TXEN0);
@@ -35,6 +36,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const source of ["EEPROM", "SPM"] as const) {
         test(`${path}: ${source} ready request persists until its enable is cleared`, () => {
           const avr = A.AVR({ timing });
+          avr.cpu.flash.fill(0);
           const addr = source === "EEPROM" ? A.EECR : A.SPMCSR;
           const mask = source === "EEPROM" ? A.EERIE : A.SPMIE;
           const vector = source === "EEPROM" ? A.EE_READY_VECTOR : A.SPM_READY_VECTOR;
@@ -57,6 +59,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const source of ["RX", "UDRE"] as const) {
         test(`${path}: USART ${source} remains a level request with PRR clock gating`, () => {
           const avr = A.AVR({ timing });
+          avr.cpu.flash.fill(0);
           const mask = source === "RX" ? A.RXCIE0 : A.UDRIE0;
           const vector = source === "RX" ? A.USART_RX_VECTOR : A.USART_UDRE_VECTOR;
           avr.cpu.writeData(A.UCSR0B, bit(A.RXEN0) | bit(mask));
@@ -79,6 +82,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const source of ["SPI", "USART", "ADC"] as const) {
         test(`${path}: power-down freezes ${source}, wake resumes it, and PRR stays independent`, () => {
           const avr = A.AVR({ timing });
+          avr.cpu.flash.fill(0);
           const flagAddr = source === "SPI" ? A.SPSR : source === "USART" ? A.UCSR0A : A.ADCSRA;
           const flagBit = source === "SPI" ? A.SPIF : source === "USART" ? A.TXC0 : A.ADIF;
           const prBit = source === "SPI" ? A.PRSPI : source === "USART" ? A.PRUSART0 : A.PRADC;
@@ -117,6 +121,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`${path}: SPI disable aborts the in-flight transfer`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.DDRB, bit(2));
         avr.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.MSTR) | bit(A.SPIE));
         avr.cpu.writeData(A.SPDR, 0x55);
@@ -137,6 +142,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`${path}: SPI transmit preload preserves the separate receive buffer`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.SPCR, bit(A.SPE));
         avr.cpu.writeData(A.SPDR, 0x12);
         expect(avr.spi.master().transfer(0xab)).toBe(0x12);
@@ -151,6 +157,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`${path}: EEPROM master-write enable expires and invalid writes stay idle`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.EEDR, 0xaa);
         avr.cpu.writeData(A.EECR, bit(A.EEMPE));
         avr.runCycles(2);
@@ -162,11 +169,14 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         expect(target.cpu.readData(A.EECR) & bit(A.EEPE)).toBe(0);
         target.cpu.writeData(A.EECR, bit(A.EEMPE));
         target.cpu.writeData(A.EECR, bit(A.EEPE));
+        expect(target.eeprom.read(0)).toBe(0);
+        target.runCycles(54_400);
         expect(target.eeprom.read(0)).toBe(0xaa);
       });
 
       test(`${path}: watchdog WDIF writes preserve elapsed timeout`, () => {
         const avr = A.AVR({ timing, clockHz: 1000 });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.WDTCSR, bit(A.WDIE));
         avr.runCycles(8);
         const target = restored(avr, restore);
@@ -177,6 +187,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`${path}: watchdog protected configuration window survives restore`, () => {
         const avr = A.AVR({ timing, clockHz: 1000 });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.WDTCSR, bit(A.WDIE) | bit(A.WDE) | bit(A.WDCE));
         avr.runCycles(2);
         const target = restored(avr, restore);
@@ -191,6 +202,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("USART TXC remains set when a new byte is written until explicitly acknowledged", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.UCSR0B, bit(A.TXEN0) | bit(A.TXCIE0));
       avr.cpu.writeData(A.UDR0, 0x11);
       avr.runCycles(176);
@@ -201,6 +213,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("GPIO input injection and snapshot preserve other pins' externally driven values", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.pin(8).setInput(false);
       avr.cpu.writeData(A.PORTB, bit(0));
       avr.cpu.writeData(A.DDRB, bit(0));
@@ -215,6 +228,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("restoring GPIO updates listeners without creating PCINT or capture flags", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.PCMSK0, bit(0));
       avr.cpu.writeData(A.PCICR, bit(0));
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1));
@@ -222,6 +236,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.cpu.writeData(A.PCIFR, bit(0));
       avr.cpu.writeData(A.TIFR1, bit(A.ICF1));
       const target = A.AVR({ timing });
+      target.cpu.flash.fill(0);
       const edges: boolean[] = [];
       target.pin(8).onChange((high) => edges.push(high));
       target.restore(avr.snapshot());
@@ -238,6 +253,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("SPI slave deselection aborts a partial byte and writes while shifting collide", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.SPCR, bit(A.SPE));
       avr.cpu.writeData(A.SPDR, 0x11);
       avr.spi.master().transfer(0x22);
@@ -255,6 +271,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("SPI detects an already-low input SS on enable and a switch from output SS to input", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.MSTR) | bit(A.SPIE));
       expect(avr.cpu.readData(A.SPCR) & bit(A.MSTR)).toBe(0);
       expect(avr.cpu.readData(A.SPSR) & bit(A.SPIF)).toBe(bit(A.SPIF));
@@ -275,6 +292,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("SPI slave SS remains an external input even when DDB2 is set", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.DDRB, bit(2));
       avr.cpu.writeData(A.PORTB, bit(2));
       avr.cpu.writeData(A.SPCR, bit(A.SPE));
@@ -288,6 +306,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("TWI status is read-only and rejected TWDR writes set a hardware-owned collision flag", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TWSR, 0x03);
       expect(avr.cpu.readData(A.TWSR)).toBe(0xfb);
       avr.cpu.writeData(A.TWCR, bit(A.TWEN) | bit(A.TWSTA) | bit(A.TWINT));
@@ -306,11 +325,13 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("EEPROM erase-only and write-only modes preserve their bit programming semantics", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.eeprom.write(0, 0xf0);
       avr.cpu.writeData(A.EEDR, 0x5a);
       const write = (mode: number) => {
         avr.cpu.writeData(A.EECR, (mode << 4) | bit(A.EEMPE));
         avr.cpu.writeData(A.EECR, (mode << 4) | bit(A.EEPE));
+        avr.runCycles(mode === 0 ? 54_400 : 28_800);
       };
       write(2);
       expect(avr.eeprom.read(0)).toBe(0x50);
@@ -322,6 +343,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("EEPROM ready requests are suppressed during an SPM command", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.EECR, bit(A.EERIE));
       expect(pending(avr)).toContain(A.EE_READY_VECTOR);
       avr.cpu.writeData(A.SPMCSR, bit(A.SELFPRGEN));
@@ -332,6 +354,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("watchdog rejects protected changes without WDCE and closes its window after four cycles", () => {
       const avr = A.AVR({ timing, clockHz: 1000 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.WDTCSR, bit(A.WDE) | bit(A.WDP0));
       expect(avr.cpu.readData(A.WDTCSR) & bit(A.WDP0)).toBe(0);
       avr.cpu.writeData(A.WDTCSR, 0);
@@ -345,6 +368,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("changing CLKPR preserves the watchdog's remaining wall-clock time", () => {
       const avr = A.AVR({ timing, clockHz: 1000 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.WDTCSR, bit(A.WDIE));
       avr.runCycles(8);
       avr.cpu.writeData(A.CLKPR, bit(A.CLKPCE));
@@ -355,6 +379,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 noise canceler rejects pulses shorter than four stable clock cycles", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1) | bit(A.ICNC1) | 1);
       avr.pin(8).setInput(true);
       avr.runCycles(2);
@@ -369,6 +394,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 capture is disabled while ICR1 defines TOP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
       avr.cpu.writeData(A.ICR1L, 0x80);
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1) | bit(A.WGM13) | bit(A.WGM12) | 1); // WGM 12
@@ -379,6 +405,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 filter rejects a short opposite-level glitch without manufacturing another capture", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1) | bit(A.ICNC1) | 1);
       avr.pin(8).setInput(true);
       avr.runCycles(4);
@@ -398,6 +425,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 input filtering retains its remaining clocks across PRR and restore", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.ICES1) | bit(A.ICNC1) | 1);
       avr.pin(8).setInput(true);
       avr.runCycles(2);
@@ -415,6 +443,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("ADC noise-reduction sleep keeps asynchronous Timer2 clocked", () => {
       const avr = A.AVR({ timing, clockHz: 32768 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
       avr.cpu.writeData(A.TCCR2B, 1);
       avr.runCycles(2);
@@ -427,6 +456,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer2 async time and update-busy windows follow CLKPR and retain fractional phase on restore", () => {
       const avr = A.AVR({ timing, clockHz: 65536 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
       avr.cpu.writeData(A.TCCR2B, 1);
       avr.runCycles(1); // Half a TOSC period, with TCR2BUB still set.
@@ -447,6 +477,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("external ADC triggering uses its synchronized sample-and-hold and completion deadlines", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));
       avr.runCycles(50);
       avr.cpu.writeData(A.ADCSRB, 2); // INT0
@@ -468,6 +499,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("Timer1 PWM duty stays within its range when OCR exceeds a dynamic TOP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
       avr.cpu.writeData(A.ICR1L, 100);
       avr.cpu.writeData(A.OCR1BL, 150);
@@ -480,6 +512,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("ADC sees a Timer0 trigger even when the timer ISR acknowledges it in the same instruction", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.analog(0).setValue(321);
       avr.cpu.writeData(A.ADCSRB, 3); // Timer0 COMPA
       avr.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADATE));
@@ -501,6 +534,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("an enabled pin interrupt wakes sleeping code with global I clear without entering its ISR", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.PCMSK0, bit(0));
       avr.cpu.writeData(A.PCICR, bit(0));
       avr.cpu.writeData(A.SMCR, bit(A.SE) | (2 << A.SM0));

@@ -65,9 +65,10 @@ export type ProfileRunListener = (state: ProfileRunState) => void;
 
 /**
  * Peripheral write hook: runs right after a hooked data-space address is written.
- * Receives the new and previous values (oldValue matters for write-1-to-clear).
+ * Receives the new and previous values, plus the bits addressed by the write
+ * (SBI/CBI address one bit; ordinary writes address all eight).
  */
-export type IoWriteHook = (cpu: CPU, addr: number, value: number, oldValue: number) => void;
+export type IoWriteHook = (cpu: CPU, addr: number, value: number, oldValue: number, mask: number) => void;
 
 /**
  * Peripheral read hook: runs when a hooked data-space address is read. Returns

@@ -50,6 +50,7 @@ function sleepMode(mode: number): number {
 describe("Phase 7 sleep and wake fidelity", () => {
   test("idle sleep leaves synchronous timer clocks running", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -63,6 +64,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("power-down sleep gates synchronous timer clocks until wake", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -90,6 +92,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
     expect(asyncAvr.cpu.readData(TCNT2)).toBe(1);
 
     const syncAvr = AVR();
+    syncAvr.cpu.flash.fill(0);
     syncAvr.cpu.writeData(TCCR2B, 1 << CS20);
     syncAvr.cpu.writeData(SMCR, sleepMode(MODE_POWER_SAVE));
     syncAvr.cpu.sleep();
@@ -99,6 +102,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("ADC noise-reduction sleep starts ADC conversion and gates sync timers", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -117,6 +121,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("standby gates synchronous timers like power-down", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TCCR0B, 1 << CS00);
@@ -144,6 +149,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("snapshot restore reapplies sleep timer gating", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.cpu.writeData(TCCR0B, 1 << CS00);
     source.cpu.writeData(SMCR, sleepMode(MODE_POWER_DOWN));
     source.cpu.sreg.I = true;
@@ -166,6 +172,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("pin-change interrupt wakes power-down sleep", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.sreg.I = true;
@@ -183,6 +190,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("ADC interrupt wakes ADC noise-reduction sleep", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.sreg.I = true;
@@ -197,6 +205,7 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("TWI address match wakes power-down sleep", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.twi.master();
 
@@ -233,12 +242,14 @@ describe("Phase 7 sleep and wake fidelity", () => {
 
   test("sleep wake adds four cycles beyond normal interrupt entry", () => {
     const awake = AVR();
+    awake.cpu.flash.fill(0);
     awake.cpu.sreg.I = true;
     awake.cpu.requestInterrupt(INT0_VECTOR);
     awake.cpu.tick();
     const awakeElapsed = awake.cpu.cycles;
 
     const sleeping = AVR();
+    sleeping.cpu.flash.fill(0);
     sleeping.cpu.sreg.I = true;
     sleeping.cpu.writeData(SMCR, sleepMode(MODE_POWER_DOWN));
     sleeping.cpu.sleep();

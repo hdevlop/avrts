@@ -30,6 +30,14 @@ export class AnalogComparator {
   private ain1Volts = 0;
   private output = false;
   private initialized = false;
+  private propagationCycles = 0;
+  private settlingCycles = 0;
+  private settlingUntil = 0;
+  private pendingOutput: boolean | undefined;
+  private readonly outputEvent = (): void => {
+    this.pendingOutput = undefined;
+    this.commitOutput(this.computeOutput());
+  };
   private sleepBlocked = false;
   private captureTrigger?: (high: boolean) => void;
 
@@ -41,12 +49,17 @@ export class AnalogComparator {
       if (channel === this.negativeInputChannel()) this.evaluate();
     });
     this.cpu.onSleep((mode) => {
+      if (mode !== 0 && mode !== 1) {
+        this.cpu.clearClockEvent(this.outputEvent);
+        this.pendingOutput = undefined;
+      }
       this.sleepBlocked = mode !== 0;
       this.updateInterrupt();
     });
     this.cpu.onWakeStart(() => {
       const wasBlocked = this.sleepBlocked;
       this.sleepBlocked = false;
+      if (wasBlocked) this.settlingUntil = this.cpu.cycles + this.settlingCycles;
       const flagBefore = this.cpu.data[ACSR]! & (1 << ACI);
       this.evaluate(false);
       // An already selected comparator request must not be queued again.
@@ -64,10 +77,24 @@ export class AnalogComparator {
   }
 
   reset(): void {
+    this.cpu.clearClockEvent(this.outputEvent);
+    this.pendingOutput = undefined;
+    this.settlingUntil = this.cpu.cycles;
     this.sleepBlocked = false;
     this.output = this.computeOutput();
     this.initialized = true;
     this.syncAco();
+  }
+
+  setTiming(options: { propagationCycles: number; settlingCycles?: number }): void {
+    const settling = options.settlingCycles ?? 0;
+    if (![options.propagationCycles, settling].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      throw new Error("Comparator timing must use nonnegative integer CPU-clock delays.");
+    }
+    this.propagationCycles = options.propagationCycles;
+    this.settlingCycles = settling;
+    this.cpu.clearClockEvent(this.outputEvent); this.pendingOutput = undefined;
+    this.evaluate();
   }
 
   setInput(input: "ain0" | "ain1", volts: number): void {
@@ -92,6 +119,10 @@ export class AnalogComparator {
   onWriteAcsr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
     const preservedFlag = (oldValue & (1 << ACI)) !== 0 && (value & (1 << ACI)) === 0;
     this.cpu.data[ACSR] = (value & ~((1 << ACO) | (1 << ACI))) | (preservedFlag ? 1 << ACI : 0);
+    if (((oldValue & (1 << ACD)) !== 0 && (value & (1 << ACD)) === 0) || ((oldValue ^ value) & (1 << ACBG)) !== 0) {
+      this.settlingUntil = this.cpu.cycles + this.settlingCycles;
+      this.cpu.clearClockEvent(this.outputEvent); this.pendingOutput = undefined;
+    }
     this.evaluate();
     this.updateInterrupt();
   }
@@ -121,6 +152,22 @@ export class AnalogComparator {
     // sleep. Retain its last logical output until wake; raw inputs still change.
     if (this.cpu.isSleeping && this.cpu.sleepMode !== 0 && this.cpu.sleepMode !== 1) return;
     const next = this.computeOutput();
+    if (!this.disabled() && (this.propagationCycles > 0 || this.settlingUntil > this.cpu.cycles)) {
+      if (next === this.output) {
+        this.cpu.clearClockEvent(this.outputEvent); this.pendingOutput = undefined;
+        this.syncAco(); return;
+      }
+      if (next !== this.pendingOutput) {
+        this.pendingOutput = next;
+        this.cpu.addClockEvent(this.outputEvent, Math.max(1, Math.max(0, this.settlingUntil - this.cpu.cycles) + this.propagationCycles));
+      }
+      this.syncAco(); return;
+    }
+    this.cpu.clearClockEvent(this.outputEvent); this.pendingOutput = undefined;
+    this.commitOutput(next, requestInterrupt);
+  }
+
+  private commitOutput(next: boolean, requestInterrupt = true): void {
     const previous = this.output;
     this.output = next;
     this.syncAco();
@@ -200,10 +247,20 @@ export class AnalogComparator {
       ain1Volts: this.ain1Volts,
       output: this.output,
       initialized: this.initialized,
+      propagationCycles: this.propagationCycles, settlingCycles: this.settlingCycles,
+      settlingRemaining: Math.max(0, this.settlingUntil - this.cpu.cycles),
+      pendingOutput: this.pendingOutput,
+      outputRemaining: this.cpu.clockEventRemainingCycles(this.outputEvent),
     };
   }
 
   restore(snap: AnalogComparatorSnapshot | undefined): void {
+    this.cpu.clearClockEvent(this.outputEvent);
+    this.propagationCycles = snap?.propagationCycles ?? 0;
+    this.settlingCycles = snap?.settlingCycles ?? 0;
+    this.settlingUntil = this.cpu.cycles + (snap?.settlingRemaining ?? 0);
+    this.pendingOutput = snap?.pendingOutput;
+    if (this.pendingOutput !== undefined) this.cpu.addClockEvent(this.outputEvent, snap?.outputRemaining ?? 1);
     this.sleepBlocked = this.cpu.isSleeping && this.cpu.sleepMode !== 0;
     this.ain0Volts = snap?.ain0Volts ?? 0;
     this.ain1Volts = snap?.ain1Volts ?? 0;

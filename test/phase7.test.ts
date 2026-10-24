@@ -99,6 +99,7 @@ describe("USART0", () => {
 
   test("snapshot restores an in-flight frame plus buffered byte", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.cpu.flash[0] = 0xcfff;
     source.cpu.writeData(UCSR0B, 1 << TXEN0);
     source.cpu.writeData(UDR0, 0x41);
@@ -106,6 +107,7 @@ describe("USART0", () => {
     source.runCycles(40);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     const bytes: number[] = [];
     restored.restore(source.snapshot());
     restored.serial.onByte((byte) => bytes.push(byte));
@@ -132,6 +134,7 @@ describe("USART0", () => {
 
   test("queued RX bytes are not consumed until RXEN0 is enabled", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
 
     avr.serial.write("A");
     expect(avr.cpu.readData(UDR0)).toBe(0);
@@ -148,6 +151,7 @@ describe("USART0", () => {
 
   test("RX complete interrupt jumps to USART_RX and leaves RXC0 set until UDR0 is read", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -166,6 +170,7 @@ describe("USART0", () => {
 
   test("UDRE interrupt jumps when the data register is empty and UDRIE0 is enabled", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -182,6 +187,7 @@ describe("USART0", () => {
 
   test("UDRE interrupt re-fires after RETI while UDRIE0 stays enabled", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -202,6 +208,7 @@ describe("USART0", () => {
 
   test("restored UDRIE0 state still re-evaluates the UDRE interrupt", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     const cpu = source.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -210,6 +217,7 @@ describe("USART0", () => {
     cpu.writeData(UCSR0B, (1 << TXEN0) | (1 << UDRIE0));
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.step();
     expect(restored.cpu.pc).toBe(1);
@@ -220,6 +228,7 @@ describe("USART0", () => {
 
   test("TX complete interrupt jumps to USART_TX and acknowledges TXC0", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.flash[0] = 0x9478; // sei
@@ -237,6 +246,7 @@ describe("USART0", () => {
 
   test("facade serial captures text from a tiny program", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const chunks: string[] = [];
 
     // ldi r16, TXEN0 ; sts UCSR0B,r16 ; ldi/write 'H' ; ldi/write 'i' ; loop
@@ -258,6 +268,7 @@ describe("USART0", () => {
 
   test("serial text stays correct past the chunk-compaction threshold with no getText consumer", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.flash[0] = 0xcfff; // keep long direct-cycle advances inside flash
     avr.cpu.writeData(UCSR0B, 1 << TXEN0);
 

@@ -5,6 +5,21 @@ Date: 2026-10-06. Package: `@hdevlop/avrts@0.1.2`.
 Prepared locally; npm publication has not been performed for this version.
 The preceding public release is `0.1.1`.
 
+This October 6 artifact record is historical. The October 10 candidate adds
+runtime fidelity and complete workload results; its [local acceptance receipt](local-acceptance-2026-10-10.json) supersedes these source counts and its [new archive identity is recorded separately](release-candidate-2026-10-10.md). The old identity below does not identify the new candidate.
+
+The later [arithmetic result-oracle batch](arithmetic-results-2026-10-06.md)
+extends both result runners from five to seven scenarios and rebuilds the two
+affected development fixtures. Its verification is recorded separately below
+that link; the preparation counts in this document retain their original scope.
+No emulator library source or public API changes in that batch. Publication
+was not attempted as part of the oracle work.
+
+The [sensor-format follow-up](sensor-format-results-2026-10-10.md) extends both
+result suites to eight scenarios, covering complete history, UART output,
+counter wrap and PWM endpoints. Its source checks and native results are
+separate from the prepared release artifact and the historical counts below.
+
 This patch adds Timer2's asynchronous timer/CPU flag synchronizer and separates
 timer-domain wake from CPU interrupt dispatch. Compare output remains on its
 timer edge, while CPU-visible flags cross three processor clocks after the

@@ -47,6 +47,7 @@ import {
 import type { CPU } from "../cpu";
 import type { Gpio } from "./gpio";
 import { PwmBroadcaster, pwmSignal } from "./pwm";
+import { TimerExternalClock } from "./timer-external-clock";
 import { TimerPrescaler } from "./timer-prescaler";
 import type { PwmConfig } from "./pwm";
 import type { Timer1Snapshot } from "../snapshot";
@@ -96,6 +97,7 @@ export class Timer1 implements PwmSource {
   private readonly pwm = new PwmBroadcaster();
   private readonly prescalerClock: TimerPrescaler;
   private readonly ownsPrescalerClock: boolean;
+  private readonly externalClock?: TimerExternalClock;
   private readonly onClockEvent = (): void => {
     this.syncToCpuCycle();
     this.scheduleClockEvent();
@@ -119,6 +121,13 @@ export class Timer1 implements PwmSource {
   ) {
     this.ownsPrescalerClock = prescalerClock === undefined;
     this.prescalerClock = prescalerClock ?? new TimerPrescaler(cpu);
+    if (gpio) {
+      this.externalClock = new TimerExternalClock(cpu, () => gpio.readPin("D", 5), () => {
+        this.advanceCounter(1);
+        this.lastCycle = this.cpu.cycles;
+      });
+      gpio.onPinChange("D", 5, () => this.externalClock!.changed(), true);
+    }
     this.captureInputHigh = this.gpio?.readPin("B", 0) ?? false;
     this.filteredCaptureHigh = this.captureInputHigh;
     // ICP1 is PB0 (Arduino pin 8). The pin edge triggers capture unless the
@@ -142,6 +151,7 @@ export class Timer1 implements PwmSource {
   }
 
   reset(): void {
+    this.externalClock?.reset();
     this.prescalerClock.restore(0);
     this.powerReduced = false;
     this.prescalerHeld = false;
@@ -233,10 +243,10 @@ export class Timer1 implements PwmSource {
   }
 
   @OnWrite(TIFR1)
-  onWriteTifr1(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+  onWriteTifr1(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
     this.cpu.data[TIFR1] = oldValue;
     this.syncToCpuCycle();
-    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & TIMER1_FLAG_MASK & ~value;
+    this.cpu.data[TIFR1] = this.cpu.data[TIFR1]! & TIMER1_FLAG_MASK & ~(value & mask);
     this.onWriteTimsk1();
   }
 
@@ -331,6 +341,7 @@ export class Timer1 implements PwmSource {
     if (reduced) {
       this.syncToCpuCycle();
       this.powerReduced = true;
+      this.externalClock?.configure(false, true);
       this.updateCaptureClock(captureWasPaused);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
@@ -349,6 +360,7 @@ export class Timer1 implements PwmSource {
       this.syncToCpuCycle();
       this.prescalerClock.setHeld(true);
       this.prescalerHeld = true;
+      this.externalClock?.configure(false, true);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -374,6 +386,7 @@ export class Timer1 implements PwmSource {
       this.syncToCpuCycle();
       this.prescalerClock.setSleepPaused(true);
       this.sleepPaused = true;
+      this.externalClock?.configure(false, true);
       this.updateCaptureClock(captureWasPaused);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
@@ -603,6 +616,8 @@ export class Timer1 implements PwmSource {
   }
 
   private scheduleClockEvent(): void {
+    const select = this.cpu.data[TCCR1B]! & 7;
+    this.externalClock?.configure(!this.frozen() && select >= 6, select === 7);
     const prescaler = this.cachedPrescaler;
     if (this.frozen() || prescaler === undefined) {
       this.cpu.clearClockEvent(this.onClockEvent);
@@ -928,6 +943,7 @@ export class Timer1 implements PwmSource {
   snapshot(): Timer1Snapshot {
     this.syncToCpuCycle();
     return {
+      externalClock: this.externalClock?.snapshot(),
       count: this.count,
       countingDown: this.countingDown,
       tempHigh: this.tempHigh,
@@ -965,6 +981,7 @@ export class Timer1 implements PwmSource {
     if (captureDelay > 0) this.cpu.addClockEvent(this.onCaptureDelayEvent, captureDelay);
     this.cachedPrescaler = this.prescaler();
     this.scheduleClockEvent();
+    this.externalClock?.restore(snap.externalClock);
   }
 }
 

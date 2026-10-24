@@ -175,6 +175,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const restore of [false, true]) {
         test(`${source.name}, ${restore ? "restored" : "direct"}: masks, acknowledgement, and clearing track live state`, () => {
           const initial = A.AVR({ timing, clockHz: 1000 });
+          initial.cpu.flash.fill(0);
           source.prepare(initial, true);
           expect(pending(initial)).toContain(source.vector);
           const avr = restore ? A.AVR().restore(initial.snapshot()) : initial;
@@ -195,6 +196,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       }
       test(`${source.name}: enabling an already-latched source delivers the request`, () => {
         const avr = A.AVR({ timing, clockHz: 1000 });
+        avr.cpu.flash.fill(0);
         source.prepare(avr, false);
         expect(pending(avr)).not.toContain(source.vector);
         source.enable(avr, true);

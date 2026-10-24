@@ -55,8 +55,8 @@ export class PinChangeInterrupt {
   }
 
   @OnWrite(PCIFR)
-  onWritePcifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.cpu.data[PCIFR] = oldValue & 0x07 & ~value; // flags are write-1-to-clear
+  onWritePcifr(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    this.cpu.data[PCIFR] = oldValue & 0x07 & ~(value & mask); // flags are write-1-to-clear
     this.onWritePcicr();
   }
 

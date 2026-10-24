@@ -84,7 +84,7 @@ const REGISTER_MATRIX: RegisterRow[] = [
   ...reserved(0x62, 0x63),
   row(0x64, "PRR", "modeled"),
   ...reserved(0x65, 0x65),
-  row(0x66, "OSCCAL", "storage"),
+  row(0x66, "OSCCAL", "modeled"),
   ...reserved(0x67, 0x67),
   row(0x68, "PCICR", "modeled"),
   row(0x69, "EICRA", "modeled"),

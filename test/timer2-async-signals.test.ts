@@ -13,7 +13,8 @@ const sleep = (avr: Avr, mode: number) => {
 
 for (const timing of ["fast", "cycle-exact"] as const) {
   const make = (cs = 1, counter = 0, compareOutput = false) => {
-    const avr = A.AVR({ timing, clockHz: 1_638_400 }); // 50 CPU cycles per TOSC.
+    const avr = A.AVR({ timing, clockHz: 1_638_400 });
+    avr.cpu.flash.fill(0); // 50 CPU cycles per TOSC.
     avr.cpu.writeData(A.TCNT2, counter);
     avr.cpu.writeData(A.OCR2A, 2);
     avr.cpu.writeData(A.OCR2B, 3);
@@ -276,6 +277,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("synchronous overflow remains immediate", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCNT2, 254);
       avr.cpu.writeData(A.TCCR2B, 1);
       avr.runCycles(2);
@@ -288,7 +290,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.runCycles(100_000);
       const result = [...avr.cpu.data.slice(0x300, 0x308)];
       expect(result[0]).toBe(0xa7);
-      expect(result[1]).toBe(0); // Existing reset convention; exact handshake uncalibrated.
+      expect(result[1]).toBe(bit(A.PSRASY)); // Reset request remains asserted until the next TOSC edge.
       expect(result[2]).toBe(0);
       expect(result[3]).toBe(3);
       expect(result[4]! & bit(A.OCF2A)).toBe(bit(A.OCF2A));

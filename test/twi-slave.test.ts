@@ -38,6 +38,7 @@ function completeHostTwiEvent(avr: ReturnType<typeof AVR>, cycles = 2_000): void
 describe("TWI / I2C slave", () => {
   test("host master writes to an addressed slave with delayed TWINT statuses", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.twi.master();
     enableSlave(cpu, 0x42);
@@ -64,6 +65,7 @@ describe("TWI / I2C slave", () => {
 
   test("TWEA controls receive-byte ACK vs NACK", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.twi.master();
     enableSlave(cpu, 0x23);
@@ -81,6 +83,7 @@ describe("TWI / I2C slave", () => {
 
   test("TWAMR masks own-address matching and TWGCE enables general call", () => {
     const masked = AVR();
+    masked.cpu.flash.fill(0);
     enableSlave(masked.cpu, 0x50);
     masked.cpu.writeData(TWAMR, 1 << 1);
 
@@ -89,6 +92,7 @@ describe("TWI / I2C slave", () => {
     expect(masked.cpu.readData(TWSR) & 0xf8).toBe(0x60);
 
     const general = AVR();
+    general.cpu.flash.fill(0);
     enableSlave(general.cpu, 0x22, true);
 
     expect(general.twi.master().start(0x00, false)).toBe(true);
@@ -104,6 +108,7 @@ describe("TWI / I2C slave", () => {
 
   test("host master reads bytes from a slave transmitter", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.twi.master();
     enableSlave(cpu, 0x31);
@@ -133,6 +138,7 @@ describe("TWI / I2C slave", () => {
 
   test("repeated START ends the active slave transaction without STOP", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.twi.master();
     enableSlave(cpu, 0x42);
@@ -159,6 +165,7 @@ describe("TWI / I2C slave", () => {
 
   test("arbitration-loss injection reports 0x38 and cancels the in-flight master transfer", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const stopped: string[] = [];
     avr.twi.connect(0x50, { stop: () => stopped.push("stop") });
     startFirmwareMasterTransfer(avr, 0x50, false);
@@ -182,6 +189,7 @@ describe("TWI / I2C slave", () => {
 
     for (const { address, read, generalCall, status } of cases) {
       const avr = AVR();
+      avr.cpu.flash.fill(0);
       enableSlave(avr.cpu, 0x42, generalCall);
       startFirmwareMasterTransfer(avr);
 
@@ -194,6 +202,7 @@ describe("TWI / I2C slave", () => {
 
   test("snapshot restores a pending host-master slave write", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     const cpu = source.cpu;
     const master = source.twi.master();
     enableSlave(cpu, 0x2a);
@@ -204,6 +213,7 @@ describe("TWI / I2C slave", () => {
     source.runCycles(20);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(DEFAULT_TWI_BYTE_CYCLES - 20 - 1);
     expect((restored.cpu.readData(TWCR) >> TWINT) & 1).toBe(0);
@@ -214,11 +224,13 @@ describe("TWI / I2C slave", () => {
 
   test("snapshot restores a pending arbitration-lost slave address event", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     enableSlave(source.cpu, 0x42);
     startFirmwareMasterTransfer(source);
     expect(source.twi.master().injectArbitrationLost(0x42, false)).toBe(true);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(1);
     expect(restored.cpu.readData(TWSR) & 0xf8).toBe(0x68);

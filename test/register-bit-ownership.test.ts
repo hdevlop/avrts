@@ -36,6 +36,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const r of registers) {
       test(`${r.name} retains implemented bits and reads reserved/strobe bits as zero`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         for (const value of [0xff, 0xa5, 0x5a, 0]) {
           avr.cpu.writeData(r.addr, value);
           expect(avr.cpu.readData(r.addr)).toBe(value & r.mask);
@@ -47,6 +48,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("MCUSR firmware writes preserve or clear reset flags but cannot set them", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       expect(avr.cpu.readData(A.MCUSR)).toBe(bit(A.PORF));
       avr.cpu.writeData(A.MCUSR, 0xff);
       expect(avr.cpu.readData(A.MCUSR)).toBe(bit(A.PORF));
@@ -65,6 +67,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("reset causes accumulate across external, brown-out and watchdog resets until cleared", () => {
       const avr = A.AVR({ timing, clockHz: 1_000 });
+      avr.cpu.flash.fill(0);
       avr.cpu.flash[0] = 0xcfff;
       avr.resetExternal();
       expect(avr.cpu.readData(A.MCUSR)).toBe(bit(A.PORF) | bit(A.EXTRF));
@@ -84,6 +87,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("reserved PC7 never creates an input, output, toggle or pin-change request", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       const gpio = new Gpio(avr.cpu);
       avr.cpu.writeData(A.PCMSK1, 0xff);
       avr.cpu.writeData(A.PCICR, bit(1));
@@ -107,6 +111,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("baud high-byte reserved bits cannot multiply frame time", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       const bytes: number[] = [];
       avr.serial.onByte(byte => bytes.push(byte));
       avr.cpu.writeData(A.UBRR0H, 0xf0);
@@ -120,6 +125,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("EEPROM's two high address bits still select the last byte", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.eeprom.write(1023, 0x5a);
       avr.cpu.writeData(A.EEARH, 0xff);
       avr.cpu.writeData(A.EEARL, 0xff);
@@ -132,6 +138,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const restored of [false, true]) {
         test(`ADC data writes preserve ${left ? "left" : "right"}-aligned results and read locking (${restored ? "restored" : "direct"})`, () => {
           const source = A.AVR({ timing });
+          source.cpu.flash.fill(0);
           source.cpu.writeData(A.ADMUX, left ? bit(A.ADLAR) : 0);
           source.analog(0).setValue(0x155);
           source.cpu.writeData(A.ADCSRA, bit(A.ADEN) | bit(A.ADSC));
@@ -167,6 +174,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     ]) {
       test(`${r.name} masks unsupported flags while preserving its write-one-to-clear protocol`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.EICRA, 0x0f); // Edge mode retains external flags.
         avr.cpu.data[r.addr] = 0xff; // Seed hardware flags, including invalid legacy bits.
         avr.cpu.writeData(r.addr, 0);

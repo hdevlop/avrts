@@ -428,7 +428,8 @@ export class InstructionSet {
   @Op("SBI", 0xff00, 0x9a00)
   sbi(cpu: CPU, opcode: number): void {
     const a = ioAddr5(opcode);
-    cpu.writeIo(a, cpu.readIo(a) | (1 << bitNum(opcode)));
+    const mask = 1 << bitNum(opcode);
+    cpu.writeIo(a, cpu.readIo(a) | mask, mask);
     cpu.pc += 1;
     cpu.cycles += 2;
   }
@@ -436,7 +437,8 @@ export class InstructionSet {
   @Op("CBI", 0xff00, 0x9800)
   cbi(cpu: CPU, opcode: number): void {
     const a = ioAddr5(opcode);
-    cpu.writeIo(a, cpu.readIo(a) & ~(1 << bitNum(opcode)));
+    const mask = 1 << bitNum(opcode);
+    cpu.writeIo(a, cpu.readIo(a) & ~mask, mask);
     cpu.pc += 1;
     cpu.cycles += 2;
   }

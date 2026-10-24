@@ -1,0 +1,1837 @@
+{
+  "sourceCommit": "5d351936458901768b2d8a6fefa24fff5b53070a",
+  "scope": "Complete source, tests, scripts, examples, compiler/browser config and packed documentation; only CRLF/LF normalized",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "sha256CanonicalLf": "65cdb8d850ec29dfd36377850a56c6e5eb0165e383dc84f2b326a95eeae8fa3c",
+      "rawEqual": true
+    },
+    {
+      "path": "README.md",
+      "sha256CanonicalLf": "120ad321394b97db60f195aa6b3ee55452af0631bee6df99a015940675add1ab",
+      "rawEqual": true
+    },
+    {
+      "path": "docs/wire-models.md",
+      "sha256CanonicalLf": "500bbaa1f59f2019f9a404fd75c8e653fac65830e9c8446b2027add5799d46d6",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/analog-sleep-probe/analog-sleep-probe.c",
+      "sha256CanonicalLf": "2574b9b16a1607c33305f9e2943aa3301e05375dfac1c297c79202f6afe7668a",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/analog-sleep-probe/analog-sleep-probe.hex",
+      "sha256CanonicalLf": "ebc69e72e50932bcfcdd79cf7a21899eac33dd5e3c69e29699b89e6d218c95c8",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/analog-sleep-probe/analog-sleep-probe.lst",
+      "sha256CanonicalLf": "01c0b7b5fb67e5d463e4a96e5dd2517f27549259c892d1f0c65db1aab6353ae6",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-adc-internal/README.md",
+      "sha256CanonicalLf": "9f52d05ed223e72cb2355617c17acf01cceac082c2893abf253066ee09b60f33",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-adc-internal/arduino-adc-internal.ino",
+      "sha256CanonicalLf": "ebffb330e847f2579e1ae60017bb090d7922b531674a516a8253d136e8ebe840",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-adc-internal/arduino-adc-internal.ino.hex",
+      "sha256CanonicalLf": "c18db7c5761176c117139b9b9764a863dd6f8895f708a66d2ed5b692fc6af53f",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-adc-internal/arduino-adc-internal.lst",
+      "sha256CanonicalLf": "3cf97267b8608f5f43470a0d235991bfba2baa4ab53f7eb65a977b17724f1b91",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-analog-write/README.md",
+      "sha256CanonicalLf": "21465bbc18b33f3e9f686cc1b9e657551de53e38d5379d9b19020caece991a79",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-analog-write/arduino-analog-write.ino",
+      "sha256CanonicalLf": "c143fa544e22434a4cea226c57e7eb5141df840c495d943108272d6fb048b230",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-analog-write/arduino-analog-write.ino.hex",
+      "sha256CanonicalLf": "72b6e68a4d57fa31604404d7bd4a8e715629a4adb887eec38b404f3e4118983c",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-analog-write/arduino-analog-write.lst",
+      "sha256CanonicalLf": "f83d80b167210473d8cf7bac899653dd5d7c76c55a15e14ea83eac0b83177fcf",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-bitbang-crc/README.md",
+      "sha256CanonicalLf": "f9477f4be7e8271d7de7fca20e03912bbd2af4f0947505c70f0158ea9dc81f93",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-bitbang-crc/arduino-bitbang-crc.ino",
+      "sha256CanonicalLf": "000624b76cafc8ac742a1017d23c66b0d1cb39f67fb0dcc9eda1db5a39779bf9",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-bitbang-crc/arduino-bitbang-crc.ino.hex",
+      "sha256CanonicalLf": "daddd352edd88083d4f9c685df07503e864132944b32d1552694a5e3d2552bb7",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-bitbang-crc/arduino-bitbang-crc.lst",
+      "sha256CanonicalLf": "aeed57b52023d1c7bfe3a9d1c843480d830b7d099bcba533c88256d0d941e961",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-comparator-interrupt/README.md",
+      "sha256CanonicalLf": "650bbd4a94be90fdf47625f4eaceedf944959fdf898978a14a9cab43835bb632",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-comparator-interrupt/arduino-comparator-interrupt.ino",
+      "sha256CanonicalLf": "67f21725eb53648ffe1f7081065a6991ad85ee2bcac3bec22df383e4de917455",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-comparator-interrupt/arduino-comparator-interrupt.ino.hex",
+      "sha256CanonicalLf": "5a8048977930664cdef2566f14959b463e71116d6878ea5c37efc3d0a14d788b",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-comparator-interrupt/arduino-comparator-interrupt.lst",
+      "sha256CanonicalLf": "62466c3686c00289b4e1c15dca9fe2f23d921ac2290895bd97269a5144be4baa",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-delay-blink/README.md",
+      "sha256CanonicalLf": "1a8a7d843118e5be192c65180002bf09326f1a6df419aafa29de3a3878909f30",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-delay-blink/arduino-delay-blink.ino",
+      "sha256CanonicalLf": "9fe019cad1eb53d5ff28c3e102383c7c197d192c8176e444a951e60dd6b3d7bc",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-delay-blink/arduino-delay-blink.ino.hex",
+      "sha256CanonicalLf": "52e84aac94d853fe694e3bde7285568da6eeefa849fa61016f5dba73714f42bd",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-delay-blink/arduino-delay-blink.lst",
+      "sha256CanonicalLf": "4d437867bb29d5c09a3765ff68a8390a2cd88ae4b54cb28e8efa1143706414af",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-digital-read/README.md",
+      "sha256CanonicalLf": "6de3dc92ebdd38d4dc1e6c6f8217b9c6e16a950b5ebac3260d14b3a531c1f4df",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-digital-read/arduino-digital-read.ino",
+      "sha256CanonicalLf": "b8e4a6c23d3db7ad166141d358fa51c6679c7239df643239c5bacfbb2c9fd7d9",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-digital-read/arduino-digital-read.ino.hex",
+      "sha256CanonicalLf": "947794f05fbba96f6acd4bc00de8cf0dd3d6a2681c6950780ce63765503fb0e4",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-digital-read/arduino-digital-read.lst",
+      "sha256CanonicalLf": "1aca3710aa2d627aa555242792bfdfc2b9e0a21596959689a6934e34d4f1fff0",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-dsp-fixed/README.md",
+      "sha256CanonicalLf": "0994c677ed1fec6c5e065edffb0e03ddc53880e75188d211208e7b9b04e17187",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-dsp-fixed/arduino-dsp-fixed.ino",
+      "sha256CanonicalLf": "f1a28c4a1fcb508f84f07cdd9ccd2a309b09ee122ab2dc6e667db458d2d899f5",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-dsp-fixed/arduino-dsp-fixed.ino.hex",
+      "sha256CanonicalLf": "58c2911d277be9044df280aea5c1f50b0b69978a22d24c84c872a7131128efbf",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-dsp-fixed/arduino-dsp-fixed.lst",
+      "sha256CanonicalLf": "9cb2484d6e9523a74dfa74c4d7d0383f4cbc292bb4e62301b380c439d1f1fa51",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-eeprom-store/README.md",
+      "sha256CanonicalLf": "58bebaed19226b487bf203b7706b2c977d8ed1c85e7479a46e26914d8d47e45c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-eeprom-store/arduino-eeprom-store.ino",
+      "sha256CanonicalLf": "641626347052d6d6a2f98a30a01fa6254e9fc55e13483188898152fd2b818c73",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-eeprom-store/arduino-eeprom-store.ino.hex",
+      "sha256CanonicalLf": "6663ddf907857a3f4059025ff9d1dbc9ef9acb9a3565c780bb05eb686eaa5513",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-eeprom-store/arduino-eeprom-store.lst",
+      "sha256CanonicalLf": "47e9c05474a68e48980736d4e6fd62b402dd3f34d120008752d79da973fefd34",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-float-math/README.md",
+      "sha256CanonicalLf": "56b2c4fbc9a14aafd578a9be7787c2aa6fb98ada12ce31d9751aa7285c33b952",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-float-math/arduino-float-math.ino",
+      "sha256CanonicalLf": "c4d87c872355c1cbb2dab41abe2960b38d8d931a3ba1e443c0041666212aa62e",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-float-math/arduino-float-math.ino.hex",
+      "sha256CanonicalLf": "c7334ad23174c491364c890231d836704fb1b75c1bab46490d9c22093ca99024",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-float-math/arduino-float-math.lst",
+      "sha256CanonicalLf": "9c530642626dc2ab105fa64504bace977a528dc1a21984e013f936b199d1a754",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-isr-heavy/README.md",
+      "sha256CanonicalLf": "8a41d199e3f271ce9d6e30be75a7e26a305ea5c9b9f589015420263a5ab1a2a9",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-isr-heavy/arduino-isr-heavy.ino",
+      "sha256CanonicalLf": "e1934daaeb3fd188064ac33265f2024dc84f37fd0b40898243bad1b92515a015",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-isr-heavy/arduino-isr-heavy.ino.hex",
+      "sha256CanonicalLf": "bf1af611c7701a3c2c0fee9f387e952421717557823d7042726c99f1ea24cb99",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-isr-heavy/arduino-isr-heavy.lst",
+      "sha256CanonicalLf": "c7903d9afcac659b7bfe31673f611efccf65a692be7bb8bf22481ac417996763",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-lowpower-wdt/README.md",
+      "sha256CanonicalLf": "7ffcbadacf88fa82d1410f5661f0072bc05a20d52cfd2eb876e2cdea1bb85e12",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-lowpower-wdt/arduino-lowpower-wdt.ino",
+      "sha256CanonicalLf": "a1d46034a81d6a0ec058f570e7745941050bca2bec5b13de6b4fe54f76794d26",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-lowpower-wdt/arduino-lowpower-wdt.ino.hex",
+      "sha256CanonicalLf": "480c8ff3d7b7ca3fc5dd087c6c7385dad01363506071a47ef505597e8a39d6e2",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-lowpower-wdt/arduino-lowpower-wdt.lst",
+      "sha256CanonicalLf": "2e84b00bf9e7c09f026d87da6fa10c22b59ead43b6dc8a5b51e6bbd60a79aac7",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-peripheral-bound/README.md",
+      "sha256CanonicalLf": "9e954b28d4468149e83f09576bb5f500967c29a41d2276d1c3e2f603ea9527c6",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-peripheral-bound/arduino-peripheral-bound.ino",
+      "sha256CanonicalLf": "e1388a6990997ff9b54e57d5739aacffb516b8aaa4eacaaea3c6c24204b98d30",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-peripheral-bound/arduino-peripheral-bound.ino.hex",
+      "sha256CanonicalLf": "7ae71bbe14f746fda2e90122d8101b2a51da9d04008717b88ab07083d6e856dd",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-peripheral-bound/arduino-peripheral-bound.lst",
+      "sha256CanonicalLf": "2c15f12e6f1f04802c6483c2e43f91a7e1a33f5b8c236e81b0cf7df1a9e001ed",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-peripheral-mix/README.md",
+      "sha256CanonicalLf": "dbd7c490d6521683f148c2f536148ee12f3c727996f56347f4cd5736250cf30c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-peripheral-mix/arduino-peripheral-mix.ino",
+      "sha256CanonicalLf": "d7c582568d169b9db640f2e8a47f2c493e0ad183d40361cd0560582951406a77",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-peripheral-mix/arduino-peripheral-mix.ino.hex",
+      "sha256CanonicalLf": "a97006e8bf3b99d7f20aeb025a35d7409c5a998e184755c642927f41ed25989d",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-peripheral-mix/arduino-peripheral-mix.lst",
+      "sha256CanonicalLf": "aa849469f23a9bb3473f089ae2cad768fc124daa1f2cdd067095cb41fc27f42f",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-sensor-format/README.md",
+      "sha256CanonicalLf": "debe528ef63352e463ff4d7e170d271312382ce3af2768812746fa8a0e2e3482",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-sensor-format/arduino-sensor-format.ino",
+      "sha256CanonicalLf": "881624696898e8d66077405b03cf37999a42fbe527eb3c895034859623b7acf6",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-sensor-format/arduino-sensor-format.ino.hex",
+      "sha256CanonicalLf": "65d228df51d92ddbaba20252ed1401a2e3df26cbfb411ae849225991d873956f",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-sensor-format/arduino-sensor-format.lst",
+      "sha256CanonicalLf": "c1763df0213b7145f39d9bb664b34413754f0029abf305998bd7fe59286ba780",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-echo/README.md",
+      "sha256CanonicalLf": "d55d45dca77194c0a5ce3d9d5b080d9a13fa3a92cb468eca79a4c53e940699cf",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-serial-echo/arduino-serial-echo.ino",
+      "sha256CanonicalLf": "62c300b0fba4c091955bfdf84b76e21f18a712f0ab70fbb5d6871bc8e8fbd16b",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-serial-echo/arduino-serial-echo.ino.hex",
+      "sha256CanonicalLf": "5e7b9819cc95060b4c55d127a741cabfa6665d697f38fdbebfb76590c8685d6e",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-echo/arduino-serial-echo.lst",
+      "sha256CanonicalLf": "220992469d19281ad6f4701e719b055ac193fbba9a0a9de4eb0306ca1c0a75c4",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-print/README.md",
+      "sha256CanonicalLf": "c42625d243ed6427662a9ba49d759ddd8ad1218c82cdb29700c5dce3b68c9bd5",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-print/arduino-serial-print.ino",
+      "sha256CanonicalLf": "dfdaf5decaf9ad42651ab38ceb7ec568e396b1bbbee57c659c6e8182cb03ff94",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-print/arduino-serial-print.ino.hex",
+      "sha256CanonicalLf": "4ab0d0256833ac2d7cfc52f5a0e6c47264ba28c4b89c155944c8cdb614f98216",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-serial-print/arduino-serial-print.lst",
+      "sha256CanonicalLf": "3954d6a4d46162b24b5bfaa5c85a4f23cbe934a73b8e1b52ec99b353541f8251",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-servo-sweep/README.md",
+      "sha256CanonicalLf": "336bfcd021d50c34882c18ef0c84bb39052decf00a3a7c394a9ac534d2499ca1",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-servo-sweep/arduino-servo-sweep.ino",
+      "sha256CanonicalLf": "afcd1c686888c6c58bf7f1aa9fb521a5ff4925656271b1dcbce0fbb9ec203828",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-servo-sweep/arduino-servo-sweep.ino.hex",
+      "sha256CanonicalLf": "f2a899e79b847cc023f51a8b4a44171db4b40d02c4f02a665ba6a61b2383c7dc",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-servo-sweep/arduino-servo-sweep.lst",
+      "sha256CanonicalLf": "25c55979be5777c13bce080b9658619b54de78dbb215ab719dc6bb718da39ff5",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-softserial-loopback/README.md",
+      "sha256CanonicalLf": "bd5cb576bccd87492f9c48d3108bec10bbca0fc3f05bd0e903dfcce8306c78db",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-softserial-loopback/arduino-softserial-loopback.ino",
+      "sha256CanonicalLf": "8012483de6c0e20733562c973c14107abaefdd30b7fa7a65a175d009c85e4df2",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-softserial-loopback/arduino-softserial-loopback.ino.hex",
+      "sha256CanonicalLf": "95b853930920e2f8c888b0f322ec24f1739bee560715abcb902be2b49fdab385",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-softserial-loopback/arduino-softserial-loopback.lst",
+      "sha256CanonicalLf": "4fee0ace555a90f849745edd4bdac9c66d72284c48a9e9b16b671c12b2c67a6c",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-string-heavy/README.md",
+      "sha256CanonicalLf": "4c7af73a6ecf140ea874a8bf23b0f493a4d4683e341a9c5c104e8a4c2ecdd67c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-string-heavy/arduino-string-heavy.ino",
+      "sha256CanonicalLf": "541cfffdb7319d53a4bf2ddc855e8a15b73cd7b071bb88f29bc4bda0bde73c29",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-string-heavy/arduino-string-heavy.ino.hex",
+      "sha256CanonicalLf": "965b7e2c7cd14123d60ea35f6f445d801d7554ea91a9886d5fbeb043445ea3db",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-string-heavy/arduino-string-heavy.lst",
+      "sha256CanonicalLf": "cf4645261c77e987244cfed56800b9d515e2ca260330cdeb28ae51262d64ed54",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-timer2-rtc/README.md",
+      "sha256CanonicalLf": "c78778eb3807aec4f3e4bb3668c9a784a33b86748acb127bd6c82fff5e0397f1",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-timer2-rtc/arduino-timer2-rtc.ino",
+      "sha256CanonicalLf": "4c13f93e1630d4bf6496beeea13118daf3dea687cca196f74129c9e1dcbfe822",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-timer2-rtc/arduino-timer2-rtc.ino.hex",
+      "sha256CanonicalLf": "d69d707e91ff40936d5231d1b4b5146911904e631393947f78a8f7f47df51e62",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-timer2-rtc/arduino-timer2-rtc.lst",
+      "sha256CanonicalLf": "ab62c4ca0675017a84b1577f58a3ad3c7d657f119a349d7eae11a7617e8ae951",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-tone-melody/README.md",
+      "sha256CanonicalLf": "d50eba2c71ef30ff94501b1fcfeb00b6c59e7adb05276d904e2c9580d87e9805",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-tone-melody/arduino-tone-melody.ino",
+      "sha256CanonicalLf": "76f1eda52fa0903485bffe0f592aa81f2461c0a285935f29d4cc4f3de04dcb21",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-tone-melody/arduino-tone-melody.ino.hex",
+      "sha256CanonicalLf": "c24a54144193358c46bea1589acfc1fe2b84c367d12e91d626b34fc68276a003",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-tone-melody/arduino-tone-melody.lst",
+      "sha256CanonicalLf": "bb6bc715ec69a60b272234e5950887967a30c1b710810ca2f86b537115142b93",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-wire-slave/README.md",
+      "sha256CanonicalLf": "bf68cdef99b9dbc07d694a79874e5c24ca6fc90765e27c20564dab4ee30c6d1a",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-wire-slave/arduino-wire-slave.ino",
+      "sha256CanonicalLf": "dad333b3503746bad359dd4b07673c361c8ee1d1d295118a5e9de6a5644ce285",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/arduino-wire-slave/arduino-wire-slave.ino.hex",
+      "sha256CanonicalLf": "e71836596c99e6ca426d872347e0dac4292a8451bb51a44be38aff4d302610a8",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/arduino-wire-slave/arduino-wire-slave.lst",
+      "sha256CanonicalLf": "6738bd763d7e39dd14c2cbdb10df3c13cff3ec7ca7161cb73f192a224e0f2c9e",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/attachInterrupt-blink/README.md",
+      "sha256CanonicalLf": "8086d2720f9a5767295f737082ae9329833544c7ee5d281f7a63fc10e0127184",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/attachInterrupt-blink/attachInterrupt-blink.c",
+      "sha256CanonicalLf": "b093e4915de11aa2b4cf9cb0110251cceaf8337f7125f9e677824e471a95ab21",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/attachInterrupt-blink/attachInterrupt-blink.hex",
+      "sha256CanonicalLf": "0ebaf0bcb7b102931352db4319e3b1b6e7daf9946fb42b82bd074de1f8c09090",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/attachInterrupt-blink/attachInterrupt-blink.lst",
+      "sha256CanonicalLf": "4876ad694caf85fda4522ba46bd91c4e9272b704c5a1cdbbdb02508063544a4a",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/attachInterrupt-int1-blink/README.md",
+      "sha256CanonicalLf": "e0d9c1127dc66db77b7f58461a0934214073579e460c85f5674a04ac6cb450fd",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/attachInterrupt-int1-blink/attachInterrupt-int1-blink.c",
+      "sha256CanonicalLf": "ccdfcdbc64a686a6720b07e2a22a85b855dc4a145d741a38164cbc0dda723fac",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/attachInterrupt-int1-blink/attachInterrupt-int1-blink.hex",
+      "sha256CanonicalLf": "ba156002854f28a07a5d896efe9a969a707a970dbe6700770ae59cc69aef2742",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/attachInterrupt-int1-blink/attachInterrupt-int1-blink.lst",
+      "sha256CanonicalLf": "c7a34ec6763889613b0ff91726db8d371b82ce7efff4abe30bc7b4172f5487f8",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/blink/README.md",
+      "sha256CanonicalLf": "367a867f11746610f18e1d0f3433097fd5d473a46c66129eaf46620eeeb145d2",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/blink/blink.hex",
+      "sha256CanonicalLf": "71e63aa403af5359f9f53f5b4cff9b59f3f9c3cfd721cbefb7ce5bb40e06e24c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/blink/runner.ts",
+      "sha256CanonicalLf": "1a66d7e47da079c11b064854bf220b05eb6567f468b3173ac655e7518c44f2fa",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/.gitignore",
+      "sha256CanonicalLf": "bd6f35880b7d911822d96b48e1a660a346a4cb74efa435f2e662cfe2a71aaaec",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/README.md",
+      "sha256CanonicalLf": "2fd551ce46a7c2e487b23c43edaf6ef1e54e30d90876c52ccc7b215f1c9a65d1",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/index.html",
+      "sha256CanonicalLf": "82980fe9047c3a1a9d785261b4ec5041987b765d61131d3040a6b9d592f75ff0",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/serve.ts",
+      "sha256CanonicalLf": "fb7f5af62847bb53d6fd14fb4ed04c0deda7e076eafdc9f90018ff33254478c4",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/board.ts",
+      "sha256CanonicalLf": "0659dd5d37efdf9961ee1e9b5c29cc0b2ff226e7c20082b89e2f0d6e68be3c78",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/button.ts",
+      "sha256CanonicalLf": "cf84f9e7e76aa8fda8fbbd6895a244e360b0848130eb7b9b56f6dbd0b7ef047a",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/controls.ts",
+      "sha256CanonicalLf": "e2928bfa5894f0fe4333e988963291f4cac83f6d90fa34b06a725064aff98771",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/inspector.ts",
+      "sha256CanonicalLf": "1d473a65ab8ef5c5f934bf98141931cb198bcb90fe3ee971560f527ae5a43a33",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/led.ts",
+      "sha256CanonicalLf": "e323e42cd778296578605712beef5519cd3e0babc1bf0c92029107123df67942",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/logic-analyzer.ts",
+      "sha256CanonicalLf": "83ab8e3dc32b1959c6b1a656ab016dfc1d3ba58b0e3de57e7029f4a27a4172cd",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/pwm-display.ts",
+      "sha256CanonicalLf": "f35c456afbdd1b4f14d142790757a01f903e1c62ab29f45f13441db64b39a58c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/components/serial-monitor.ts",
+      "sha256CanonicalLf": "c3152fb8a74113cec7102951a09cbd00ba5f02c6f78a1eeb02cc980389b02a80",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/main.ts",
+      "sha256CanonicalLf": "c0aa6a93a132be56c4224951c650a1c8fac50df6fa55180545b6b259f4998409",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/runtime.ts",
+      "sha256CanonicalLf": "500cea94dbcc550362f565570d77fa0b13c6338279dee765bf631fa7c504d7c6",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/styles.css",
+      "sha256CanonicalLf": "7037aab9325166a4c1af9c0e1d62c66fc8e3176ae064e31708f254a6054d844f",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/src/workspace.ts",
+      "sha256CanonicalLf": "06e8789688dad696d304bfc61abd206700c35ee366f537c45136aeea0c010a38",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/browser-simulator/tests/demo.spec.ts",
+      "sha256CanonicalLf": "97a7569533a2c64d8facfadd2cd7573c330e824c30858abc7f8642fec4b693c1",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/comparator-oracle/README.md",
+      "sha256CanonicalLf": "f312d7e8e89ad7ad2140392c4da0d367e3f3bba57b198d980c9e4d69c32ebd26",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/comparator-oracle/comparator-oracle.c",
+      "sha256CanonicalLf": "dd104f7789a4bf440ed72af2277f828a9a06d5f0a1dc37c2ef0cd783319408f5",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/comparator-oracle/comparator-oracle.hex",
+      "sha256CanonicalLf": "8e4988bfc3b982f4ae31ee5eada6cb0bbc3056132a03ea2b2b4675daf194b340",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/comparator-oracle/comparator-oracle.lst",
+      "sha256CanonicalLf": "294d2880ed76631f0d7b8784e2213e3fbff45f50418178d6124717ce508f55e5",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/delay-blink/README.md",
+      "sha256CanonicalLf": "82f206e6a7436dc6d02e158445f4186cc0e4c144201fe59784accd9abc65d895",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/delay-blink/delay-blink.ino",
+      "sha256CanonicalLf": "0635ade8dd4e69315f47ba1868e200a86be834f8b19572d7a805c756f5921bab",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/delay-blink/delay-blink.ino.hex",
+      "sha256CanonicalLf": "068d7b27e348944cc60eb0a0d8ac65418e5c4927019cbff1cdbc1b3853cf9997",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/delay-blink/delay-blink.lst",
+      "sha256CanonicalLf": "8a5180eb4123b6195783c5d6160054da4a373321c4df210c413a90795f034528",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/exti-sleep-probe/exti-sleep-probe.c",
+      "sha256CanonicalLf": "ff4a25bfe134def4ee932737e01648d8655126b163312963a12a48cbca39ce1c",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/exti-sleep-probe/exti-sleep-probe.hex",
+      "sha256CanonicalLf": "b6784d8ad7c0c892d31ed4be6a8314068e027dbaeb10f10ddfbd6b72c6fd8c58",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/exti-sleep-probe/exti-sleep-probe.lst",
+      "sha256CanonicalLf": "b6c88ab453386d0feea2817e4da7df0aff941422260b57f0e1ad9954bda8b8f0",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/optiboot/README.md",
+      "sha256CanonicalLf": "6dfd00428f1efc55b955a190d4e995aeb77502f9f4b359cdeeb42961f87faf9a",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/optiboot/optiboot_atmega328.hex",
+      "sha256CanonicalLf": "b26a7a71fbb65c6002154238e3d14198b42bd77408b509161f1d478210da7abd",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/peripheral-timing-oracle/README.md",
+      "sha256CanonicalLf": "b4a1f17ad4211e9e05a2d3c0386f02ebfe5f3d1f1d7bc5bc0625905a8f91e7f6",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/peripheral-timing-oracle/peripheral-timing-oracle.c",
+      "sha256CanonicalLf": "eeabe7938238a862bc31f0c5bcb65931cd6596a4a22ad553df420a8a0591c9dd",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/peripheral-timing-oracle/peripheral-timing-oracle.hex",
+      "sha256CanonicalLf": "f81834bbc832844a07a4dda3e25f5c61484a280f80f4e726f2c3f2fe33b069f0",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/peripheral-timing-oracle/peripheral-timing-oracle.lst",
+      "sha256CanonicalLf": "50c8b0b31572d7757bc4dfd394d17f7be6d73cc5bc97a212d8d9b43a578ed7fe",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/programming-timing/README.md",
+      "sha256CanonicalLf": "0c1a4362fdd9a71163fcb4d270579bd7b897110c44e050d43d625596b042c140",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/programming-timing/programming-timing.c",
+      "sha256CanonicalLf": "84024401d89e82fc7d80131ff6aa39f58b3a5db16b6b4de8aae267bda5f0ec44",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/programming-timing/programming-timing.hex",
+      "sha256CanonicalLf": "3778aef7af9ebe119f75b38f09f2f4fe79821c365f70263b035cdaa21b334734",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/programming-timing/programming-timing.lst",
+      "sha256CanonicalLf": "06ed142136f64d357016ec3ed9a4ae2f6af854768f3cc463ebe44fbcc2fc950a",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/serial/README.md",
+      "sha256CanonicalLf": "7c7a143a7378e35829210cb979347fa24fa9d9aca9189f9850337ba561da68ce",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/serial/hello.hex",
+      "sha256CanonicalLf": "1f937c263bb8bd374de52ab53152cee9950aee22ed93959ed93c01ca8667bf63",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/serial/runner.ts",
+      "sha256CanonicalLf": "cca60858e363da33db0512f91b09f9df0e296b125bb0e4a51e9c395c37ba9ce6",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/spi-slave-oracle/README.md",
+      "sha256CanonicalLf": "3ce2d66dca465a60296ba90999711b16886f9ce8541a7cc73ac01e8945c574b1",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/spi-slave-oracle/spi-slave-oracle.c",
+      "sha256CanonicalLf": "4e352457d37b9951ca859309357fe310a371a8d9c12ad360ff39d0841293d34f",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/spi-slave-oracle/spi-slave-oracle.hex",
+      "sha256CanonicalLf": "e66277870249debb3cdaaa155ad1dbe44ac206a2fbdaad57ad89ef7383569d0b",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/spi-slave-oracle/spi-slave-oracle.lst",
+      "sha256CanonicalLf": "9e8533058e7305445e0efff3e7978a1e900b7be5b5caf5db0a7cd10629e80b85",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/spi-status-oracle/README.md",
+      "sha256CanonicalLf": "68c7ef8d943d454a5494c77ee90cfc465f522a9d1e6e26fa3162c23c0d829e9e",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/spi-status-oracle/spi-status-oracle.c",
+      "sha256CanonicalLf": "a7f6b215a9ee82b2f288d0d3e780c01d4d6b7b66d2aeb9aa574c4cab6cd2afd1",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/spi-status-oracle/spi-status-oracle.hex",
+      "sha256CanonicalLf": "17fc8111f9be29518fc1020e8f189fca7fa33e7eb7c2e4bb63603a7bb8322b54",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/spi-status-oracle/spi-status-oracle.lst",
+      "sha256CanonicalLf": "8731cefed3f0eed4d27bc73895e42708329aab8b71e547221f152ae90bda7c37",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/tight-loop/README.md",
+      "sha256CanonicalLf": "1cb635b416f4a3ddf5d363a141260bd17c5970fc70c2e39b9fa54afb710a0abe",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/tight-loop/tight-loop.hex",
+      "sha256CanonicalLf": "ba16873e236ae062f7cc24809e26dd3df58b92a681b8ce412d3b00bbc46225db",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer-external-clock/README.md",
+      "sha256CanonicalLf": "fb7a873d123377b5baba2e2e762fd515aac450f6219e1f8e731123cd74877ca6",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer-external-clock/timer-external-clock.c",
+      "sha256CanonicalLf": "2143a62645bf409ed240896f335230a1ee852d56092ff9aec8deff7fbcee2349",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer-external-clock/timer-external-clock.hex",
+      "sha256CanonicalLf": "5c4fe7d96d93084e7080a8449c4fb0d229d2165d6e90751dadc43aca4fe61b5f",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer-external-clock/timer-external-clock.lst",
+      "sha256CanonicalLf": "0fc18dfd6f3c0061288c1d3f43802098ce90866fc251f7ee061e80e4cdf9a83c",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer0-overflow-blink/README.md",
+      "sha256CanonicalLf": "5571695ffc7c40450609e75938a4c5e8c8adf0a0d45d5dac3fc6c036b6b4ec35",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer0-overflow-blink/timer0-overflow-blink.c",
+      "sha256CanonicalLf": "9578d79f21f94d18cca34599ad570665edb31328cb2d37ac18c5e641135b205a",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer0-overflow-blink/timer0-overflow-blink.hex",
+      "sha256CanonicalLf": "5448c1189881fe8fa66a72f861ad0622f2c4c7a2c91849b6ed5f9c639c19d070",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer0-overflow-blink/timer0-overflow-blink.lst",
+      "sha256CanonicalLf": "f6cc740b69b77c1e831f31545d598ece3d20bd63e71039a7302fe555af1a89a0",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer1-top/README.md",
+      "sha256CanonicalLf": "6bbb2631d1e29be77ed37ca8084e5ac4235c3ef5e859c4f358241c06d0204c4e",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer1-top/timer1-top.c",
+      "sha256CanonicalLf": "ad24bc9f2759b1c86b5f0d23c05963a32a3f74cf0e12eddee6ec3a20e2a971fb",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer1-top/timer1-top.hex",
+      "sha256CanonicalLf": "49f1c0fffacfdb5fe356fbf39421ed8f9de00ff7907737410e1b4890c3aad035",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer1-top/timer1-top.lst",
+      "sha256CanonicalLf": "90d1b743c477839991496c61b831245b4f5997a19e955a7a6fc5c5cc42711293",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-async-oracle/README.md",
+      "sha256CanonicalLf": "c6a2b6cc00d6ecc9bd774992515e5025bc68db6ed946fd7d36ca5cc591c5c962",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer2-async-oracle/timer2-async-oracle.c",
+      "sha256CanonicalLf": "3a8c7cf86dc84cb21bce1def5ce624c50903be0e2e5af8ec469981c30b332122",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer2-async-oracle/timer2-async-oracle.hex",
+      "sha256CanonicalLf": "5fde351fb7aec91147071955d448307267426fbe3e1462e2e803f35752bee4d2",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-async-oracle/timer2-async-oracle.lst",
+      "sha256CanonicalLf": "d8fb0d201e5e4daf029fb25e9b4831952c18a33895e0c4065e65bac5721554b2",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-ctc-tone/README.md",
+      "sha256CanonicalLf": "659ad64a18c1bcd5e291f628aaee0dedac0fe5e99e6c551cd7442716408c3cfb",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer2-ctc-tone/timer2-ctc-tone.c",
+      "sha256CanonicalLf": "851d07651a0b264c641cb543beb91d05feac4a7469c823431cdfa7fb0e8825d0",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer2-ctc-tone/timer2-ctc-tone.hex",
+      "sha256CanonicalLf": "8fd31348b0b4cf50908a1026838564fbea6cd42fa0e85a180c8baa67c1c6c440",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-ctc-tone/timer2-ctc-tone.lst",
+      "sha256CanonicalLf": "a9b598ae2ad2ddb37f0b5331356dd59b6f269b988808658cd8eac19383d7e74d",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-sync-probe/timer2-sync-probe.c",
+      "sha256CanonicalLf": "704c6d467e6ac05469c00f65b722cdf302713dce70c46bf40079301ad7759d43",
+      "rawEqual": false
+    },
+    {
+      "path": "examples/timer2-sync-probe/timer2-sync-probe.hex",
+      "sha256CanonicalLf": "c9a4e830d14d105b7f3a6147fcaaedb5d913495050b30e21f90b1ca43b126cd7",
+      "rawEqual": true
+    },
+    {
+      "path": "examples/timer2-sync-probe/timer2-sync-probe.lst",
+      "sha256CanonicalLf": "cf7ff32b41a9ecc277c5f88ce5739a22ab78d7ec847c33da8f9fcb80df89e394",
+      "rawEqual": true
+    },
+    {
+      "path": "package.json",
+      "sha256CanonicalLf": "6e95a9d63a58cf771b0cffcb7dfae6e8dd1337192c9feb07d5d7ca11bc74fdef",
+      "rawEqual": true
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256CanonicalLf": "302738c1ef6b0e40b99ee6eac5f5ac7c1eecfd60bd5ba6c2b898776d934d1e20",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/benchmark-baseline.json",
+      "sha256CanonicalLf": "079f2a5d184937ecacdedaada46935fc5b791f271eb5b7ecfb89f9d8c2af4ccd",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/benchmark-compare.ts",
+      "sha256CanonicalLf": "4841cd8773b7b8e21039c05ba407d7d4c6d365f36d5b4254e29fe8799cb9b602",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/benchmark-results.ts",
+      "sha256CanonicalLf": "cf8a3a930bd3220984ddd3fc73a0e58b59bfaec00a5e6fdea78a6302009128c8",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/benchmark-revision.ts",
+      "sha256CanonicalLf": "1babf626c0e5481fed23e4a3caa53aaf2724e8bfd4f54924bef11f3c7bd87cdc",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/benchmark-startup.ts",
+      "sha256CanonicalLf": "a1cb6c9c405be39c8c986372f4483999aa0edfc94eca8ecc7c898f15443ca5c8",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/benchmark.ts",
+      "sha256CanonicalLf": "2251e319519a254cabd00a8909065fe0cb7e2240a9f7924208b57fd84854476d",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/clean-dist.ts",
+      "sha256CanonicalLf": "d233563d17af78594c80b9d627dc5a903c0fea0d9c4713523b46f3117861343f",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/compile.ts",
+      "sha256CanonicalLf": "39b746b3ef51538e9ef2464538c4b28ba8b7d9f8cafdbd8dd88d9aec1baf1976",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/dev.ts",
+      "sha256CanonicalLf": "e8fab925723fe69c13ecf2114c63218077d1bc07840b568bd93a97a18877620e",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/digital-model-evidence.ts",
+      "sha256CanonicalLf": "77df3eeea56a0cee2c9919578a53dbd441bf2fabc35869cd8e075876af6cc41c",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/fix-declaration-imports.ts",
+      "sha256CanonicalLf": "beb159f86b4d990f66c9f6ef086a7dd0f3d97151e80ff031c382ade5ed4df625",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/fixtures-arduino.ts",
+      "sha256CanonicalLf": "eb65bda8fec36d5df93a5d00489d39a136a367ad03f2b4e75d36e9d00695ca1e",
+      "rawEqual": false
+    },
+    {
+      "path": "scripts/fixtures-avr-gcc.ts",
+      "sha256CanonicalLf": "c0881a5059271b93cbe455f6ca9fabfe8fead87e5a173d40cb54f4601e1a1855",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/generate-fast-core.ts",
+      "sha256CanonicalLf": "40b8ad1b2bc39d5b38c026dbaba9aee92d0a34dc246828c0552ce69634fa214c",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/package-smoke.ts",
+      "sha256CanonicalLf": "96f847aeaec65c02585ce57fbf2d42a686b35e4989445a108d8065021652fda9",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/profile-opcodes.ts",
+      "sha256CanonicalLf": "88f69652935e8bf3ac922fc86447c2666d9d7b35ece151409eb3605e81e8995d",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/runtime-fidelity-results.ts",
+      "sha256CanonicalLf": "756d232c0e876ca11db0dbd26480d9287ec5708f3a9411dd5e11c3eb4a9cf98a",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/simavr-oracle.ts",
+      "sha256CanonicalLf": "e8ae71b7f53370103496b02eeadb50159b9af661fffc8e18f7e1dba686030a81",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/simavr-state-dump.c",
+      "sha256CanonicalLf": "bcbc6faa1e45f44aee52f99194fde4a1c5af81bb5a49159a297ea47a4f1b849f",
+      "rawEqual": true
+    },
+    {
+      "path": "scripts/workload-result-evidence.ts",
+      "sha256CanonicalLf": "df829f5d2358dc0e44b33b2b5a0d899115667207b80ffe8aa8015295ffbb75f9",
+      "rawEqual": true
+    },
+    {
+      "path": "src/adapters/button.ts",
+      "sha256CanonicalLf": "ee43db11e1ba5f55ee068ec5fe30fc1867984962378e3619ef931e42b6b7cef5",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/index.ts",
+      "sha256CanonicalLf": "a96710c0186a06b6c3d23c2f2e5b6b2fea2b808f3b1d8fc9f8945664f622349c",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/led.ts",
+      "sha256CanonicalLf": "ffa5394b2a9498f28aa230762592c45982fdfd73e6b1a97ef86ce89d26f2e0d7",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/logic-analyzer.ts",
+      "sha256CanonicalLf": "6fc5cb9cf05bec59f5f59d16f209c63051ba5815fcfb7642033f43b94fe32d39",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/pin-activity.ts",
+      "sha256CanonicalLf": "0e3b8081e1679deda8533c1fb4672ae399721cd2d4aff7d36579541cd7d5a4a2",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/potentiometer.ts",
+      "sha256CanonicalLf": "94a23de1e6e85e7b1ef1cbbe72923d8f6747071c37db38c906b81cff3416d515",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/pwm-meter.ts",
+      "sha256CanonicalLf": "99cb196a8f8debc40cac0aa5781d7e68ce82ca79b453f2463f67c1bd965be620",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/scope.ts",
+      "sha256CanonicalLf": "8bbc3826f9350400fa913be89db63680465f2e579bfc044e5631c7e67a60e6ec",
+      "rawEqual": false
+    },
+    {
+      "path": "src/adapters/serial-monitor.ts",
+      "sha256CanonicalLf": "ee0e4c28a820c4925a9050e0075a414672994ad4d03a20fcffc57b159d12b204",
+      "rawEqual": false
+    },
+    {
+      "path": "src/avr.ts",
+      "sha256CanonicalLf": "83c42f36b3131a28caca1581987b57e19cf496c944768df1f6ede76f5457da01",
+      "rawEqual": true
+    },
+    {
+      "path": "src/avrts-modules.d.ts",
+      "sha256CanonicalLf": "05dd788fadea91adda40e4dc4b700dd09462012f37e7731fc3f86a4d1f37ecd5",
+      "rawEqual": false
+    },
+    {
+      "path": "src/browser-runtime.ts",
+      "sha256CanonicalLf": "8d3326c571b73aacfdcfcebcffee961772fb91e35148e8be0bbad74abbd0a49f",
+      "rawEqual": true
+    },
+    {
+      "path": "src/browser-worker.ts",
+      "sha256CanonicalLf": "4e1ec2583d385356afb61045a16be773dde38fa2ca080de3e2d07238c0a22052",
+      "rawEqual": false
+    },
+    {
+      "path": "src/circuit/board-ports.ts",
+      "sha256CanonicalLf": "a70396a0618524fef55591585439ae221f1d424a7deb85efcaced348604db6ff",
+      "rawEqual": false
+    },
+    {
+      "path": "src/circuit/document.ts",
+      "sha256CanonicalLf": "cd52eee8586e3493bf00942b2663044af56931e3f39b7baa6f8dc06491854351",
+      "rawEqual": false
+    },
+    {
+      "path": "src/circuit/index.ts",
+      "sha256CanonicalLf": "2576886a9630877b7a0b8038e0aa9bf7ad06b30c515d4dfdfb0dd3e02d685904",
+      "rawEqual": false
+    },
+    {
+      "path": "src/circuit/types.ts",
+      "sha256CanonicalLf": "625c1c4f688e017743b1f2f53219574c35f63097e3ed5643b39823c6a7a1f183",
+      "rawEqual": false
+    },
+    {
+      "path": "src/compile/compile.ts",
+      "sha256CanonicalLf": "d27eb30aa78dfd82b72f9a18289afb73dd473f3734d79b9d9db199fa1ba4a630",
+      "rawEqual": false
+    },
+    {
+      "path": "src/compile/errors.ts",
+      "sha256CanonicalLf": "d7edf08c06d65249dd64a71aa9023989c5381b911580a76ee22771cea39f4fad",
+      "rawEqual": false
+    },
+    {
+      "path": "src/compile/index.ts",
+      "sha256CanonicalLf": "631258377533b7477f14bc8b41c0f5b9a323857c8c99e807d017e58d1fd86006",
+      "rawEqual": false
+    },
+    {
+      "path": "src/compile/toolchain.ts",
+      "sha256CanonicalLf": "841912dffa28fc929bf4c3bebb39b5739492d66ab1cb980b68bfd054d3aca0ea",
+      "rawEqual": false
+    },
+    {
+      "path": "src/compile/types.ts",
+      "sha256CanonicalLf": "3b77a159394e2811a2b5d09af19f35dd3be1447be31f26e57f54da7165b7abdc",
+      "rawEqual": false
+    },
+    {
+      "path": "src/component-bus.ts",
+      "sha256CanonicalLf": "3e00ee18729b6a3c5b26a0d1425d8bda9180da923f854dcc162aa3913560c7ed",
+      "rawEqual": false
+    },
+    {
+      "path": "src/core/decorators.ts",
+      "sha256CanonicalLf": "e29d2a36d9c38b855fb60cd35c18a73f3b4043252aa055ad7d6fff84665ec672",
+      "rawEqual": false
+    },
+    {
+      "path": "src/core/index.ts",
+      "sha256CanonicalLf": "8778f669f61e95c255b654038b807cef367dee4984c797ccf788b4324b66fa31",
+      "rawEqual": false
+    },
+    {
+      "path": "src/core/types.ts",
+      "sha256CanonicalLf": "71014eda30bd2a0a8b11ceb5679b8ca3ed52e461b953a0e8db7e10240c0f0deb",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/alu.ts",
+      "sha256CanonicalLf": "d4295f652c675edd518877d1dea2a6b3b83728395e1f519e6801063811af3c01",
+      "rawEqual": true
+    },
+    {
+      "path": "src/cpu/constants.ts",
+      "sha256CanonicalLf": "98059d025917daccb3309af8a0b461c0554ed96a75c49a4e56e45e1afaa97d8a",
+      "rawEqual": true
+    },
+    {
+      "path": "src/cpu/cpu.ts",
+      "sha256CanonicalLf": "4522778ae05ca6868503f3f74f47de5c68ab46ca5938210dfbde4fb08282043d",
+      "rawEqual": true
+    },
+    {
+      "path": "src/cpu/errors.ts",
+      "sha256CanonicalLf": "d5ecabf9c3709beaadacb88dd0d09fd515b589c0a71318644c417281734af4a3",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/fast-blocks.ts",
+      "sha256CanonicalLf": "62b4c7a948d69e553a67834b29183d3ded4a8754523e9e6e8ba744c5c4f883a0",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/generated/cores.ts",
+      "sha256CanonicalLf": "5b8556e526942696cac0ad912e84264e66584e451be7561a593f9f3f098a3e01",
+      "rawEqual": true
+    },
+    {
+      "path": "src/cpu/generated/fast-core.ts",
+      "sha256CanonicalLf": "6bbc415a9ec4edef1b9912ac1d73c2a747fb17ac42576c1b97ec0e88f39ad73d",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/index.ts",
+      "sha256CanonicalLf": "a8c83fba44bf13e7913dd1c4082a7e9e139cf316e2cf79b73e8879a1b45b987f",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/instructions.ts",
+      "sha256CanonicalLf": "5409a7fade1cabff45ae1a3ac31aae8fa8f675aa4b13b3970bc6f327bdec0b14",
+      "rawEqual": true
+    },
+    {
+      "path": "src/cpu/sreg.ts",
+      "sha256CanonicalLf": "fe636a168f063ec40b4b866bf85249106b11b0b9e7ce5af03c37e81cb7eec4e6",
+      "rawEqual": false
+    },
+    {
+      "path": "src/cpu/types.ts",
+      "sha256CanonicalLf": "7a33692d32f761bd5d2978a8a43a213f0eae5cba4aaacf6fd5f3e81adf43538b",
+      "rawEqual": false
+    },
+    {
+      "path": "src/index.ts",
+      "sha256CanonicalLf": "14a6c9313ddccd43788fbcaedef90c9809760d25ca077b77def2a9dd801ea932",
+      "rawEqual": true
+    },
+    {
+      "path": "src/instruction-coverage.ts",
+      "sha256CanonicalLf": "38eb346991794bf658e16ff0770e8882494cfdf0d67cd74c4371374199cb61ce",
+      "rawEqual": false
+    },
+    {
+      "path": "src/loader/errors.ts",
+      "sha256CanonicalLf": "6846141d8a0e293e059146e8d4ee5e578a34e55e9815e5e0f17833839e5519e0",
+      "rawEqual": false
+    },
+    {
+      "path": "src/loader/index.ts",
+      "sha256CanonicalLf": "485954c0c6045fd55bc14379906dd12d93d5fb023c88d205197fd0447e70abaa",
+      "rawEqual": false
+    },
+    {
+      "path": "src/loader/intel-hex.ts",
+      "sha256CanonicalLf": "1797a8d3cd2f0af10df6521211d44395c007a631a0e7274c6030ec6e319066f6",
+      "rawEqual": true
+    },
+    {
+      "path": "src/loader/types.ts",
+      "sha256CanonicalLf": "5e5e5bd09c7655b8075ed23430de794c0bb9cd838c2b05d93ba0819bcc250163",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/adc.ts",
+      "sha256CanonicalLf": "9296a90136b8de47324733edc34e63eee0c8b6ed00a067d87c7e38ffdb64ea6c",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/analog-comparator.ts",
+      "sha256CanonicalLf": "07831fd61cc2ee4c6ec743aebfcee086cabecb619f599557c096c3f10793ae73",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/attach.ts",
+      "sha256CanonicalLf": "21749b96bdda1bd019eb154d551d3ae63688881dabd5cdc92f74997acdd75638",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/chip-control.ts",
+      "sha256CanonicalLf": "d561e4bee7021af46df7d90e46d21690a73ee38f4d497a0ccadb207fce6b6702",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/clock-control.ts",
+      "sha256CanonicalLf": "a55a7ac7c77044c6468de4afc6cdacce1ac23d3921e9b5bd7cfaa6e3d52142fe",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/eeprom.ts",
+      "sha256CanonicalLf": "3c6f6cd26e259326284ccdb5a71e7761d2e10fee9354928014e0758de13447d9",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/exti.ts",
+      "sha256CanonicalLf": "64598170a9111fe69924e2dd4ddc3175ba13e558713e7d9656d0302c8034b717",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/gpio.ts",
+      "sha256CanonicalLf": "e3359288273d9bf96fd20128685944c46e178930db64df04ff45ea56b61e9e17",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/index.ts",
+      "sha256CanonicalLf": "ab1023b6618179e563417872048304a1230991fbb5958256c8a7e767623274aa",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/pcint.ts",
+      "sha256CanonicalLf": "10790ee91a10634275c1a98a0ce5f32fa8566c1c5574070ae749b1e33f014c03",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/pin-map.ts",
+      "sha256CanonicalLf": "c5935142f64438adee529c094d1de52df773dba582dd0c2562b166ce045c3d4c",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/power-reduction.ts",
+      "sha256CanonicalLf": "7ce9ec22fc118f0d9fb16289b6effeb60d21688023d5c05e52d23bb04414e96a",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/pwm.ts",
+      "sha256CanonicalLf": "0f5a6562c7e6fc98502f73ed37358b420bd06864dbe1bcda1d5c83688319b9fb",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/self-programming.ts",
+      "sha256CanonicalLf": "0904d049bdf5f23362baa9a02cc1bf65407a669325410fa818c03918bb88c231",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/sleep-control.ts",
+      "sha256CanonicalLf": "5cc1021f7dd2c6f23f6e4ab3744b07e8484af9364aa4e62050cc36d07d19d8ce",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/spi.ts",
+      "sha256CanonicalLf": "8530619a190f749cbfbb4978bc75de167dd8da87c86fe81e14ef0b5c493ea05d",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/timer-external-clock.ts",
+      "sha256CanonicalLf": "35dfb62b23e17c2f2f4283de3c9d0a08e232182cca39c51e2fa2fee07f6a6e56",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/timer-prescaler.ts",
+      "sha256CanonicalLf": "c81c90e4463b09bdbca72946d5557f9821a8d7c82554a881b31d404e7092e150",
+      "rawEqual": false
+    },
+    {
+      "path": "src/peripherals/timer-sync.ts",
+      "sha256CanonicalLf": "8209005b651901717e300f3c333a165d7db669307b06ecba44044177afd5e0d3",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/timer.ts",
+      "sha256CanonicalLf": "74556f49db388c3cc5172fea23d08cc6d8c2f1c8e3aa7a58e08b2a4eb3c7e707",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/timer1.ts",
+      "sha256CanonicalLf": "a77931fd575db88aa4047aa90e4cd904829c98f5b94ea5dd9a82f12924536ea2",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/timer2.ts",
+      "sha256CanonicalLf": "ea32c5ee6a4c937f010c4b1f8a56d561fdb52e2c642cb1321dd8eda2020fed82",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/twi-wire.ts",
+      "sha256CanonicalLf": "c443c1ab1211f4107e89f027b68ebfd6508dc1a5d2e563a85e77a0f69e3be78f",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/twi.ts",
+      "sha256CanonicalLf": "fed3eb3d63fdae7c22a8f6fc91591d90220dff016acdcae6e4441d7d34c9068e",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/types.ts",
+      "sha256CanonicalLf": "730fccbbe3d51cc78640271db8ed269145cbef524e88b6b55cc5f84663e08dcd",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/usart-wire.ts",
+      "sha256CanonicalLf": "078986925821e2bd91408f7857a8c462a10707d7855abf303f7854df8564c8a6",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/usart.ts",
+      "sha256CanonicalLf": "174c19a62e8b9664dc7a65711a081aa471468de5ce862839e924cc79a4446107",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/wall-clock-timer.ts",
+      "sha256CanonicalLf": "5e837d78359d203f2a13cfa9fdd7943141b0e1020f1f28d182e57f4fd55bcfec",
+      "rawEqual": true
+    },
+    {
+      "path": "src/peripherals/watchdog.ts",
+      "sha256CanonicalLf": "8c880b3d96bbee87bb52cb4fb5882c4dd13fba709ab806f40bd2a4151ee33137",
+      "rawEqual": true
+    },
+    {
+      "path": "src/public/advanced.ts",
+      "sha256CanonicalLf": "26243fc032f1fc0153a280641072a2caf4c07f1c150ceea57a6f2f56f2757b56",
+      "rawEqual": true
+    },
+    {
+      "path": "src/public/browser-worker.ts",
+      "sha256CanonicalLf": "797c74bb39f7f0d3c07d3819cc21254700d3142695ec4a1913b0e379eb3a4c05",
+      "rawEqual": false
+    },
+    {
+      "path": "src/public/browser.ts",
+      "sha256CanonicalLf": "aebc305785c4e2b9e7a3510dcc596e77c57fda65cd71609063d5ace8bebb4d84",
+      "rawEqual": false
+    },
+    {
+      "path": "src/public/index.ts",
+      "sha256CanonicalLf": "88b9c43eb9662d63f74c173d47344b32900ef237039e48f358cf7bd0601bddf1",
+      "rawEqual": true
+    },
+    {
+      "path": "src/snapshot.ts",
+      "sha256CanonicalLf": "0740bef3ae54fbdf5b32ea16be2338a2a56fb7360d98845c1b7e4d00e9b65715",
+      "rawEqual": true
+    },
+    {
+      "path": "src/twi-bus.ts",
+      "sha256CanonicalLf": "a61540fb1e9ce0cb9902b3c1a6268de7c1bbd03ce07aba25b95ffdd3b8b52930",
+      "rawEqual": true
+    },
+    {
+      "path": "test/adc-internal.test.ts",
+      "sha256CanonicalLf": "7ba3d82c6c538bd8fbabbdecb16264c2870eb224552e85c51dcfe0d5d23738e6",
+      "rawEqual": false
+    },
+    {
+      "path": "test/analog-sleep-boundaries.test.ts",
+      "sha256CanonicalLf": "54ee244f4300fc2bb6ef48893776799fa752f86f024cbcfea20e052ed575eb57",
+      "rawEqual": false
+    },
+    {
+      "path": "test/arithmetic-results.test.ts",
+      "sha256CanonicalLf": "4dcf4301d19e0ef97c33cf10cb6b446eea93ca71465fde0e80ae201c59941cf9",
+      "rawEqual": true
+    },
+    {
+      "path": "test/avr.test.ts",
+      "sha256CanonicalLf": "a623a509f31841eb2f0e13ed353b8d3777b74fb12e37d2692e5511587c365c98",
+      "rawEqual": false
+    },
+    {
+      "path": "test/benchmark-comparison.test.ts",
+      "sha256CanonicalLf": "168c12b88be2b855764e08d21701c86f8b34530dd2872d75f77c83e70e2d20fb",
+      "rawEqual": false
+    },
+    {
+      "path": "test/benchmark-results.test.ts",
+      "sha256CanonicalLf": "78e342b72aa6d25e787e4d93f28c1d311e85d232fad1dd0382eaedc80ddbd3e9",
+      "rawEqual": false
+    },
+    {
+      "path": "test/comparator-interrupt.test.ts",
+      "sha256CanonicalLf": "33949f1d21bcd61b2cbc8505e1c5d1231301e1eeadfd6fee81bfe4b3f88ddb1d",
+      "rawEqual": false
+    },
+    {
+      "path": "test/compile.test.ts",
+      "sha256CanonicalLf": "672ed4ff1ee94e0dd21b54a4e778beccc6d33f7e44c9e5cd15cee949a3dc6010",
+      "rawEqual": false
+    },
+    {
+      "path": "test/core.test.ts",
+      "sha256CanonicalLf": "7177d28b0fc647d46ab5f323a9bd11e80013022c1b8847c4cfe5cf200d416c78",
+      "rawEqual": false
+    },
+    {
+      "path": "test/cpu.test.ts",
+      "sha256CanonicalLf": "1eca991c9a8351a86215b76cad2811086ccc7883ccb7cb30efe6db066c976c62",
+      "rawEqual": false
+    },
+    {
+      "path": "test/eeprom-store.test.ts",
+      "sha256CanonicalLf": "ea5ccd20544dddb64054416674c78cc7ffe164abb36d9036ae78f0f060aa5792",
+      "rawEqual": false
+    },
+    {
+      "path": "test/external-interrupt-sleep.test.ts",
+      "sha256CanonicalLf": "0eb6e258a013d2f1ff00d7d23f20d3d827a83ba742527af187143367387ac264",
+      "rawEqual": false
+    },
+    {
+      "path": "test/generated-fast-core.test.ts",
+      "sha256CanonicalLf": "186b3e9eefa000ea54b3e90f0963e066349961e9089ccbf4a665f2b96ae49bb7",
+      "rawEqual": true
+    },
+    {
+      "path": "test/helpers.ts",
+      "sha256CanonicalLf": "38bd8a9207be46b899e1307ac523901af1bda185775446441749c341ddff6df2",
+      "rawEqual": false
+    },
+    {
+      "path": "test/instructions.test.ts",
+      "sha256CanonicalLf": "7d2f4cd00d77609e8ba1011bcc2e600f754105ac55c0ae9b60188c628f2a1356",
+      "rawEqual": false
+    },
+    {
+      "path": "test/interrupt-boundaries.test.ts",
+      "sha256CanonicalLf": "40ff5cc83ebaaeaa74abb9a6cb2137bbe150b6fdba6d18b0163877b27b20b670",
+      "rawEqual": true
+    },
+    {
+      "path": "test/loader.test.ts",
+      "sha256CanonicalLf": "5f08fb30e2fe43ad3402bff76ea69c919bfc1caad963da98a35562629a454cf0",
+      "rawEqual": true
+    },
+    {
+      "path": "test/loop-lifecycle.test.ts",
+      "sha256CanonicalLf": "4d6c2c26a7cb7585915415dd9379eb0ec3d2769d37553b293a4cbc4488e02e6d",
+      "rawEqual": true
+    },
+    {
+      "path": "test/lowpower-wdt.test.ts",
+      "sha256CanonicalLf": "bcfcb71504f0851f1d26b4624be5857644a3cd68363be66f1dd61fded5cf61f3",
+      "rawEqual": true
+    },
+    {
+      "path": "test/model-timing-policies.test.ts",
+      "sha256CanonicalLf": "d9d6c11f0ca68ccd6dea0902544e76eb8ddd730467672619b884a28bfd343b00",
+      "rawEqual": true
+    },
+    {
+      "path": "test/package-api.test.ts",
+      "sha256CanonicalLf": "9864e7fca7120b09b10b5a9a8a2bcfe5d17e47d4ab39ca81e747feaa9d18bbc0",
+      "rawEqual": true
+    },
+    {
+      "path": "test/pc-wrap.test.ts",
+      "sha256CanonicalLf": "3ed4267782365b04f5aad6e1118e00cbc583ccd87dd1481b278ce8eec10ca18f",
+      "rawEqual": true
+    },
+    {
+      "path": "test/peripheral-bound.test.ts",
+      "sha256CanonicalLf": "507941fbf6aadf8b0d58d61e137102b753a828b303f2bd063155b1bb8c7f50c4",
+      "rawEqual": false
+    },
+    {
+      "path": "test/peripheral-correctness.test.ts",
+      "sha256CanonicalLf": "32b42030d37b18f08508c7f77920bc4e2d00704609534bcb5dfc1e21463f2a76",
+      "rawEqual": false
+    },
+    {
+      "path": "test/peripheral-interrupt-matrix.test.ts",
+      "sha256CanonicalLf": "cd37663069df8c3092088323a3232166554a0cef861a7169c1e9cfb2e80a2da9",
+      "rawEqual": false
+    },
+    {
+      "path": "test/peripheral-state-transitions.test.ts",
+      "sha256CanonicalLf": "e14fc2d76cc773a632a95eabb3bf34af9acaed6ee83272a089b9687a1c4a1ec0",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase10-snapshot.test.ts",
+      "sha256CanonicalLf": "9b49099635442d838aec046cdff4e625b75ccbcb5c80d9cfe86061cc49829b7a",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase11-debugger.test.ts",
+      "sha256CanonicalLf": "bbdd48a4de236d7a596e1d9a58dfffef2899b7aef28d885e47d7fbe2d40b1cfe",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase12-timing.test.ts",
+      "sha256CanonicalLf": "f2079a1c9ce2d5aa28268966c7414ac4c1239f00a1d3fbeef4a52227d6ce3685",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase14-exti.test.ts",
+      "sha256CanonicalLf": "2b14a26b637fe164db27b3b12f4ce9a8054cb2eaf9f01dbd456f6be6a6577328",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase15-peripheral-fidelity.test.ts",
+      "sha256CanonicalLf": "c7fd01beb222a2d9502e0c1018d24f3544da4284eb597bcef129b9e713696e29",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase16-coverage.test.ts",
+      "sha256CanonicalLf": "945ff354e180dd38de738922f010b109447169fdb9215f7c181605f46ab152fc",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase17-performance.test.ts",
+      "sha256CanonicalLf": "86af2395fae8b5093a0478d1063e386b0c90772439abc5456bdad464276c3ff9",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase18-demo.test.ts",
+      "sha256CanonicalLf": "5fea6c26ecb2d2a06fcecb86f37a6feb7ccf6a7290b7b7cf1100c8aa711ed880",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase20-ux.test.ts",
+      "sha256CanonicalLf": "839dad801552d64b7869a740a8f23cd35fc205f3b102431927a465646cc0015e",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase21-adapters.test.ts",
+      "sha256CanonicalLf": "3ead7ef1bccd5f2dc6c9c59eca7a58149da6314f659b864405e618bbb4057964",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase21-browser-demo-runtime.test.ts",
+      "sha256CanonicalLf": "b29fc6b4f4a958b06a4335a18b118b9dfcbe6a25b55f4b3d7c58a721d69e009b",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase21-browser-runtime.test.ts",
+      "sha256CanonicalLf": "7b7ff19d01792f06d993b32874ad27b6ab29e092d1791ce87e242ca99cc10618",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase21-circuit.test.ts",
+      "sha256CanonicalLf": "537ba73eb5a8c6e7e2fc576c1d089e06a9afb87dd7bd6a627c14e4b66d00468a",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase21-instruments.test.ts",
+      "sha256CanonicalLf": "75e2c49bffb4a62ec26323b555ce63fc1cdd16fe2225525053ca5e9b47be75b5",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase3.test.ts",
+      "sha256CanonicalLf": "ed5cb29518306534342c83c267292b91310e214c763b85806d47e757c4cef8ff",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase4-small-peripherals.test.ts",
+      "sha256CanonicalLf": "fe3f1848adbe91cddbc776fa676ab2c4dbe595007c84339ab242fffd6a5b0c80",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase5-timer-completeness.test.ts",
+      "sha256CanonicalLf": "d0b055af9892018f5ea836a2bd2804d6890dd1cdc232992f8c40d8cd91398549",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase5-timers.test.ts",
+      "sha256CanonicalLf": "baa4ae066edb7c754f090028309c21cceaeddb079a08595aee61a80038be2891",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase6-chip-level.test.ts",
+      "sha256CanonicalLf": "103211a464fea8a990769f3e871bebf5f5de0144d6a9075e8322e3adf881626a",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase6-optiboot.test.ts",
+      "sha256CanonicalLf": "aa10faa96cb3b204e76a08cd76b7a47d3bd80e4cac617f0fab9b514627301676",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase6-self-programming.test.ts",
+      "sha256CanonicalLf": "d2daed8c693699b5f3a8a4a773d0191df6844049abd0663ef13d07ad201c049f",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase6.test.ts",
+      "sha256CanonicalLf": "8e977e9a7a7248624c66fa6f79731e1806fabbdd1e73ca9b5119c3c9de2173dd",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase7-sleep-wake.test.ts",
+      "sha256CanonicalLf": "fa63cd351a038486e43d628e406665e5d1f65b87281a55d082053690b5f08213",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase7.test.ts",
+      "sha256CanonicalLf": "2bb07dbc264e09d7ea9dcea58e0349515446b7210927b8ab24a21b224da7bba9",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase8-adc.test.ts",
+      "sha256CanonicalLf": "95a403a4524f3fd8bb47ca89e4a00caf68838533883cb09d3f048ee32d66abf2",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase8-cpu.test.ts",
+      "sha256CanonicalLf": "e15bbec4da92d1858bfb53fc644b30f92bc7aae50a7fdab5dbdbf6e56d83b96a",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase8-fixes.test.ts",
+      "sha256CanonicalLf": "e2dec80300be2ce0366da8f731044e18f5b4bb1a67afa7240737717a43877914",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase8-pwm-timers.test.ts",
+      "sha256CanonicalLf": "1b0d239a3af9105aa603e1f2893e8bb2967bae6195727e0a254d29e8e1edaea7",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase8-pwm.test.ts",
+      "sha256CanonicalLf": "efafca61f7553a04349b3914057d505c17827a8e7cc6fca3a01f2535e0f63cec",
+      "rawEqual": false
+    },
+    {
+      "path": "test/phase8-rest.test.ts",
+      "sha256CanonicalLf": "bc20e850dacf29cf23ea70f366aa3303615dde42d8cae0b281b6b02548c0c455",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase8-timer-compare.test.ts",
+      "sha256CanonicalLf": "ea8c404fd5de575d5a15e64e4aa439030464c4f7145d3d3c7c4ab5a6920d98c7",
+      "rawEqual": true
+    },
+    {
+      "path": "test/phase9-golden.test.ts",
+      "sha256CanonicalLf": "11e4af7806c9233c5c097201dcdb88a0167707ca2e3298511794ff7c268c4435",
+      "rawEqual": false
+    },
+    {
+      "path": "test/programming-timing.test.ts",
+      "sha256CanonicalLf": "51eab4cc5ce2749d55cc949d6c410ad58d2c3657431869edeeebf4a972b8c6fd",
+      "rawEqual": true
+    },
+    {
+      "path": "test/register-bit-ownership.test.ts",
+      "sha256CanonicalLf": "d5354e678dd7bba4224ad873644bcd6f363b59acae0e0ed9bf5013a465e2791d",
+      "rawEqual": false
+    },
+    {
+      "path": "test/register-matrix.test.ts",
+      "sha256CanonicalLf": "b2284335617b5ce46f047439125c97a50be7b30b83a06c1be23081c78d93db5a",
+      "rawEqual": true
+    },
+    {
+      "path": "test/remaining-workload-results.test.ts",
+      "sha256CanonicalLf": "4a85743a8ccaeec5a98a948c05b400d99baffc3f0026ee58b82f014c83767252",
+      "rawEqual": true
+    },
+    {
+      "path": "test/runtime-fidelity-results.test.ts",
+      "sha256CanonicalLf": "5fa20b2fc5e8c35f032a37615008d8e36610ccd232883ed5f12e48c8919192ac",
+      "rawEqual": true
+    },
+    {
+      "path": "test/sensor-format-results.test.ts",
+      "sha256CanonicalLf": "752ee77aad3ca8cc4aad99fe7d6aefaebde48fbcbd21ae9c35db9965a2bbbe6f",
+      "rawEqual": true
+    },
+    {
+      "path": "test/servo.test.ts",
+      "sha256CanonicalLf": "146ee09b63df42662b0cb0da8a2180791f80dd5808de6e5b377c2d1f84143522",
+      "rawEqual": false
+    },
+    {
+      "path": "test/spi-slave.test.ts",
+      "sha256CanonicalLf": "e6ed77a45c11b929cf4c3227877de29c1c74b0adca4952b610625c052f34589d",
+      "rawEqual": false
+    },
+    {
+      "path": "test/spi-status-sequence.test.ts",
+      "sha256CanonicalLf": "46acab82bf82e1b1326491772c0717540761a2f179d229b1591f860e9906f637",
+      "rawEqual": false
+    },
+    {
+      "path": "test/time-and-snapshot-format.test.ts",
+      "sha256CanonicalLf": "4ec1527276cca68231f0447380e99a764bd906e6397bdd7a93529df119ee5088",
+      "rawEqual": true
+    },
+    {
+      "path": "test/timer-boundary-correctness.test.ts",
+      "sha256CanonicalLf": "0bfeea924d43582525de5e3cf1ab8bac3e77fbe4835574ff085895775af792cf",
+      "rawEqual": false
+    },
+    {
+      "path": "test/timer-external-clock.test.ts",
+      "sha256CanonicalLf": "0b63dedb256619a51e65f85a018b9072dbf228012238f67b101d831dc03c9cd1",
+      "rawEqual": true
+    },
+    {
+      "path": "test/timer-prescaler-phase.test.ts",
+      "sha256CanonicalLf": "e99e4121cb536afba4847378f8bf470cbb15e30c2c612ee4adb2f5cfde0a0054",
+      "rawEqual": false
+    },
+    {
+      "path": "test/timer1-register-buffering.test.ts",
+      "sha256CanonicalLf": "179cc26bf969643a5f265a49d2859b10bae2547df866d954ae00f97841a3829b",
+      "rawEqual": false
+    },
+    {
+      "path": "test/timer2-async-signals.test.ts",
+      "sha256CanonicalLf": "7f8853ffd1196b5acf54f233c0c33d39265bf5b991f47d02e82f7c2b36ce2e89",
+      "rawEqual": true
+    },
+    {
+      "path": "test/timer2-async-transfers.test.ts",
+      "sha256CanonicalLf": "17b74964d823c3b0f7fbef7da8081727e4a6369e584074004cd8e11d06d54a2d",
+      "rawEqual": false
+    },
+    {
+      "path": "test/timer2-external-source.test.ts",
+      "sha256CanonicalLf": "6528212f04568c0429fb04684942e6a996a137bcb8549e19ba7eb377dc7974f9",
+      "rawEqual": true
+    },
+    {
+      "path": "test/timer2-prescaler-phase.test.ts",
+      "sha256CanonicalLf": "aff87451b62d8c6b5a3665b37c4c43d74421beb2fbe737885d3c77993f969d8e",
+      "rawEqual": true
+    },
+    {
+      "path": "test/timer2-rtc.test.ts",
+      "sha256CanonicalLf": "ac4835daa613484e3cff14915879d53b9c949d3d4757d9b8dcdeb18b9a13b493",
+      "rawEqual": false
+    },
+    {
+      "path": "test/timer2-wake-read.test.ts",
+      "sha256CanonicalLf": "49ce7951990b62da94f986aeff4e968c07f0c3f57f62a49bd5b410ac49b67326",
+      "rawEqual": false
+    },
+    {
+      "path": "test/tone.test.ts",
+      "sha256CanonicalLf": "f5da544ef97bbb9ec84b1209ec90d228605281db9b33319d03c4c92cf42bda9c",
+      "rawEqual": false
+    },
+    {
+      "path": "test/twi-slave.test.ts",
+      "sha256CanonicalLf": "0d09405ac5acc48de7285614b758b9f4d817c180aa5a83b4d485d345cb3f62e7",
+      "rawEqual": false
+    },
+    {
+      "path": "test/twi-wire.test.ts",
+      "sha256CanonicalLf": "e06571c0df1dc921cefcd985f0d75088b656084759b4c85637e84a2b3b89985f",
+      "rawEqual": true
+    },
+    {
+      "path": "test/usart-rx.test.ts",
+      "sha256CanonicalLf": "449b2d10baa23160fc8d939e8eabc3bd49c7b96f74c5155473c25e345e0335e9",
+      "rawEqual": false
+    },
+    {
+      "path": "test/wake-clock-domains.test.ts",
+      "sha256CanonicalLf": "04623d2ae8c3e3c95cb9cb4eb0a65723a160263e93db321830409db0e5c7a6dc",
+      "rawEqual": false
+    },
+    {
+      "path": "test/watchdog-interrupt-mode.test.ts",
+      "sha256CanonicalLf": "44199547f362ed565d1f5babd12064c0406783ca8a3c4d5b2238e3ededded6fa",
+      "rawEqual": true
+    },
+    {
+      "path": "test/wire-peripherals.test.ts",
+      "sha256CanonicalLf": "ad1a7135db7cb7efedb043ae155cc64a9f0aed7bc588409226619ad9e76e235e",
+      "rawEqual": true
+    },
+    {
+      "path": "tsconfig.build.json",
+      "sha256CanonicalLf": "d50b96d70dfb0cc6ef08c60db12cc8f2d0fdcaa9b165b2ccd40628c0adea6922",
+      "rawEqual": true
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256CanonicalLf": "7a45f1ffe7aaf7ba6c8fe4aa49992c16fdea7d6973e902321d3eeebaa564eef2",
+      "rawEqual": true
+    }
+  ],
+  "mismatches": []
+}

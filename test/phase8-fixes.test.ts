@@ -27,6 +27,7 @@ function makeCpu(program: number[]): CPU {
 describe("USART RX is firmware-readable", () => {
   test("queued host bytes are delivered to firmware reads of UDR0", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(UCSR0B, 1 << RXEN0); // enable the receiver
     avr.serial.write("Hi");
@@ -40,6 +41,7 @@ describe("USART RX is firmware-readable", () => {
 
   test("RXC0 stays clear until the receiver is enabled, then surfaces", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     avr.serial.write("x"); // queued before Serial.begin enables RXEN0
     avr.runCycles(DEFAULT_USART_FRAME_CYCLES * 2);
@@ -62,6 +64,7 @@ describe("PINx reflects effective pin state", () => {
 
   test("an input pin reflects the injected external level", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(DDRB, 0x00); // PB0 input
     avr.pin(8).setInput(true); // drive PB0 high externally

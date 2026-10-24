@@ -27,6 +27,7 @@ import {
 describe("Phase 14 — external interrupts (register-level)", () => {
   test("rising edge on INT0 sets INTF0 and dispatches to INT0_VECTOR", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, (1 << ISC01) | (1 << ISC00)); // rising
     avr.cpu.writeData(DDRD, 0); // PD2 input
@@ -48,6 +49,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("falling edge on INT0 fires the interrupt", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, (1 << ISC01) | (0 << ISC00)); // falling (mode 0b10)
     avr.cpu.sreg.I = true;
@@ -65,6 +67,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("any-change mode fires on rising edges", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, (0 << ISC01) | (1 << ISC00)); // any change (0b01)
     avr.cpu.sreg.I = true;
@@ -79,6 +82,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("level mode keeps requesting INT0 while PD2 is LOW", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, 0); // low level (mode 0b00)
     avr.cpu.sreg.I = true;
@@ -93,6 +97,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("rising edge on INT1 sets INTF1 and dispatches to INT1_VECTOR", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT1);
     avr.cpu.writeData(EICRA, (1 << ISC11) | (1 << ISC10));
     avr.cpu.sreg.I = true;
@@ -110,6 +115,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("edge interrupt without EIMSK enable does not fire", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.flash[0] = 0xcfff; // RJMP -1 self-loop at main (PC stays at 0)
     avr.cpu.flash[INT0_VECTOR] = 0xcfff;
     avr.cpu.writeData(EICRA, (1 << ISC01) | (1 << ISC00)); // rising
@@ -131,6 +137,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("edge interrupt without I flag sets the flag but does not dispatch", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.flash[0] = 0xcfff; // RJMP -1 self-loop at main
     avr.cpu.flash[INT0_VECTOR] = 0xcfff;
     avr.cpu.writeData(EIMSK, 1 << INT0);
@@ -151,6 +158,7 @@ describe("Phase 14 — external interrupts (register-level)", () => {
 
   test("writing 1 to EIFR clears the matching flag (write-1-to-clear)", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, (1 << ISC01) | (1 << ISC00));
     avr.cpu.sreg.I = false; // do not dispatch — keep the flag set
@@ -255,6 +263,7 @@ describe("Phase 14 — real firmware fixture (attachInterrupt)", () => {
 describe("Phase 14 — snapshot / restore for external interrupts", () => {
   test("snapshot restores the per-pin previous-level tracking", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(EIMSK, 1 << INT0);
     avr.cpu.writeData(EICRA, (1 << ISC01) | (1 << ISC00)); // rising
     avr.cpu.sreg.I = true;
@@ -274,6 +283,7 @@ describe("Phase 14 — snapshot / restore for external interrupts", () => {
 
   test("snapshot restores active low-level interrupt evaluation", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.cpu.flash[0] = 0xcfff; // RJMP -1 self-loop at main
     source.cpu.flash[INT0_VECTOR] = 0xcfff;
     source.cpu.writeData(EIMSK, 1 << INT0);
@@ -282,6 +292,7 @@ describe("Phase 14 — snapshot / restore for external interrupts", () => {
     source.pin(2).setInput(false);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(2);
 

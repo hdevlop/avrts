@@ -53,6 +53,7 @@ function readIcr1(avr: ReturnType<typeof AVR>): number {
 describe("Phase 5: Timer1 input capture", () => {
   test("selected ICP1 edge latches TCNT1 into ICR1 and sets ICF1", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, (1 << CS10) | (1 << ICES1)); // clk/1, rising edge
     avr.runCycles(100);
 
@@ -66,6 +67,7 @@ describe("Phase 5: Timer1 input capture", () => {
 
   test("the unselected edge does not capture", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, 1 << CS10); // ICES1=0: falling edge selected
     avr.runCycles(10);
     avr.pin(8).setInput(true); // rising: ignored
@@ -76,6 +78,7 @@ describe("Phase 5: Timer1 input capture", () => {
 
   test("ICNC1 delays the capture by four system cycles", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, (1 << CS10) | (1 << ICES1) | (1 << ICNC1));
     avr.runCycles(50);
     const atEdge = readTcnt1(avr);
@@ -88,6 +91,7 @@ describe("Phase 5: Timer1 input capture", () => {
 
   test("ICIE1 dispatches TIMER1_CAPT one edge later", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.flash[0] = 0x9478; // SEI
     cpu.flash[1] = 0xcfff; // RJMP -1
@@ -102,6 +106,7 @@ describe("Phase 5: Timer1 input capture", () => {
 
   test("ACIC routes comparator edges into the capture unit with ICR1 latched", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR1B, (1 << CS10) | (1 << ICES1));
     avr.cpu.writeData(ACSR, 1 << ACIC);
     avr.runCycles(64);
@@ -119,6 +124,7 @@ function readTcnt1(avr: ReturnType<typeof AVR>): number {
 describe("Phase 5: TCCR1C forced output compare", () => {
   test("FOC1A drives OC1A per COM bits without setting OCF1A", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     // Non-PWM (WGM=0), COM1A=3 (set OC1A on compare match), clock stopped.
     avr.cpu.writeData(DDRB, 1 << 1); // OC1A/PB1 as output (pinMode(9, OUTPUT))
     avr.cpu.writeData(TCCR1A, (1 << COM1A1) | (1 << COM1A0));
@@ -134,6 +140,7 @@ describe("Phase 5: TCCR1C forced output compare", () => {
 describe("Phase 5: GTCCR prescaler control", () => {
   test("TSM+PSRSYNC freezes timer0/timer1 until TSM is cleared", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0B, 1 << CS00);
     avr.cpu.writeData(TCCR1B, 1 << CS10);
     avr.cpu.writeData(GTCCR, (1 << TSM) | (1 << PSRSYNC));
@@ -151,6 +158,7 @@ describe("Phase 5: GTCCR prescaler control", () => {
 
   test("PSRSYNC without TSM strobes once and reads back zero", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCCR0B, 1 << CS00);
     avr.cpu.writeData(GTCCR, 1 << PSRSYNC);
     expect(avr.cpu.readData(GTCCR)).toBe(0);
@@ -162,6 +170,7 @@ describe("Phase 5: GTCCR prescaler control", () => {
 describe("Phase 5: Timer2 asynchronous mode", () => {
   test("AS2 clocks TCNT2 at the 32.768 kHz TOSC ratio", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20); // TOSC/1
     avr.runCycles(toscCycles(12)); // First two source edges transfer CS20.
@@ -170,6 +179,7 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
 
   test("asynchronous TOV2 crosses the next timer clock and three CPU clocks after overflow", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.flash[0] = 0xcfff; // rjmp -1: the run is longer than empty flash
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20);
@@ -181,6 +191,7 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
 
   test("async register writes set the ASSR busy flag until two TOSC edges", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCNT2, 42);
     expect((avr.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(1);
@@ -193,12 +204,14 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
 
   test("synchronous mode never sets busy flags", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(TCNT2, 7);
     expect(avr.cpu.readData(ASSR) & 0x1f).toBe(0);
   });
 
   test("snapshot/restore keeps the async rate and pending busy flag", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(ASSR, 1 << AS2);
     avr.cpu.writeData(TCCR2B, 1 << CS20);
     avr.runCycles(toscCycles(3));
@@ -206,6 +219,7 @@ describe("Phase 5: Timer2 asynchronous mode", () => {
 
     const snap = avr.snapshot();
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(snap);
 
     expect((restored.cpu.readData(ASSR) >> TCN2UB) & 1).toBe(1);

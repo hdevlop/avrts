@@ -62,6 +62,21 @@ const CONFIGS: readonly ExtIntConfig[] = [INT0_CONFIG, INT1_CONFIG];
 export class ExternalInterrupts {
   private prevPinLevels = { int0: false, int1: false };
   private levelModeActive = false;
+  private synchronized = false;
+  private sampled = { int0: false, int1: false };
+  private stages: { int0: boolean; int1: boolean; due: number }[] = [];
+  private readonly sampleEvent = (): void => {
+    this.stages.push({ int0: this.gpio.readPin("D", 2), int1: this.gpio.readPin("D", 3), due: this.cpu.cycles + 2 });
+    this.scheduleStages();
+  };
+  private readonly stageEvent = (): void => {
+    while (this.stages.length > 0 && this.stages[0]!.due <= this.cpu.cycles) {
+      const stage = this.stages.shift()!;
+      this.sampled = { int0: stage.int0, int1: stage.int1 };
+      this.evaluateEdges(); this.updateInterrupts();
+    }
+    this.scheduleStages();
+  };
   private readonly onLevelEvent = (): void => {
     this.updateInterrupts();
     this.scheduleLevelEvent();
@@ -72,6 +87,7 @@ export class ExternalInterrupts {
     private readonly gpio: Gpio,
   ) {
     this.cpu.onWakeStart(() => {
+      if (this.synchronized) { this.scheduleSample(); return; }
       // Sample the held pin level when clkI/O restarts. Pulses completed while
       // that clock was stopped never reached the synchronous edge detector.
       const flagsBefore = this.cpu.data[EIFR]!;
@@ -81,6 +97,27 @@ export class ExternalInterrupts {
       const raised = this.cpu.data[EIFR]! & ~flagsBefore;
       if (raised !== 0) this.updateInterrupts(raised);
     });
+    this.cpu.onSleep((mode) => {
+      if (mode !== 0 && this.synchronized) {
+        this.cpu.clearClockEvent(this.sampleEvent); this.cpu.clearClockEvent(this.stageEvent); this.stages = [];
+      }
+    });
+  }
+
+  /** Optional next-I/O-clock sample followed by two synchronizer stages. Low-level wake stays asynchronous. */
+  useSynchronization(enabled = true): void {
+    this.synchronized = enabled;
+    this.cpu.clearClockEvent(this.sampleEvent); this.cpu.clearClockEvent(this.stageEvent); this.stages = [];
+    this.sampled = { ...this.prevPinLevels };
+    if (enabled) this.scheduleSample();
+  }
+  private scheduleSample(): void {
+    if (this.cpu.isSleeping && this.cpu.sleepMode !== 0) return;
+    if (this.cpu.clockEventRemainingCycles(this.sampleEvent) === 0) this.cpu.addClockEvent(this.sampleEvent, 1);
+  }
+  private scheduleStages(): void {
+    this.cpu.clearClockEvent(this.stageEvent);
+    if (this.stages.length > 0) this.cpu.addClockEvent(this.stageEvent, Math.max(1, this.stages[0]!.due - this.cpu.cycles));
   }
 
   /** Subscribe to GPIO port D changes; standalone use also wires level-mode ticking. */
@@ -89,7 +126,8 @@ export class ExternalInterrupts {
     this.prevPinLevels.int1 = this.gpio.readPin("D", INT1_CONFIG.pinBit);
     this.refreshLevelModeActive();
     this.gpio.onPortTouched("D", () => {
-      this.evaluateEdges();
+      if (this.synchronized) this.scheduleSample();
+      else this.evaluateEdges();
       this.updateInterrupts();
       this.scheduleLevelEvent();
     });
@@ -97,8 +135,10 @@ export class ExternalInterrupts {
   }
 
   reset(): void {
+    this.cpu.clearClockEvent(this.sampleEvent); this.cpu.clearClockEvent(this.stageEvent); this.stages = [];
     this.prevPinLevels.int0 = this.gpio.readPin("D", INT0_CONFIG.pinBit);
     this.prevPinLevels.int1 = this.gpio.readPin("D", INT1_CONFIG.pinBit);
+    this.sampled = { ...this.prevPinLevels };
     this.refreshLevelModeActive();
     this.scheduleLevelEvent();
   }
@@ -110,9 +150,9 @@ export class ExternalInterrupts {
   }
 
   @OnWrite(EIFR)
-  onWriteEifr(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
+  onWriteEifr(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
     // Flags are write-1-to-clear.
-    this.cpu.data[EIFR] = oldValue & 0x03 & ~value;
+    this.cpu.data[EIFR] = oldValue & 0x03 & ~(value & mask);
     this.updateInterrupts();
   }
 
@@ -138,7 +178,7 @@ export class ExternalInterrupts {
     // last clocked sample through non-idle sleep, including snapshot restore.
     if (this.cpu.isSleeping && this.cpu.sleepMode !== 0) return;
     for (const cfg of CONFIGS) {
-      const now = this.gpio.readPin("D", cfg.pinBit);
+      const now = this.synchronized ? (cfg === INT0_CONFIG ? this.sampled.int0 : this.sampled.int1) : this.gpio.readPin("D", cfg.pinBit);
       const prev = cfg === INT0_CONFIG ? this.prevPinLevels.int0 : this.prevPinLevels.int1;
       if (cfg === INT0_CONFIG) this.prevPinLevels.int0 = now;
       else this.prevPinLevels.int1 = now;
@@ -214,6 +254,9 @@ export class ExternalInterrupts {
 
   snapshot(): ExternalInterruptsSnapshot {
     return {
+      synchronized: this.synchronized, sampled: { ...this.sampled },
+      sampleRemaining: this.cpu.clockEventRemainingCycles(this.sampleEvent),
+      stages: this.stages.map((stage) => ({ ...stage, due: stage.due - this.cpu.cycles })),
       prevPinLevels: {
         int0: this.prevPinLevels.int0,
         int1: this.prevPinLevels.int1,
@@ -222,6 +265,12 @@ export class ExternalInterrupts {
   }
 
   restore(snap: ExternalInterruptsSnapshot): void {
+    this.cpu.clearClockEvent(this.sampleEvent); this.cpu.clearClockEvent(this.stageEvent);
+    this.synchronized = snap.synchronized ?? false;
+    this.sampled = { ...(snap.sampled ?? snap.prevPinLevels) };
+    this.stages = (snap.stages ?? []).map((stage) => ({ ...stage, due: this.cpu.cycles + stage.due }));
+    if ((snap.sampleRemaining ?? 0) > 0) this.cpu.addClockEvent(this.sampleEvent, snap.sampleRemaining!);
+    this.scheduleStages();
     this.prevPinLevels.int0 = !!snap.prevPinLevels.int0;
     this.prevPinLevels.int1 = !!snap.prevPinLevels.int1;
     this.refreshLevelModeActive();

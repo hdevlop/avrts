@@ -30,6 +30,7 @@ import {
 import type { CPU } from "../cpu";
 import type { Gpio } from "./gpio";
 import { PwmBroadcaster, pwmSignal } from "./pwm";
+import { TimerExternalClock } from "./timer-external-clock";
 import { TimerPrescaler } from "./timer-prescaler";
 import type { PwmConfig } from "./pwm";
 import type { Timer0Snapshot } from "../snapshot";
@@ -69,6 +70,7 @@ export class Timer0 implements PwmSource {
   private readonly pwm = new PwmBroadcaster();
   private readonly prescalerClock: TimerPrescaler;
   private readonly ownsPrescalerClock: boolean;
+  private readonly externalClock?: TimerExternalClock;
   private readonly onClockEvent = (): void => {
     this.syncToCpuCycle();
     this.scheduleClockEvent();
@@ -81,6 +83,13 @@ export class Timer0 implements PwmSource {
   ) {
     this.ownsPrescalerClock = prescalerClock === undefined;
     this.prescalerClock = prescalerClock ?? new TimerPrescaler(cpu);
+    if (gpio) {
+      this.externalClock = new TimerExternalClock(cpu, () => gpio.readPin("D", 4), () => {
+        this.advanceCounter(1);
+        this.lastCycle = this.cpu.cycles;
+      });
+      gpio.onPinChange("D", 4, () => this.externalClock!.changed(), true);
+    }
   }
 
   private get pwmConfig(): PwmConfig {
@@ -96,6 +105,7 @@ export class Timer0 implements PwmSource {
   }
 
   reset(): void {
+    this.externalClock?.reset();
     this.prescalerClock.restore(0);
     this.countingDown = false;
     this.activeOcrA = 0;
@@ -145,8 +155,8 @@ export class Timer0 implements PwmSource {
   }
 
   @OnWrite(TIFR0)
-  onWriteTifr0(_cpu: CPU, _addr: number, value: number, oldValue: number): void {
-    this.cpu.data[TIFR0] = oldValue & TIMER0_FLAG_MASK & ~value;
+  onWriteTifr0(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
+    this.cpu.data[TIFR0] = oldValue & TIMER0_FLAG_MASK & ~(value & mask);
     this.onWriteTimsk0();
   }
 
@@ -224,6 +234,7 @@ export class Timer0 implements PwmSource {
     if (reduced) {
       this.syncToCpuCycle();
       this.powerReduced = true;
+      this.externalClock?.configure(false, true);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -240,6 +251,7 @@ export class Timer0 implements PwmSource {
       this.syncToCpuCycle();
       this.prescalerClock.setHeld(true);
       this.prescalerHeld = true;
+      this.externalClock?.configure(false, true);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -264,6 +276,7 @@ export class Timer0 implements PwmSource {
       this.syncToCpuCycle();
       this.prescalerClock.setSleepPaused(true);
       this.sleepPaused = true;
+      this.externalClock?.configure(false, true);
       this.cpu.clearClockEvent(this.onClockEvent);
       return;
     }
@@ -383,6 +396,8 @@ export class Timer0 implements PwmSource {
   }
 
   private scheduleClockEvent(): void {
+    const select = this.cpu.data[TCCR0B]! & 7;
+    this.externalClock?.configure(!this.frozen() && select >= 6, select === 7);
     const prescaler = this.cachedPrescaler;
     if (this.frozen() || prescaler === undefined) {
       this.cpu.clearClockEvent(this.onClockEvent);
@@ -613,6 +628,7 @@ export class Timer0 implements PwmSource {
   snapshot(): Timer0Snapshot {
     this.syncToCpuCycle();
     return {
+      externalClock: this.externalClock?.snapshot(),
       countingDown: this.countingDown,
       activeOcrA: this.activeOcrA,
       activeOcrB: this.activeOcrB,
@@ -635,6 +651,7 @@ export class Timer0 implements PwmSource {
     this.lastCycle = this.cpu.cycles;
     this.cachedPrescaler = this.prescaler();
     this.scheduleClockEvent();
+    this.externalClock?.restore(snap.externalClock);
   }
 }
 

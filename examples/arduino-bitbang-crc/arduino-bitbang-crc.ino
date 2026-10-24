@@ -11,6 +11,9 @@ volatile uint8_t crc8State = 0x5a;
 volatile uint8_t wireEcho = 0;
 volatile uint32_t rounds = 0;
 
+#define MODE_ADDR ((volatile uint8_t*)0x02ff)
+#define RESULT_ADDR ((volatile uint8_t*)0x0300)
+
 static uint8_t crc8Update(uint8_t crc, uint8_t value) {
   crc ^= value;
   for (uint8_t bit = 0; bit < 8; bit++) {
@@ -61,4 +64,25 @@ void loop() {
   crc16State = crc16Update(crc16State, value);
   wireEcho ^= echoed;
   rounds++;
+
+  if (rounds == 32 && *MODE_ADDR == 0x42) {
+    noInterrupts();
+    volatile uint8_t* out = RESULT_ADDR;
+    out[0] = 0xa7;
+    out[1] = 32;
+    out[2] = crc8State;
+    out[3] = (uint8_t)crc16State;
+    out[4] = (uint8_t)(crc16State >> 8);
+    out[5] = wireEcho;
+    out[6] = echoed;
+    out[7] = value;
+    for (uint8_t i = 0; i < 4; i++) out[8 + i] = (uint8_t)(rounds >> (8 * i));
+    out[12] = PORTB;
+    out[13] = DDRB;
+    out[14] = PINB & _BV(PINB4);
+    for (uint8_t i = 15; i < 19; i++) out[i] = 0;
+    out[19] = 0xb1;
+    out[20] = 0x5c;
+    while (1) {}
+  }
 }

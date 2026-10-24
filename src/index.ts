@@ -3,6 +3,7 @@
  * Published consumers use src/public/index.ts and the explicit package subpaths.
  */
 export * from "./avr";
+export { createTwiBus } from "./twi-bus";
 export * from "./browser-runtime";
 export * from "./cpu";
 export * from "./core";

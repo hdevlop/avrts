@@ -38,6 +38,7 @@ import { DEFAULT_SPI_TRANSFER_CYCLES, DEFAULT_TWI_BYTE_CYCLES, DEFAULT_TWI_START
 describe("EEPROM", () => {
   test("register write sequence stores a byte (host-readable)", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(EEARL, 0x10);
     cpu.writeData(EEARH, 0x00);
@@ -46,11 +47,14 @@ describe("EEPROM", () => {
     // EEPE is written alone — EEMPE only needs to be armed, not repeated.
     cpu.writeData(EECR, 1 << EEMPE); // master write enable
     cpu.writeData(EECR, 1 << EEPE); // start write
+    expect(avr.eeprom.read(0x10)).toBe(0);
+    avr.runCycles(54_400);
     expect(avr.eeprom.read(0x10)).toBe(0x5a);
   });
 
   test("EEPE without an EEMPE arming window does not write", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     avr.eeprom.write(0x11, 0x99);
     cpu.writeData(EEARL, 0x11);
@@ -62,6 +66,7 @@ describe("EEPROM", () => {
 
   test("register read loads EEDR from the cell", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.eeprom.write(0x20, 0xc3);
     avr.cpu.writeData(EEARL, 0x20);
     avr.cpu.writeData(EEARH, 0x00);
@@ -71,6 +76,7 @@ describe("EEPROM", () => {
 
   test("load/dump round-trips a 1KB image", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.eeprom.load([1, 2, 3]);
     const image = avr.eeprom.dump();
     expect(image.length).toBe(1024);
@@ -82,6 +88,7 @@ describe("EEPROM", () => {
 describe("SPI", () => {
   test("master transfer emits MOSI and clocks in the responder byte after delay", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const sent: number[] = [];
     avr.spi.onByte((b) => sent.push(b));
     avr.spi.respondWith((b) => b ^ 0xff);
@@ -102,6 +109,7 @@ describe("SPI", () => {
 
   test("new transfer clears stale SPIF and write collision keeps the active transfer", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const sent: number[] = [];
     avr.spi.onByte((b) => sent.push(b));
     avr.spi.respondWith((b) => b ^ 0xff);
@@ -123,6 +131,7 @@ describe("SPI", () => {
 
   test("snapshot restores an in-flight transfer", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.spi.respondWith((b) => b ^ 0xff);
     source.cpu.writeData(DDRB, 1 << 2);
     source.cpu.writeData(SPCR, (1 << SPE) | (1 << MSTR));
@@ -130,6 +139,7 @@ describe("SPI", () => {
     source.runCycles(10);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     const sent: number[] = [];
     restored.restore(source.snapshot());
     restored.spi.onByte((b) => sent.push(b));
@@ -147,6 +157,7 @@ describe("SPI", () => {
 describe("TWI / I2C master", () => {
   test("write: START -> SLA+W -> data -> STOP", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const received: number[] = [];
     avr.twi.connect(0x50, {
       write: (b) => {
@@ -182,6 +193,7 @@ describe("TWI / I2C master", () => {
 
   test("read: pulls bytes with ACK then NACK", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const data = [0x11, 0x22];
     let index = 0;
     avr.twi.connect(0x50, { read: () => data[index++] ?? 0xff });
@@ -206,6 +218,7 @@ describe("TWI / I2C master", () => {
 
   test("addressing an unconnected slave reports NACK", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
     avr.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
@@ -217,6 +230,7 @@ describe("TWI / I2C master", () => {
 
   test("TWCR writes while pending preserve in-flight START and STOP bits", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
@@ -240,6 +254,7 @@ describe("TWI / I2C master", () => {
 
   test("snapshot restores a pending address operation", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.twi.connect(0x50, {});
     source.cpu.writeData(TWCR, (1 << TWINT) | (1 << TWEN) | (1 << TWSTA));
     source.runCycles(DEFAULT_TWI_START_STOP_CYCLES);
@@ -248,6 +263,7 @@ describe("TWI / I2C master", () => {
     source.runCycles(20);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.twi.connect(0x50, {});
     restored.restore(source.snapshot());
     restored.runCycles(DEFAULT_TWI_BYTE_CYCLES - 20 - 1);
@@ -261,6 +277,7 @@ describe("TWI / I2C master", () => {
 describe("pin-change interrupts", () => {
   test("toggling an enabled pin requests the PCINT0 vector", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(PCMSK0, 0x01); // watch PB0 (pin 8)
     cpu.writeData(PCICR, 1 << PCIE0);
@@ -273,6 +290,7 @@ describe("pin-change interrupts", () => {
 
   test("a masked-off pin does not interrupt", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(PCMSK0, 0x02); // watch PB1 only
     cpu.writeData(PCICR, 1 << PCIE0);
@@ -286,6 +304,7 @@ describe("pin-change interrupts", () => {
 describe("sleep", () => {
   test("SLEEP idles (no pc advance) until an enabled interrupt wakes it", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(SMCR, 1 << SE);
     cpu.sreg.I = true;
@@ -305,6 +324,7 @@ describe("sleep", () => {
 
   test("SLEEP without SMCR.SE is a no-op", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.sleep();
     expect(avr.cpu.isSleeping).toBe(false);
   });
@@ -344,6 +364,7 @@ describe("watchdog", () => {
     cpu.writeData(WDTCSR, 1 << WDIE);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(300_000);
 

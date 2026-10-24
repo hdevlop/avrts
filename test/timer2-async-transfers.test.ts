@@ -12,7 +12,8 @@ const registers = [
 
 for (const timing of ["fast", "cycle-exact"] as const) {
   const setup = (running = false, clockHz = 327_680) => {
-    const avr = A.AVR({ timing, clockHz }); // Ten CPU clocks per TOSC period.
+    const avr = A.AVR({ timing, clockHz });
+    avr.cpu.flash.fill(0); // Ten CPU clocks per TOSC period.
     if (running) avr.cpu.writeData(A.TCCR2B, 1);
     avr.cpu.writeData(A.ASSR, bit(A.AS2));
     return avr;
@@ -86,6 +87,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const asynchronous of [false, true]) {
       test(`${asynchronous ? "asynchronous" : "synchronous"} control reads mask reserved and FOC bits`, () => {
         const avr = A.AVR({ timing, clockHz: 327_680 });
+        avr.cpu.flash.fill(0);
         if (asynchronous) avr.cpu.writeData(A.ASSR, bit(A.AS2));
         avr.cpu.writeData(A.TCCR2A, 0xff);
         avr.cpu.writeData(A.TCCR2B, 0xff);
@@ -103,6 +105,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("an asynchronous FOC strobe acts once at transfer and always reads zero", () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.DDRB, bit(3));
       avr.cpu.writeData(A.TCCR2A, bit(A.COM2A0));
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
@@ -123,6 +126,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const reversed of [false, true]) {
       test(`same-edge mode and OCR transfers are coherent in ${reversed ? "reverse" : "forward"} write order`, () => {
         const avr = A.AVR({ timing, clockHz: 327_680 });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.OCR2A, 8);
         avr.cpu.writeData(A.OCR2B, 2);
         avr.cpu.writeData(A.TCCR2B, 1);
@@ -168,6 +172,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("an OCR2A transfer suppresses A matches while channel B remains active", () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.DDRD, bit(3));
       avr.cpu.writeData(A.OCR2A, 1);
       avr.cpu.writeData(A.OCR2B, 1);
@@ -187,6 +192,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("CTC does not clear through a disabled A compare during an OCR2A transfer", () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.OCR2A, 3);
       avr.cpu.writeData(A.TCCR2A, bit(A.WGM21));
       avr.cpu.writeData(A.TCCR2B, 1);
@@ -205,6 +211,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("asynchronous OCR transfer and fast-PWM BOTTOM buffering are separate stages", () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.OCR2A, 8);
       avr.cpu.writeData(A.OCR2B, 2);
       avr.cpu.writeData(A.TCCR2A, 3 | (2 << 4));

@@ -95,21 +95,45 @@ import * as advanced from "@hdevlop/avrts/advanced";
 
 const direct = AVR(${JSON.stringify(hex)});
 const fromPath = AVR({ path: new URL("./firmware.hex", import.meta.url) });
+const wire = AVR();
+wire.cpu.flash.fill(0); // Explicit NOP program for the clock-only wire check.
+wire.cpu.writeData(advanced.UCSR0B, (1 << advanced.TXEN0) | (1 << advanced.RXEN0));
+wire.serial.useWire();
+wire.pin(0).setInput(true);
+wire.pin(1).onChange((high) => wire.pin(0).setInput(high));
+wire.cpu.writeData(advanced.UDR0, 0xa6);
+wire.runCycles(160);
+const wireByte = wire.cpu.readData(advanced.UDR0);
+const bus = root.createTwiBus();
+const empty = AVR({ fuses: { low: 0xe2 } });
+const disconnect = bus.connect(empty);
+disconnect();
+empty.useOscillatorCalibration(Array.from({ length: 256 }, (_, i) => 8_000_000 + i * 1000), { resetCode: 128 });
+empty.cpu.writeData(advanced.OSCCAL, 64);
+empty.reset();
 process.stdout.write(JSON.stringify({
   root: Object.keys(root).sort(),
   browserRuntime: typeof browser.createAVRWorkerRuntime,
   advancedCpu: typeof advanced.CPU,
   directWord: direct.cpu.flash[0],
   pathWord: fromPath.cpu.flash[0],
+  wireByte,
+  erasedWord: empty.cpu.flash[0],
+  resetCode: empty.cpu.data[advanced.OSCCAL],
+  calibratedClockHz: empty.status().clockHz,
 }));
 `;
   writeFileSync(join(tempRoot, "smoke.mjs"), smokeSource);
   const expected = JSON.stringify({
-    root: ["AVR"],
+    root: ["AVR", "createTwiBus"],
     browserRuntime: "function",
     advancedCpu: "function",
     directWord: 0xe200,
     pathWord: 0xe200,
+    wireByte: 0xa6,
+    erasedWord: 0xffff,
+    resetCode: 128,
+    calibratedClockHz: 8_128_000,
   });
 
   for (const runtime of ["node", "bun"]) {
@@ -141,11 +165,20 @@ export { AVR, createAVRWorkerRuntime };
   assertWorkerUrlsResolve(join(tempRoot, "node_modules", "@hdevlop/avrts", "dist"));
 
   const typeSmoke = `
-import { AVR, type AVRStatus } from "@hdevlop/avrts";
+import { AVR, createTwiBus, type AVRStatus } from "@hdevlop/avrts";
 import type { AVRWorkerRuntime } from "@hdevlop/avrts/browser";
 import { CPU } from "@hdevlop/avrts/advanced";
 
 const avr = AVR(":00000001FF");
+avr.serial.useWire();
+avr.spi.useWire();
+avr.timer2Clock.setFrequency(null);
+avr.timer2Clock.setInput(true);
+avr.gpio.useInterruptSynchronization();
+avr.comparator.setTiming({ propagationCycles: 2, settlingCycles: 4 });
+avr.useOscillatorCalibration(Array(256).fill(8_000_000), { resetCode: 128 });
+const disconnect = createTwiBus().connect(avr);
+disconnect();
 const status: AVRStatus = avr.status();
 const cpu: CPU = avr.cpu;
 declare const workerRuntime: AVRWorkerRuntime;

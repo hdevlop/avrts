@@ -3,11 +3,83 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
-## Unreleased
+## 0.1.3 - 2026-10-24
 
-## 0.1.2 - 2026-10-06
+This release includes the previously unpublished 0.1.2 candidate described below.
+
+### Added
+
+- Optional USART/SPI/TWI wire models and a shared logical TWI bus.
+- External timer clocks, configurable Timer2 sources, comparator/interrupt timing
+  policies, and host-provided OSCCAL curves with a configurable factory reset code.
+- Timed EEPROM/flash programming with clock, sleep, reset and snapshot support.
 
 ### Fixed
+
+- Restrict SBI/CBI effects to the addressed bit in GPIO, interrupt flags and the
+  EEPROM write-enable window; regenerate both execution cores.
+- Correct synchronous USART XCK edges and preserve TX levels through buffered
+  frames and snapshots.
+- Preserve exact EEPROM/flash completion cycles across restore/reset, and rearm
+  Timer2 handshakes when restoring into a previously sleeping runtime.
+- Reject malformed Intel HEX extended address records and initialize unwritten
+  flash, HEX gaps and cleared programs to erased `0xFFFF`.
+- Raise the long CPU parity test timeout and make clock-only NOP fixtures explicit.
+
+### Compatibility
+
+Erased flash contains unknown opcodes. Load firmware before running instructions;
+tests that need an idle NOP program must initialize it explicitly. Existing byte
+peripheral APIs remain the default; pin-level wire behavior is opt-in.
+
+## 0.1.2 - 2026-10-10 (prepared, unpublished)
+
+The October 10 changes extend the still-unpublished October 6 candidate.
+This record does not establish an npm publication.
+
+### Added
+
+- Optional RXD/TXD/XCK USART and SCK/MOSI/MISO SPI wire models, including
+  sampled receive errors, clock modes, bit order, pin ownership and snapshots.
+- Open-drain TWI master/slave signaling and `createTwiBus()` for shared logical
+  buses, sampled arbitration and clock stretching.
+- Configurable Timer2 oscillator frequency/manual EXCLK, interrupt input
+  synchronization, comparator propagation/settling and host OSCCAL curves.
+
+- Result/state coverage for all twelve external workloads, actual PWM/blink
+  traces and the shared serial listener path, with reproducible native evidence.
+- Timer0/Timer1 external falling/rising clocks on PD4/PD5, including sampling,
+  gating and pending synchronization snapshots.
+
+### Fixed
+
+- Limit `SBI`/`CBI` write effects to the addressed bit, including PIN toggles
+  and write-one-to-clear timer/external interrupt flags, in all execution cores.
+- Correct synchronous USART XCK change/sample edges for both polarities and
+  preserve the driven TX bit across buffered frames and snapshots.
+- Keep EEPROM/flash deadlines on the same cycle after snapshots and powered
+  reset, and rearm Timer2 handshakes when restoring into a sleeping runtime.
+- Allow a host-supplied OSCCAL factory reset code, retained through snapshots.
+- Initialize unprogrammed flash and HEX gaps to erased `0xFFFF`, and validate
+  the two-byte payload of extended segment/linear Intel HEX address records.
+
+- Retain asynchronous PSRASY until source-edge reset and acknowledge Timer2
+  flag clearing across the source domain, including repeated-sleep wake.
+- Apply DIDR to firmware PIN reads and serial alternate-function directions;
+  keep serial pin ownership above timer output and release slave MISO on SS.
+
+- Model firmware EEPROM busy programming and CPU read/write stalls, retaining
+  pending wall time through CLKPR, sleep, powered reset and snapshots.
+- Separate flash command eligibility from timed erase/write completion; block
+  unavailable instruction fetches and enforce EEPROM/SPM exclusion.
+- Use the fixed RWW/NRWW boundary independently of BOOTSZ, retain RWW blocking
+  across snapshots, and apply flash writes as bit clearing until page erase.
+- Keep powered nonvolatile programming active during reset oscillator startup,
+  while cancelling obsolete commits on explicit host chip erase/program replacement.
+- Hand off generated and profiled execution immediately when SPM arms a flash
+  fetch interlock, preventing an unavailable fetch in the same run call.
+
+### Previously prepared fixes (2026-10-06)
 
 - Synchronize asynchronous Timer2 compare and overflow flags through their
   timer-clock stage and three CPU clocks while leaving compare outputs immediate.

@@ -11,6 +11,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     const period = asynchronous ? 10 : 1;
     const make = () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       if (asynchronous) avr.cpu.writeData(A.ASSR, bit(A.AS2));
       return avr;
     };
@@ -133,7 +134,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           avr.runCycles(5 * period);
           avr.cpu.writeData(A.GTCCR, bit(A.PSRASY));
           avr.cpu.writeData(A.TCCR2B, 2);
-          avr.runCycles(8 * period - 1);
+          avr.runCycles((asynchronous ? 9 : 8) * period - 1);
           expect(count(avr)).toBe(0);
           avr.runCycles(1);
           expect(count(avr)).toBe(1);
@@ -161,6 +162,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: synchronous PRR pauses the independent divider even while CS is zero`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.runCycles(5);
     avr.cpu.writeData(A.PRR, bit(A.PRTIM2));
     avr.runCycles(11);
@@ -177,6 +179,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: PRR leaves asynchronous counting and divider phase running`, () => {
     const avr = A.AVR({ timing, clockHz: 327_680 });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.ASSR, bit(A.AS2));
     avr.cpu.writeData(A.TCCR2B, 2);
     avr.runCycles(30);
@@ -191,6 +194,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const reset of [false, true]) {
     test(`${timing}: off-edge async ${reset ? "PSRASY" : "TSM release"} retains TOSC edge alignment`, () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
       avr.cpu.writeData(A.TCCR2B, 2);
       avr.runCycles(25);
@@ -202,7 +206,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       }
       const restored = A.AVR().restore(avr.snapshot());
       for (const chip of [avr, restored]) {
-        chip.runCycles(74);
+        chip.runCycles(reset ? 84 : 74);
         expect(count(chip)).toBe(0);
         chip.runCycles(1);
         expect(count(chip)).toBe(1);
@@ -213,6 +217,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const clockHz of [256_000, 16_000_000]) {
     test(`${timing}: fractional source at ${clockHz} Hz retains divider phase through restore`, () => {
       const avr = A.AVR({ timing, clockHz });
+      avr.cpu.flash.fill(0);
       const period = clockHz / 32768;
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
       avr.runCycles(Math.ceil(29 * period));
@@ -228,6 +233,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const running of [false, true]) {
     test(`${timing}: CLKPR scales the full divider and pending CS while ${running ? "running" : "stopped"}`, () => {
       const avr = A.AVR({ timing, clockHz: 327_680 });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.ASSR, bit(A.AS2));
       if (running) avr.cpu.writeData(A.TCCR2B, 2);
       avr.runCycles(running ? 35 : 295);
@@ -249,6 +255,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       const runs = mode === 0 || (asynchronous && [1, 3, 7].includes(mode));
       test(`${timing}: ${asynchronous ? "TOSC" : "CPU"} divider ${runs ? "runs" : "pauses"} in sleep ${mode}`, () => {
         const avr = A.AVR({ timing, clockHz: 327_680 });
+        avr.cpu.flash.fill(0);
         const period = asynchronous ? 10 : 1;
         if (asynchronous) avr.cpu.writeData(A.ASSR, bit(A.AS2));
         avr.cpu.writeData(A.TCCR2B, 2);
@@ -279,6 +286,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: switching AS2 bypasses PRR and returning to sync reapplies the gate`, () => {
     const avr = A.AVR({ timing, clockHz: 327_680 });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.TCCR2B, 2);
     avr.runCycles(3);
     avr.cpu.writeData(A.PRR, bit(A.PRTIM2));
@@ -298,6 +306,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: legacy snapshots preserve the current tap's next edge`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.TCCR2B, 3);
     avr.runCycles(29);
     const snap = avr.snapshot();
@@ -311,6 +320,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: frozen async divider rescales through CLKPR and restore before wake`, () => {
     const avr = A.AVR({ timing, clockHz: 327_680 });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.ASSR, bit(A.AS2));
     avr.cpu.writeData(A.TCCR2B, 2);
     avr.runCycles(35);
@@ -333,6 +343,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const reset of ["reset", "resetExternal", "resetBrownOut"] as const) {
     test(`${timing}: ${reset} clears divider hold and clock gates`, () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.runCycles(5);
       avr.cpu.writeData(A.GTCCR, bit(A.TSM) | bit(A.PSRASY));
       avr.cpu.writeData(A.PRR, bit(A.PRTIM2));

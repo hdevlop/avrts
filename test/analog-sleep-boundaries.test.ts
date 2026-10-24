@@ -60,6 +60,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           test(`sleep ${mode} starts enabled ADC, I=${Number(interrupts)}, ADATE=${Number(autoTrigger)}`, () => {
             const avr = A.AVR({ timing });
             avr.cpu.flash[0] = 0xcfff;
+            avr.cpu.flash[A.ADC_VECTOR] = 0xcfff; // Defined interrupt destination after wake.
             avr.analog(0).setValue(321);
             // External trigger selected but absent: sleep entry supplies the start.
             avr.cpu.writeData(A.ADCSRB, 2);

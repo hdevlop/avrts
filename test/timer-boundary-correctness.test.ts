@@ -22,6 +22,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     };
     const setup = (mode: number, top = 8, compare = 2, inverted = false) => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(t.ddr, t.ddrMask);
       if (t.name === "Timer2") avr.cpu.writeData(A.DDRD, bit(3));
       avr.cpu.writeData(t.ocrA, top);
@@ -329,6 +330,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const t of all) {
       const setup = (top: number, mode = t.mode) => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         t.write(avr, t.ocrA, top);
         t.write(avr, t.ocrB, 2);
         avr.cpu.writeData(t.controlA, mode & 3);
@@ -420,6 +422,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: Timer1 phase-correct full-to-partial duty changes at TOP`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     const word = (addr: number, value: number) => {
       avr.cpu.writeData(addr + 1, value >> 8);
       avr.cpu.writeData(addr, value & 255);
@@ -441,6 +444,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const inverted of [false, true]) {
     test(`${timing}: Timer1 phase-correct compare above TOP preserves the ${inverted ? "inverted" : "normal"} output`, () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       const word = (addr: number, value: number) => {
         avr.cpu.writeData(addr + 1, value >> 8);
         avr.cpu.writeData(addr, value & 255);
@@ -466,6 +470,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const mode of [14, 15]) {
     test(`${timing}: Timer1 WGM ${mode} TCNT at TOP blocks clearing until MAX wraps`, () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       const word = (addr: number, value: number) => {
         avr.cpu.writeData(addr + 1, value >> 8);
         avr.cpu.writeData(addr, value & 255);
@@ -490,6 +495,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: Timer1 BOTTOM written on the falling slope misses BOTTOM until wrap`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
     avr.cpu.writeData(A.ICR1H, 0);
     avr.cpu.writeData(A.ICR1L, 8);
@@ -511,6 +517,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
   for (const mode of [9, 11, 12, 15]) {
     test(`${timing}: Timer1 WGM ${mode} raises its dedicated TOP flag at TOP`, () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       const word = (addr: number, value: number) => {
         avr.cpu.writeData(addr + 1, value >> 8);
         avr.cpu.writeData(addr, value & 255);
@@ -536,6 +543,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: Timer1 control-only writes preserve prescaler phase`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.TCCR1B, bit(A.CS11));
     avr.runCycles(3);
     avr.cpu.writeData(A.TCCR1B, bit(A.CS11) | bit(A.ICES1));
@@ -546,6 +554,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
   test(`${timing}: quiet Timer1 CTC re-arms when a latched flag or mask changes`, () => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(A.OCR1AL, 8);
     avr.cpu.writeData(A.OCR1BL, 2);
     avr.cpu.writeData(A.TCCR1B, bit(A.WGM12) | 1);
@@ -570,6 +579,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
 test("asynchronous Timer2 distinguishes ASSR busy clear from the PWM transfer edge", () => {
   const avr = A.AVR();
+  avr.cpu.flash.fill(0);
   avr.cpu.writeData(A.OCR2A, 8);
   avr.cpu.writeData(A.OCR2B, 2);
   avr.cpu.writeData(A.TCCR2A, 3 | (2 << 4));

@@ -586,14 +586,14 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if ((opcode & 0xff00) === 0x9a00) {
         const a = (opcode >> 3) & 0x1f;
         const mask = 1 << (opcode & 0x07);
-        cpu.writeIo(a, cpu.readIo(a) | mask);
+        cpu.writeIo(a, cpu.readIo(a) | mask, mask);
         cpu.pc += 1;
         cpu.cycles += 2;
       }
       else if ((opcode & 0xff00) === 0x9800) {
         const a = (opcode >> 3) & 0x1f;
         const mask = 1 << (opcode & 0x07);
-        cpu.writeIo(a, cpu.readIo(a) & ~ mask);
+        cpu.writeIo(a, cpu.readIo(a) & ~ mask, mask);
         cpu.pc += 1;
         cpu.cycles += 2;
       }
@@ -969,6 +969,11 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         cpu.executeSpmInstruction(pc);
         cpu.pc += 1;
         cpu.cycles += 4;
+        if (cpu.hasInstructionBarrier) {
+          cpu.serviceInterrupts();
+          cpu.runTicksUntil(target);
+          return;
+        }
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;
@@ -1578,14 +1583,14 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
       else if ((opcode & 0xff00) === 0x9a00) {
         const a = (opcode >> 3) & 0x1f;
         const mask = 1 << (opcode & 0x07);
-        cpu.writeIo(a, cpu.readIo(a) | mask);
+        cpu.writeIo(a, cpu.readIo(a) | mask, mask);
         cpu.pc += 1;
         cpu.cycles += 2;
       }
       else if ((opcode & 0xff00) === 0x9800) {
         const a = (opcode >> 3) & 0x1f;
         const mask = 1 << (opcode & 0x07);
-        cpu.writeIo(a, cpu.readIo(a) & ~ mask);
+        cpu.writeIo(a, cpu.readIo(a) & ~ mask, mask);
         cpu.pc += 1;
         cpu.cycles += 2;
       }
@@ -1963,6 +1968,12 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.executeSpmInstruction(pc);
         cpu.pc += 1;
         cpu.cycles += 4;
+        if (cpu.hasInstructionBarrier) {
+          cpu.serviceInterrupts();
+          listener(cpu.profileState(pc, opcode, before, "instruction"));
+          cpu.runProfiledTicks(target, listener);
+          return;
+        }
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;

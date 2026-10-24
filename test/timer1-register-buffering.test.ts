@@ -20,6 +20,7 @@ const phaseCorrect = (mode: number) => [1, 2, 3, 10, 11].includes(mode);
 for (const timing of ["fast", "cycle-exact"] as const) {
   const setup = (mode: number, top = 10, compareB = 2, inverted = false) => {
     const avr = A.AVR({ timing });
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     cpu.writeData(A.DDRB, bit(1) | bit(2));
     // Initialize unbuffered words while stopped. ICR1 requires a TOP mode.
@@ -36,6 +37,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     for (const [name, low, high] of registers) {
       test(`${name} high writes stage TEMP until a low write commits the pair`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
         writeWord(avr, low, 0x1234);
         avr.cpu.writeData(high, 0xab);
@@ -52,6 +54,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
       test(`${name} high write shares TEMP with a different register`, () => {
         const avr = A.AVR({ timing });
+        avr.cpu.flash.fill(0);
         avr.cpu.writeData(high, 0x67);
         avr.cpu.writeData(low === A.TCNT1L ? A.OCR1BL : A.TCNT1L, 0x89);
         expect(readWord(avr, low === A.TCNT1L ? A.OCR1BL : A.TCNT1L)).toBe(0x6789);
@@ -60,6 +63,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("low counter reads latch high across rollover and snapshot", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       writeWord(avr, A.TCNT1L, 0x12ff);
       avr.cpu.writeData(A.TCCR1B, bit(A.CS10));
       expect(avr.cpu.readData(A.TCNT1L)).toBe(0xff);
@@ -72,6 +76,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("capture reads are latched; hardware capture does not overwrite TEMP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.CS10) | bit(A.ICES1));
       writeWord(avr, A.TCNT1L, 0x12ff);
       avr.pin(8).setInput(true);
@@ -98,6 +103,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("ICR writes are ignored outside modes that use ICR as TOP", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       writeWord(avr, A.ICR1L, 0x1234);
       expect(readWord(avr, A.ICR1L)).toBe(0);
       avr.cpu.writeData(A.TCCR1B, bit(A.WGM13) | bit(A.WGM12));
@@ -107,6 +113,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("TCNT low writes preserve prescaler phase and block exactly one compare clock", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       writeWord(avr, A.OCR1AL, 3);
       writeWord(avr, A.OCR1BL, 3);
       avr.cpu.writeData(A.TCCR1B, bit(A.CS11)); // /8
@@ -129,6 +136,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("high-only counter writes neither stop counting nor block compare", () => {
       const avr = A.AVR({ timing });
+      avr.cpu.flash.fill(0);
       writeWord(avr, A.OCR1AL, 1);
       avr.cpu.writeData(A.TCCR1B, bit(A.CS10));
       avr.cpu.writeData(A.TCNT1H, 0x12);

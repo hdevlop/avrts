@@ -313,7 +313,7 @@ function ioBitArm(name: string, guard: string, setBit: boolean): GeneratedArm {
     body: [
       "const a = (opcode >> 3) & 0x1f;",
       "const mask = 1 << (opcode & 0x07);",
-      `this.writeIo(a, this.readIo(a) ${setBit ? "|" : "& ~"} mask);`,
+      `this.writeIo(a, this.readIo(a) ${setBit ? "|" : "& ~"} mask, mask);`,
       "this.pc += 1;",
       "this.cycles += 2;",
     ],
@@ -939,7 +939,23 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   {
     name: "spm",
     guard: "opcode === 0x95e8",
-    body: ["this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;"],
+    body: [
+      "this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;",
+      "if (this.hasInstructionBarrier) {",
+      "  this.serviceInterrupts();",
+      "  this.runTicksUntil(target);",
+      "  return;",
+      "}",
+    ],
+    profiledBody: [
+      "this.executeSpmInstruction(pc);", "this.pc += 1;", "this.cycles += 4;",
+      "if (this.hasInstructionBarrier) {",
+      "  this.serviceInterrupts();",
+      '  listener(this.profileState(pc, opcode, before, "instruction"));',
+      "  this.runProfiledTicks(target, listener);",
+      "  return;",
+      "}",
+    ],
   },
   {
     name: "break",

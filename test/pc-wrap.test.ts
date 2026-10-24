@@ -14,6 +14,7 @@ const BLINK_HEX = readFileSync(
 describe("program counter wraps at the flash boundary", () => {
   test("RJMP backwards from word 0 lands on the last flash word", () => {
     const avr = AVR(`${record([RJMP_MINUS_2])}\n${EOF}`);
+    avr.cpu.flash[FLASH_WORDS - 1] = 0; // Explicit NOP at the wrap boundary.
     avr.step();
     expect(avr.cpu.pc).toBe(FLASH_WORDS - 1);
 
@@ -21,23 +22,20 @@ describe("program counter wraps at the flash boundary", () => {
     expect(avr.cpu.pc).toBe(0);
   });
 
-  test("an empty boot section slides into the application (BOOTRST, no bootloader)", () => {
+  test("an erased boot section has no executable instructions (BOOTRST, no bootloader)", () => {
     const avr = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
     expect(avr.cpu.pc).toBe(0x3f00);
 
-    let edges = 0;
-    avr.pin(13).onChange(() => {
-      edges += 1;
-    });
-    avr.runFor(20);
-    expect(edges).toBeGreaterThan(0);
-    expect(avr.cpu.pc).toBeGreaterThanOrEqual(0);
-    expect(avr.cpu.pc).toBeLessThan(FLASH_WORDS);
+    expect(avr.cpu.flash[avr.cpu.pc]).toBe(0xffff);
+    expect(() => avr.runFor(20)).toThrow(/Unknown opcode 0xffff/);
+    expect(avr.cpu.pc).toBe(0x3f00);
   });
 
   test("the slow (debug) path wraps the same way as the fast core", () => {
     const fast = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
     const debug = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
+    fast.cpu.flash.fill(0, 0x3f00); // NOP-filled boot region deliberately wraps into the app.
+    debug.cpu.flash.fill(0, 0x3f00);
     debug.breakpoint({ pc: 0x1fff }); // never hit; forces the per-tick path
 
     fast.runCycles(5_000);

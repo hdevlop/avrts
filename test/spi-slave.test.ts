@@ -6,6 +6,7 @@ import { DEFAULT_SPI_TRANSFER_CYCLES } from "./helpers";
 describe("SPI slave mode", () => {
   test("host master clocks a byte into firmware configured as SPI slave", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
     const master = avr.spi.master();
 
@@ -24,6 +25,7 @@ describe("SPI slave mode", () => {
 
   test("host master transfer requires SS low", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     avr.cpu.writeData(SPCR, 1 << SPE);
     avr.pin(10).setInput(true);
 
@@ -32,6 +34,7 @@ describe("SPI slave mode", () => {
 
   test("SS falling while configured as input clears MSTR and sets SPIF", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, cpu.readData(DDRB) & ~(1 << 2));
@@ -45,6 +48,7 @@ describe("SPI slave mode", () => {
 
   test("SPIF uses the documented SPSR then SPDR clear sequence", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, 1 << 2);
@@ -63,6 +67,7 @@ describe("SPI slave mode", () => {
 
   test("SPDR write preserves stale SPIF/WCOL without a preceding SPSR read", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const cpu = avr.cpu;
 
     cpu.writeData(DDRB, 1 << 2);
@@ -75,6 +80,7 @@ describe("SPI slave mode", () => {
 
   test("DORD is exposed as transfer metadata without serializing bit order", () => {
     const avr = AVR();
+    avr.cpu.flash.fill(0);
     const seen: string[] = [];
     avr.spi.onByte((_byte, meta) => seen.push(`${meta.mode}:${meta.bitOrder}`));
     avr.spi.respondWith((_byte, meta) => (meta.bitOrder === "lsb-first" ? 0x5a : 0xa5));
@@ -90,6 +96,7 @@ describe("SPI slave mode", () => {
 
   test("snapshot restores an in-flight host-master slave transfer", () => {
     const source = AVR();
+    source.cpu.flash.fill(0);
     source.pin(10).setInput(false);
     source.cpu.writeData(SPCR, 1 << SPE);
     source.cpu.writeData(SPDR, 0x44);
@@ -97,6 +104,7 @@ describe("SPI slave mode", () => {
     source.runCycles(10);
 
     const restored = AVR();
+    restored.cpu.flash.fill(0);
     restored.restore(source.snapshot());
     restored.runCycles(DEFAULT_SPI_TRANSFER_CYCLES - 10 - 1);
     expect((restored.cpu.data[SPSR]! >> SPIF) & 1).toBe(0);
