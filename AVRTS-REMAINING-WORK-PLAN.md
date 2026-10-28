@@ -2,12 +2,17 @@
 
 Release update, 2026-10-24: version 0.1.3 includes the prepared digital models and
 the subsequent library correctness review. Current release status is recorded in
-[0.1.3 release evidence](docs/evidence/release-0.1.3.md). The October 6/10 counts,
+[0.1.4 release evidence](docs/evidence/release-0.1.4.md). The October 6/10 counts,
 candidate identities and publication checklists below remain historical evidence.
 
-Created: 2026-10-06. Updated: 2026-10-28. Status: selected digital implementation and release acceptance completed; 0.1.3 publication is recorded in the October 24 receipt.
+Created: 2026-10-06. Updated: 2026-10-28. Status: selected digital implementation and release acceptance completed; 0.1.4 publication is recorded in the October 28 receipt.
 
 ## Current status and remaining work
+
+The [0.1.4 publication receipt](docs/evidence/release-0.1.4.md) records the
+erased-flash regression and firmware path fixes, clean-commit publication gate,
+successful release CI, matching registry integrity, published-consumer checks
+and annotated `v0.1.4` tag. No publication gate remains open for that release.
 
 The [0.1.3 publication receipt](docs/evidence/release-0.1.3.md) records source
 commit `dea3d60b5dee86371603769b915aa42fbaf44ff8`, successful exact-commit CI,
