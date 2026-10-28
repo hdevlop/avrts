@@ -23,6 +23,13 @@ The [chip-level roadmap](complete-atmega328p-plan.md) records completed historic
 
 Not machine-checked; keep in sync with the implementation by review.
 
+- **Erased-flash execution** treats exactly `0xFFFF` as a one-cycle no-op with
+  PC advancing one word and no register/flag changes. This compatibility policy
+  permits empty runtimes and BOOTRST-selected erased boot sections to run and
+  wrap at the flash boundary. Traces/profiles label it `NOP`; flash contents and
+  LPM/SPM semantics remain erased. The documented AVR NOP encoding is `0x0000`;
+  the `0xFFFF` policy has not been physically calibrated. Other unsupported
+  opcodes retain their unknown-opcode errors.
 - **USART** retains its byte-frame/FIFO API by default. `avr.serial.useWire()`
   selects TXD/PD1, RXD/PD0 and XCK/PD4. Async RX uses three samples per bit;
   parity/framing errors come from received bits. Synchronous external XCK and

@@ -156,14 +156,14 @@ describe("Phase 11 — breakpoints", () => {
 describe("Phase 11 — unknown opcode handling", () => {
   test("default behavior throws UnknownOpcodeError", () => {
     const avr = AVR();
-    // 0xFFFF is unmapped in the decode table -> UnknownOpcodeError.
-    avr.cpu.flash[0] = 0xffff;
+    // DES is unsupported on the ATmega328P -> UnknownOpcodeError.
+    avr.cpu.flash[0] = 0x940b;
     expect(() => avr.runCycles(1)).toThrow(UnknownOpcodeError);
   });
 
   test("pauseOnUnknownOpcode(true) emits an 'error' event and pauses", () => {
     const avr = AVR();
-    avr.cpu.flash[0] = 0xffff;
+    avr.cpu.flash[0] = 0x940b;
     avr.pauseOnUnknownOpcode(true);
 
     const errors: unknown[] = [];
@@ -178,7 +178,7 @@ describe("Phase 11 — unknown opcode handling", () => {
 
   test("pauseOnUnknownOpcode(false) restores throw behavior", () => {
     const avr = AVR();
-    avr.cpu.flash[0] = 0xffff;
+    avr.cpu.flash[0] = 0x940b;
     avr.pauseOnUnknownOpcode(true);
     avr.pauseOnUnknownOpcode(false);
     expect(() => avr.runCycles(1)).toThrow(UnknownOpcodeError);
@@ -186,7 +186,7 @@ describe("Phase 11 — unknown opcode handling", () => {
 
   test("step() with pauseOnUnknownOpcode captures but does not throw", () => {
     const avr = AVR();
-    avr.cpu.flash[0] = 0xffff;
+    avr.cpu.flash[0] = 0x940b;
     avr.pauseOnUnknownOpcode(true);
 
     const errors: unknown[] = [];
@@ -200,7 +200,7 @@ describe("Phase 11 — unknown opcode handling", () => {
   test("pauseOnUnknownOpcode(true) pauses a running runtime instead of stopping it", () => {
     const avr = AVR();
     const events: string[] = [];
-    avr.cpu.flash[0] = 0xffff;
+    avr.cpu.flash[0] = 0x940b;
     avr.pauseOnUnknownOpcode(true);
 
     avr.on("pause", (event) => events.push(`${event.type}:${event.status.running}/${event.status.paused}`));

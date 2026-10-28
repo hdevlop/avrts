@@ -5,7 +5,26 @@ the subsequent library correctness review. Current release status is recorded in
 [0.1.3 release evidence](docs/evidence/release-0.1.3.md). The October 6/10 counts,
 candidate identities and publication checklists below remain historical evidence.
 
-Created: 2026-10-06. Updated: 2026-10-10. Status: all remaining digital implementation and local acceptance completed. The expanded source and retained artifact are recorded in [current acceptance](docs/evidence/digital-models-2026-10-10.md). Physical measurements and publication remain external gates.
+Created: 2026-10-06. Updated: 2026-10-28. Status: selected digital implementation and release acceptance completed; 0.1.3 publication is recorded in the October 24 receipt.
+
+## Current status and remaining work
+
+The [0.1.3 publication receipt](docs/evidence/release-0.1.3.md) records source
+commit `dea3d60b5dee86371603769b915aa42fbaf44ff8`, successful exact-commit CI,
+npm publication, matching registry integrity, published-consumer acceptance and
+the annotated `v0.1.3` tag. No publication gate remains open for that release.
+These are recorded October 24 outcomes, not a fresh registry lookup.
+
+There is no unfinished digital implementation queue in the selected scope.
+Physical timing calibration remains unrun and requires a separately selected
+hardware scope and captured measurements. Native-oracle CI automation and
+trusted publishing/provenance remain optional improvements; the local 0.1.3
+publication did not generate an OIDC provenance attestation. Physical electrical
+effects, memory wear and debugWIRE retain their documented exclusions.
+
+The October 6/10 candidate records and unchecked publication boxes below are
+historical. Future releases must use fresh source/artifact identities and repeat
+the applicable gates in section 14 and [the release procedure](RELEASING.md).
 
 This is the root entry point for all known remaining work. It consolidates the existing plans, behavioral limitations, benchmark gaps, and release obligations. It does not promise that a simulator can be proven free of every unknown bug. Completion means that the selected scope has reproducible evidence and that every remaining limitation has an explicit disposition.
 
@@ -57,7 +76,7 @@ Resolve discrepancies against source and reproducible evidence, then update the 
 | 7. Measured performance improvements | After relevant correctness gates | 1; rerun after runtime changes | Profile-backed improvements without lost behavior |
 | 8. Release acceptance and publication | For each chosen release | Selected phases and current limitations documented | Verified artifact and separate publication evidence |
 
-Phases 0-4 remain implemented. The formerly deferred digital models in Phases 5-6 are implemented and locally validated. All twelve external workloads retain their comparison gates. [Earlier release evidence](docs/evidence/release-candidate-2026-10-10.md) describes the pre-extension candidate; [current acceptance](docs/evidence/digital-models-2026-10-10.md) identifies the expanded source and artifact.
+Phases 0-4 remain implemented. The formerly deferred digital models in Phases 5-6 are implemented and locally validated. All twelve external workloads retain their comparison gates. [Earlier release evidence](docs/evidence/release-candidate-2026-10-10.md) describes the pre-extension candidate; [October 10 acceptance](docs/evidence/digital-models-2026-10-10.md) identifies the expanded source and artifact.
 
 Phases 2-6 are a fidelity roadmap, not an assertion that every item must delay an already prepared release. Define the scope of each release before implementation. A release can retain documented approximations; it must not advertise them as completed fidelity work.
 
@@ -184,7 +203,7 @@ Rollback: revert the programming-duration change and its documentation together,
 
 ## 9. Phase 5 — targeted timer, interrupt and wake calibration
 
-Status: digital extensions implemented and locally validated; [current acceptance](docs/evidence/digital-models-2026-10-10.md). Timer2 clear/reset crossing and configurable clock input, interrupt synchronization, comparator delays and host calibration policies are covered by new regressions. No physical measurements were run. See [wire/clock contracts](docs/wire-models.md).
+Status: digital extensions implemented and locally validated; [October 10 acceptance](docs/evidence/digital-models-2026-10-10.md). Timer2 clear/reset crossing and configurable clock input, interrupt synchronization, comparator delays and host calibration policies are covered by new regressions. No physical measurements were run. See [wire/clock contracts](docs/wire-models.md).
 
 Targets: [Timer2](src/peripherals/timer2.ts), [timer prescaler](src/peripherals/timer-prescaler.ts), [timer synchronization](src/peripherals/timer-sync.ts), Timer0/Timer1, [sleep control](src/peripherals/sleep-control.ts), [clock control](src/peripherals/clock-control.ts), comparator/EXTI peripherals, focused tests and native probes.
 
@@ -227,6 +246,7 @@ Use this table when reconciling [limitations](docs/limitations.md). Closing an e
 
 | Known gap or approximation | Planned disposition |
 | --- | --- |
+| Erased-flash `0xFFFF` execution | Retain one-cycle, PC+1 no-op compatibility policy; [execution tests](test/erased-flash.test.ts) and [boot-wrap tests](test/pc-wrap.test.ts) cover it; physical opcode behavior remains uncalibrated |
 | USART wire sampling/XCK/error derivation | Implemented optional wire model in 6; byte API retained by default |
 | SPI wire transfers, direction and DORD | Implemented optional GPIO shifts in 6; native SPIF/collision disagreement retained |
 | TWI arbitration, START/STOP and stretching | Implemented optional open-drain wire/shared-bus model in 6; byte timing retained by default |
@@ -272,7 +292,27 @@ Rollback: revert the optimization and regenerate the prior core where necessary.
 
 ## 13. Phase 8 — release readiness and publication
 
-Status: expanded 0.1.2 candidate prepared and unpublished. Registry lookup still returns 0.0.0-stage, 0.1.0 and 0.1.1. Source/browser/native/package gates, the four compiler cases initially skipped without toolchain configuration, clean 88-file archive preparation, exact-archive consumer smoke and npm dry run passed. See [current acceptance](docs/evidence/digital-models-2026-10-10.md) and [machine-readable receipt](docs/evidence/digital-models-local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication are separate external gates.
+Current status: 0.1.3 was published on 2026-10-24, including the previously
+unpublished 0.1.2 digital models and subsequent correctness fixes. The
+[publication receipt](docs/evidence/release-0.1.3.md) records each boundary:
+
+| Release boundary | Recorded 0.1.3 outcome |
+| --- | --- |
+| Source/browser/native/package acceptance | Passed the stated contracts |
+| Git/CI | Release source pushed; all four exact-commit CI jobs passed |
+| npm publication | Inspected archive published; registry integrity matched |
+| Published consumer | Fresh registry-package consumer checks passed |
+| Release tag | Annotated `v0.1.3` identifies the release source commit |
+| Provenance | No OIDC attestation generated by the local CLI publication |
+
+### Historical 0.1.2 candidate checklist (2026-10-10)
+
+The statuses and unchecked boxes in this subsection describe the October 10
+candidate only. That candidate was never published as 0.1.2; its digital models
+shipped in 0.1.3. Preserve these outcomes as history, rather than treating them
+as pending gates for 0.1.3.
+
+Historical status: expanded 0.1.2 candidate prepared and unpublished. The October 10 registry lookup returned 0.0.0-stage, 0.1.0 and 0.1.1. Source/browser/native/package gates, the four compiler cases initially skipped without toolchain configuration, clean 88-file archive preparation, exact-archive consumer smoke and npm dry run passed. See [October 10 acceptance](docs/evidence/digital-models-2026-10-10.md) and [machine-readable receipt](docs/evidence/digital-models-local-acceptance-2026-10-10.json). Git publication, exact-commit CI and npm publication were unrun for that candidate.
 
 Targets: [package manifest](package.json), [changelog](CHANGELOG.md), [README](README.md), release procedure/evidence, package smoke and CI.
 
@@ -285,6 +325,8 @@ Targets: [package manifest](package.json), [changelog](CHANGELOG.md), [README](R
 - [x] Complete `npm.cmd publish --dry-run` and inspect the concrete package before requesting any missing publication authorization.
 - [ ] External gate: publish only when explicitly authorized and authentication/ownership are ready. Preserve `prepublishOnly`; never bypass the checks or expose `.npmrc` credentials.
 - [ ] External gate: after actual publication, verify registry version/integrity, install the published package in a clean consumer, run import/worker smoke, create the matching annotated tag according to the release procedure, and record provenance where available.
+
+### Acceptance rules for future releases
 
 Acceptance states must be separate: source validated; browser validated; native probes validated; artifact prepared; Git/CI verified; npm published; published consumer validated. Do not report a dry run, local archive, Git push, or green workflow as npm publication.
 
@@ -310,6 +352,9 @@ bun run oracle:simavr:timing
 bun run oracle:simavr:optiboot
 bun run oracle:simavr:runtime
 
+# Compiled Timer2 handshake in both execution modes, with raw native differences
+bun run evidence:digital-models
+
 # Browser and release acceptance, including source/build/package gates
 bun run release:check
 
@@ -322,7 +367,14 @@ git diff --check
 git status --short
 ```
 
-Use existing benchmark CLI help/options for workload, isolation, warmup, sample count and cycle budget; capture the actual invocation in evidence. New oracle labels and proposed focused tests become runnable only after Phase 1 adds them. Keep fixture rebuild commands (`fixtures:arduino`, `fixtures:avr-gcc`) separate from ordinary source testing and record missing local toolchains honestly.
+Use existing benchmark CLI help/options for workload, isolation, warmup, sample count and cycle budget; capture the actual invocation in evidence. Keep fixture rebuild commands (`fixtures:arduino`, `fixtures:avr-gcc`) separate from ordinary source testing and record missing local toolchains honestly.
+
+Include `bun run evidence:digital-models` in release acceptance and after changes
+to Timer2 asynchronous source/reset/flag-clear handshakes. It runs the compiled
+fixture in both execution modes and preserves native discrepancies without
+normalizing them. It requires the native oracle environment and is separate
+from `release:check` and `oracle:simavr:runtime`. Record missing dependencies as
+blocked; adding this command does not establish a new passing result for 0.1.3.
 
 Consider a reproducible native-oracle CI lane after the toolchain is pinned and installation is demonstrated on the runner. This is an automation improvement, not existing CI coverage. Hardware acceptance likewise requires actual hardware; mark it unrun until measurements exist.
 
@@ -334,10 +386,11 @@ Consider a reproducible native-oracle CI lane after the toolchain is pinned and 
 - [x] Documentation distinguishes historical completion, current approximations, native disagreement, and physical calibration.
 - [x] Any runtime change preserves snapshots and public APIs, or includes a deliberate versioned migration.
 - [x] Performance claims identify runtime, host, firmware, methodology, raw samples and useful work where relevant.
-- [x] Final archive preparation records clean source commit `5d351936458901768b2d8a6fefa24fff5b53070a`, the 88-file archive identity and exact consumer smoke; publication remains separate.
+- [x] Historical October 10 archive preparation records clean source commit `5d351936458901768b2d8a6fefa24fff5b53070a`, the 88-file archive identity and exact consumer smoke; this is not the published 0.1.3 artifact.
+- [x] The [0.1.3 publication receipt](docs/evidence/release-0.1.3.md) records the released source/artifact identity, exact-commit CI, npm publication, published-consumer validation and annotated tag separately.
 - [x] Unrelated user changes are preserved. Rollbacks use reviewed reversions of the selected changes, not destructive resets.
 
-The earlier selected local scope and the expanded digital queue below are complete. Their acceptance records identify different source commits and artifacts. Remaining external gates are physical measurement and authorized Git/npm publication; there is no unfinished digital implementation queue.
+The earlier selected local scope and the expanded digital queue below are complete. Their acceptance records identify different source commits and artifacts. The 0.1.3 publication gates are complete according to the October 24 receipt. Physical measurement remains unrun; there is no unfinished digital implementation queue in the selected scope.
 
 ## 16. Historical acceptance before digital extensions (2026-10-10)
 
@@ -372,7 +425,7 @@ Completed at the user's request. The digital extensions previously deferred in P
 
 Physical noise, electrical current/leakage, memory wear and debugWIRE remain the plan's permanent exclusions. Physical timing calibration requires identified hardware and captured measurements. Git/npm publication retains the explicit authorization requirements in Phase 8.
 
-## 18. Expanded local acceptance (2026-10-10)
+## 18. Historical expanded local acceptance (2026-10-10)
 
 Source commit `5d351936458901768b2d8a6fefa24fff5b53070a` passed
 `bun run release:check`: 2,973 passed, four compiler cases initially skipped,
@@ -384,7 +437,10 @@ stated contracts. New wire/clock regressions exercise both execution modes.
 
 The retained 88-file archive passed Node/Bun USART wire loopback and bus imports,
 browser bundling, worker URL/asset checks, TypeScript consumer checks and npm
-dry run. [Current acceptance](docs/evidence/digital-models-2026-10-10.md) and
+dry run. [October 10 acceptance](docs/evidence/digital-models-2026-10-10.md) and
 [the receipt](docs/evidence/digital-models-local-acceptance-2026-10-10.json) record
 its checksums and source identity. The earlier 85-file archive is historical.
-Physical calibration, exact-commit CI, Git push and npm publication remain unrun.
+As of that October 10 candidate, physical calibration, exact-commit CI, Git push
+and npm publication were unrun. The subsequent 0.1.3 publication outcomes are
+recorded in section 13 and the October 24 receipt; physical calibration remains
+unrun.

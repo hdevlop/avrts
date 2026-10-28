@@ -93,7 +93,7 @@ matching an Arduino Uno/Nano ATmega328P.
 ```ts
 import { AVR } from "@hdevlop/avrts";
 
-const avr = AVR("blink.hex");
+const avr = AVR("./blink.hex");
 
 avr.pin(13).onChange((high, event) => {
   console.log(event.timeMs.toFixed(3), high ? "LED on" : "LED off");
@@ -124,11 +124,19 @@ const avr = AVR({ path: "blink.hex", clockHz: 8_000_000 });
 avrts accepts the common ways firmware appears in apps and tests:
 
 ```ts
-AVR("build/sketch.hex");                    // Node/Bun path
-AVR({ path: new URL("./blink.hex", import.meta.url) });
-AVR(hexText);                               // direct Intel HEX text
+AVR("./blink.hex");      // next to this module, else the working directory (Node/Bun)
+AVR("/abs/sketch.hex");  // absolute path (Node/Bun)
+AVR(fileUrl);            // existing file URL (Node/Bun)
+AVR(hexText);            // direct Intel HEX text
 AVR({ hex: hexText, timing: "cycle-exact" });
 ```
+
+Relative paths resolve beside the module that called avrts first, then against
+the working directory. A script therefore loads firmware stored next to it from
+any working directory, without `import.meta.url`, `new URL(...)`, or
+`readFileSync(...)`. The same rule applies to `AVR({ path })` and
+`useHexFile(path)`. When the file is missing from both places, the error names
+both locations.
 
 For browser file uploads, use the async file API:
 
@@ -377,9 +385,12 @@ snapshots. Host EEPROM storage helpers remain immediate. Timer0/Timer1 external
 clocks use the existing PD4/PD5 logical pin inputs.
 
 Program memory starts erased (`0xFFFF`), including gaps in HEX images and after
-`clearProgram()`. Load a program before executing instructions; erased words
-are unknown opcodes. Clock-only CPU tests can pass an explicit NOP-filled
-`Uint16Array` to `new CPU(flash)`.
+`clearProgram()`. Executing `0xFFFF` advances the PC by one word in one cycle
+without changing registers or flags. This simulator compatibility policy lets
+an empty runtime run and a BOOTRST-selected erased boot section wrap into an
+application at address zero. It is not a hardware-calibrated opcode behavior;
+program-memory reads still return `0xFF` bytes, and other unsupported opcodes
+still raise `UnknownOpcodeError`.
 
 The exact behavioral limits are tracked in
 [docs/limitations.md](docs/limitations.md). That file is intentionally part of

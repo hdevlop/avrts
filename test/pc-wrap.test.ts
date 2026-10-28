@@ -14,28 +14,42 @@ const BLINK_HEX = readFileSync(
 describe("program counter wraps at the flash boundary", () => {
   test("RJMP backwards from word 0 lands on the last flash word", () => {
     const avr = AVR(`${record([RJMP_MINUS_2])}\n${EOF}`);
-    avr.cpu.flash[FLASH_WORDS - 1] = 0; // Explicit NOP at the wrap boundary.
     avr.step();
     expect(avr.cpu.pc).toBe(FLASH_WORDS - 1);
 
-    avr.step(); // NOP at the last word, then the PC wraps to 0
+    avr.step(); // Erased word at the last address, then the PC wraps to 0.
     expect(avr.cpu.pc).toBe(0);
   });
 
-  test("an erased boot section has no executable instructions (BOOTRST, no bootloader)", () => {
-    const avr = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
-    expect(avr.cpu.pc).toBe(0x3f00);
+  for (const timing of ["fast", "cycle-exact"] as const) {
+    test(`${timing}: an erased boot section wraps into the app (BOOTRST, no bootloader)`, () => {
+      const avr = AVR({ timing }).useFuses(UNO_FUSES).useHex(BLINK_HEX);
+      const bootStart = 0x3f00;
+      expect(avr.cpu.pc).toBe(bootStart);
+      expect(avr.cpu.flash.slice(bootStart).every((word) => word === 0xffff)).toBe(true);
 
-    expect(avr.cpu.flash[avr.cpu.pc]).toBe(0xffff);
-    expect(() => avr.runFor(20)).toThrow(/Unknown opcode 0xffff/);
-    expect(avr.cpu.pc).toBe(0x3f00);
-  });
+      const startCycles = avr.cpu.cycles;
+      let hit: number | undefined;
+      avr.on("breakpoint", (event) => { hit = event.pc; });
+      avr.breakpoint({ pc: 0 });
+      avr.runCycles(FLASH_WORDS - bootStart + 10);
+      expect(hit).toBe(0);
+      expect(avr.cpu.pc).toBe(0);
+      expect(avr.cpu.cycles - startCycles).toBe(FLASH_WORDS - bootStart);
+
+      avr.clearBreakpoint(0);
+      const levels: boolean[] = [];
+      avr.pin(13).onChange((high) => levels.push(high));
+      avr.runFor(5);
+      expect(levels).toContain(true);
+      expect(levels).toContain(false);
+      expect(avr.cpu.pc).toBeLessThan(bootStart);
+    });
+  }
 
   test("the slow (debug) path wraps the same way as the fast core", () => {
     const fast = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
     const debug = AVR().useFuses(UNO_FUSES).useHex(BLINK_HEX);
-    fast.cpu.flash.fill(0, 0x3f00); // NOP-filled boot region deliberately wraps into the app.
-    debug.cpu.flash.fill(0, 0x3f00);
     debug.breakpoint({ pc: 0x1fff }); // never hit; forces the per-tick path
 
     fast.runCycles(5_000);

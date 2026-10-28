@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -87,14 +87,30 @@ try {
 
   const hex = ":0200000000E21C\n:00000001FF\n";
   writeFileSync(join(tempRoot, "firmware.hex"), hex);
+  mkdirSync(consumer);
+  // The nested module must load its own firmware, even when cwd has the same filename.
+  writeFileSync(join(consumer, "firmware.hex"), ":040000000AE2FFCF42\n:00000001FF\n");
+  writeFileSync(join(consumer, "firmware.mjs"), `
+import { AVR } from "@hdevlop/avrts";
+export const relative = AVR("./firmware.hex");
+`);
   const smokeSource = `
 import * as root from "@hdevlop/avrts";
 import { AVR } from "@hdevlop/avrts";
 import * as browser from "@hdevlop/avrts/browser";
 import * as advanced from "@hdevlop/avrts/advanced";
+import { relative } from "./consumer/firmware.mjs";
 
 const direct = AVR(${JSON.stringify(hex)});
 const fromPath = AVR({ path: new URL("./firmware.hex", import.meta.url) });
+const fromUrl = AVR(new URL("./firmware.hex", import.meta.url));
+const fromModule = AVR("./firmware.hex");
+const fromAbsolute = AVR(${JSON.stringify(join(tempRoot, "firmware.hex"))});
+const idle = AVR();
+idle.runCycles(3);
+const uno = AVR({ path: ${JSON.stringify(join(consumer, "firmware.hex"))},
+  fuses: { low: 0xff, high: 0xde, extended: 0xfd } });
+uno.runCycles(257); // 256 erased boot words, then the application's LDI r16, 0x2a.
 const wire = AVR();
 wire.cpu.flash.fill(0); // Explicit NOP program for the clock-only wire check.
 wire.cpu.writeData(advanced.UCSR0B, (1 << advanced.TXEN0) | (1 << advanced.RXEN0));
@@ -117,6 +133,14 @@ process.stdout.write(JSON.stringify({
   advancedCpu: typeof advanced.CPU,
   directWord: direct.cpu.flash[0],
   pathWord: fromPath.cpu.flash[0],
+  urlWord: fromUrl.cpu.flash[0],
+  moduleWord: fromModule.cpu.flash[0],
+  absoluteWord: fromAbsolute.cpu.flash[0],
+  nestedModuleWord: relative.cpu.flash[0],
+  idlePc: idle.cpu.pc,
+  idleCycles: idle.cpu.cycles,
+  unoPc: uno.cpu.pc,
+  unoRegister: uno.cpu.data[16],
   wireByte,
   erasedWord: empty.cpu.flash[0],
   resetCode: empty.cpu.data[advanced.OSCCAL],
@@ -130,6 +154,14 @@ process.stdout.write(JSON.stringify({
     advancedCpu: "function",
     directWord: 0xe200,
     pathWord: 0xe200,
+    urlWord: 0xe200,
+    moduleWord: 0xe200,
+    absoluteWord: 0xe200,
+    nestedModuleWord: 0xe20a,
+    idlePc: 3,
+    idleCycles: 3,
+    unoPc: 1,
+    unoRegister: 0x2a,
     wireByte: 0xa6,
     erasedWord: 0xffff,
     resetCode: 128,
@@ -170,6 +202,8 @@ import type { AVRWorkerRuntime } from "@hdevlop/avrts/browser";
 import { CPU } from "@hdevlop/avrts/advanced";
 
 const avr = AVR(":00000001FF");
+const fromUrl = AVR(new URL("./firmware.hex", import.meta.url));
+const fromModule = AVR("./firmware.hex");
 avr.serial.useWire();
 avr.spi.useWire();
 avr.timer2Clock.setFrequency(null);
@@ -182,7 +216,7 @@ disconnect();
 const status: AVRStatus = avr.status();
 const cpu: CPU = avr.cpu;
 declare const workerRuntime: AVRWorkerRuntime;
-void [status, cpu, workerRuntime];
+void [status, cpu, workerRuntime, fromUrl, fromModule];
 `;
   writeFileSync(join(tempRoot, "type-smoke.ts"), typeSmoke);
   writeFileSync(

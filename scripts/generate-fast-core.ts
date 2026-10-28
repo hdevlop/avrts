@@ -477,7 +477,7 @@ const GENERATED_ARMS: readonly GeneratedArm[] = [
   },
   {
     name: "nop",
-    guard: "opcode === 0x0000",
+    guard: "opcode === 0x0000 || opcode === 0xffff",
     body: ["this.pc += 1;", "this.cycles += 1;"],
   },
   {

@@ -53,6 +53,9 @@ const Z = 30;
 export class InstructionSet {
   // === data moves & immediates ===
 
+  // Compatibility policy for erased flash, not a documented AVR instruction:
+  // advance through an empty boot section without changing its 0xffff contents.
+  @Op("NOP", 0xffff, 0xffff)
   @Op("NOP", 0xffff, 0x0000)
   nop(cpu: CPU): void {
     cpu.pc += 1;

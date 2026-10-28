@@ -97,12 +97,12 @@ describe("execute loop + Phase 2 instructions", () => {
   });
 
   test("unknown opcode throws UnknownOpcodeError", () => {
-    const cpu = makeCpu([0xffff]);
+    const cpu = makeCpu([0x940b]); // DES is unsupported on the ATmega328P.
     expect(() => cpu.tick()).toThrow(UnknownOpcodeError);
   });
 
   test("onTrace reports the decoded mnemonic per instruction", () => {
-    const cpu = makeCpu([0x0000, 0xcfff]); // nop ; rjmp -1
+    const cpu = makeCpu([0xffff, 0xcfff]); // erased-word NOP policy ; rjmp -1
     const seen: string[] = [];
     cpu.onTrace((s) => seen.push(s.mnemonic));
     cpu.tick();
@@ -117,6 +117,7 @@ describe("decode table", () => {
     expect(decoder.mnemonicOf(0x0000)).toBe("NOP");
     expect(decoder.mnemonicOf(0x0c01)).toBe("ADD");
     expect(decoder.mnemonicOf(0xe000)).toBe("LDI");
-    expect(decoder.mnemonicOf(0xffff)).toBeUndefined();
+    expect(decoder.mnemonicOf(0xffff)).toBe("NOP"); // Erased-flash compatibility policy.
+    expect(decoder.mnemonicOf(0x940b)).toBeUndefined();
   });
 });

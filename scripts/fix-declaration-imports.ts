@@ -24,8 +24,12 @@ function runtimeSpecifier(file: string, specifier: string): string {
 
 for (const file of declarationFiles(typesRoot)) {
   const source = readFileSync(file, "utf8");
-  const fixed = source.replace(/(["'])(\.{1,2}\/[^"']+)\1/g, (match, quote: string, specifier: string) => {
-    return `${quote}${runtimeSpecifier(file, specifier)}${quote}`;
-  });
+  // Only module specifiers (`from "./x"`, `import("./x")`); JSDoc examples such
+  // as AVR("./sketch.hex") must stay untouched.
+  const fixed = source.replace(
+    /(\bfrom\s*|\bimport\s*\(\s*)(["'])(\.{1,2}\/[^"']+)\2/g,
+    (_match, prefix: string, quote: string, specifier: string) =>
+      `${prefix}${quote}${runtimeSpecifier(file, specifier)}${quote}`,
+  );
   if (fixed !== source) writeFileSync(file, fixed);
 }

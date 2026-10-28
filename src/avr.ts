@@ -1511,19 +1511,26 @@ class AVRRuntime implements AVR {
 }
 
 /**
- * Create a simulator. Accepts a HEX string, an options object, or nothing
- * (for fluent setup):
+ * Create a simulator. Accepts HEX text, a local file path or URL, an options
+ * object, or nothing (for fluent setup):
  *
  *   AVR(hexText)
  *   AVR("sketch.hex")
+ *   AVR(fileUrl)
  *   AVR({ hex, chip, clockHz })
  *   AVR({ path: "sketch.hex" })
  *   AVR().useHexFile("sketch.hex")
+ *
+ * Relative paths resolve beside the calling module first, then against the
+ * working directory, so a script finds firmware stored next to it regardless
+ * of where it is run from.
  */
-export function AVR(input?: string | AVROptions): AVR {
+export function AVR(input?: string | URL | AVROptions): AVR {
   const runtime = new AVRRuntime();
   if (typeof input === "string") {
     runtime.useHex(resolveHexTextOrPath(input));
+  } else if (input instanceof URL) {
+    runtime.useHexFile(input);
   } else if (input) {
     runtime.use(input);
   }
@@ -1552,6 +1559,12 @@ function looksLikeHexPath(input: string): boolean {
 
 type ReadFileSync = (path: string | URL, encoding: BufferEncoding) => string;
 
+interface PathModule {
+  isAbsolute(path: string): boolean;
+  dirname(path: string): string;
+  resolve(...paths: string[]): string;
+}
+
 function readHexFileSync(path: string | URL): string {
   const readFileSync = runtimeReadFileSync();
   const display = path instanceof URL ? path.href : path;
@@ -1561,12 +1574,35 @@ function readHexFileSync(path: string | URL): string {
         `Pass HEX text directly or use await avr.loadFile(file) in the browser.`,
     );
   }
+  // A relative path resolves beside the calling module first, so scripts need
+  // no import.meta.url; the working directory remains the fallback.
+  const callerPath = callerRelativePath(path);
+  if (callerPath !== undefined) {
+    try {
+      return readFileSync(callerPath, "utf8");
+    } catch (error) {
+      if (!isMissingFile(error)) throw readError(display, error);
+    }
+  }
   try {
     return readFileSync(normalizeFilePath(path), "utf8");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Unable to read HEX file "${display}": ${message}`);
+    if (callerPath === undefined) throw readError(display, error);
+    const shown = callerPath instanceof URL ? callerPath.href : callerPath;
+    throw readError(display, error, ` (also tried "${shown}")`);
   }
+}
+
+function readError(display: string, error: unknown, note = ""): Error {
+  return new Error(`Unable to read HEX file "${display}"${note}: ${errorMessage(error)}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === "ENOENT";
 }
 
 function normalizeFilePath(path: string | URL): string | URL {
@@ -1574,21 +1610,49 @@ function normalizeFilePath(path: string | URL): string | URL {
   return path;
 }
 
+/** Resolve a relative path against the first stack frame outside this module. */
+function callerRelativePath(path: string | URL): string | URL | undefined {
+  if (typeof path !== "string" || /^file:/i.test(path)) return undefined;
+  const pathModule = runtimeBuiltin("node:path") as PathModule | undefined;
+  if (!pathModule || pathModule.isAbsolute(path)) return undefined;
+  const caller = callerModuleLocation();
+  if (caller === undefined) return undefined;
+  if (/^file:/i.test(caller)) return new URL(path, caller);
+  return pathModule.resolve(pathModule.dirname(caller), path);
+}
+
+// The location in a V8/JSC stack frame: "at fn (file:///a/b.js:1:2)" or "at C:\a\b.ts:1:2".
+const STACK_FRAME_LOCATION = /\(?((?:file:\/\/|[A-Za-z]:[\\/]|\/)[^()\n]*?):\d+:\d+\)?$/;
+
+function callerModuleLocation(): string | undefined {
+  const frames = (new Error().stack ?? "").split("\n");
+  let ownLocation: string | undefined;
+  for (const frame of frames) {
+    const location = STACK_FRAME_LOCATION.exec(frame.trim())?.[1];
+    if (location === undefined) continue;
+    // The first located frame is this function; skip every frame in this module.
+    if (ownLocation === undefined) ownLocation = location;
+    else if (location !== ownLocation) return location;
+  }
+  return undefined;
+}
+
 function runtimeReadFileSync(): ReadFileSync | null {
+  return readFileSyncFrom(runtimeBuiltin("node:fs") ?? runtimeBuiltin("fs"));
+}
+
+function runtimeBuiltin(id: string): unknown {
   const processWithBuiltins = (globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }).process;
-  const fsFromProcess =
-    processWithBuiltins?.getBuiltinModule?.("node:fs") ?? processWithBuiltins?.getBuiltinModule?.("fs");
-  const fromProcess = readFileSyncFrom(fsFromProcess);
-  if (fromProcess) return fromProcess;
+  const fromProcess = processWithBuiltins?.getBuiltinModule?.(id);
+  if (fromProcess !== undefined) return fromProcess;
 
   try {
     const requireFn = Function("return typeof require === 'function' ? require : undefined")() as
       | ((id: string) => unknown)
       | undefined;
-    const fsFromRequire = requireFn?.("node:fs") ?? requireFn?.("fs");
-    return readFileSyncFrom(fsFromRequire);
+    return requireFn?.(id);
   } catch {
-    return null;
+    return undefined;
   }
 }
 

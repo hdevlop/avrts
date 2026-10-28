@@ -42,7 +42,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       if ((opcode & 0xff00) === 0x9700 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
       }
-      else if (opcode === 0x0000) {
+      else if (opcode === 0x0000 || opcode === 0xffff) {
         cpu.pc += 1;
         cpu.cycles += 1;
       }
@@ -1029,7 +1029,7 @@ export function runFastProfiled(cpu: CPU, target: number, listener: ProfileRunLi
         cpu.profileFastBlock(listener, pc, opcode, before);
         continue;
       }
-      else if (opcode === 0x0000) {
+      else if (opcode === 0x0000 || opcode === 0xffff) {
         cpu.pc += 1;
         cpu.cycles += 1;
       }

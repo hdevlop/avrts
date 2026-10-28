@@ -1,7 +1,6 @@
 import { AVR } from "../../src";
 
-const helloHex = await Bun.file(new URL("./hello.hex", import.meta.url)).text();
-const avr = AVR(helloHex);
+const avr = AVR("examples/serial/hello.hex");
 
 avr.serial.onText((text) => {
   process.stdout.write(text);

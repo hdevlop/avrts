@@ -1,6 +1,6 @@
 {
   "name": "@hdevlop/avrts",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "ATmega328P simulator with chip-level timing, peripheral, bootloader, and browser-worker support",
   "type": "module",
   "main": "./dist/public/index.js",
@@ -58,6 +58,7 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun run scripts/dev.ts",
+    "example:blink": "cd examples/blink && bun run runner.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "clean:dist": "bun run scripts/clean-dist.ts",

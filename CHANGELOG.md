@@ -3,6 +3,20 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.4 - 2026-10-28
+
+### Fixed
+
+- Restore execution of erased `0xFFFF` flash words as one-cycle no-ops, fixing
+  the 0.1.3 regression so empty runtimes and applications with BOOTRST-selected
+  erased boot sections can run and wrap to
+  address zero. This is a simulator compatibility policy; erased reads and
+  flash programming semantics are preserved, as are other unknown-opcode errors.
+- Resolve relative firmware paths such as `AVR("./x.hex")` beside the calling
+  module, with the working directory as a fallback, without requiring
+  `import.meta.url`. Accept absolute Windows paths and file URLs, including
+  direct `AVR(fileUrl)` calls, and preserve HEX path examples in published types.
+
 ## 0.1.3 - 2026-10-24
 
 This release includes the previously unpublished 0.1.2 candidate described below.

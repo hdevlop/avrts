@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { AVR, DDRB, IntelHexError, PINB, PORTB, TXEN0, UCSR0B, UDR0 } from "../src";
 import { DEFAULT_USART_FRAME_CYCLES } from "./helpers";
 
@@ -28,6 +29,46 @@ test("AVR(string) can load a HEX file path with the default 16 MHz clock", () =>
   expect(avr.cpu.flash[0]).toBe(0xe200);
   expect(avr.status().programLoaded).toBe(true);
   expect(avr.status().clockHz).toBe(16_000_000);
+});
+
+test("AVR(URL) loads a local HEX file relative to the caller module", () => {
+  const avr = AVR(new URL("../examples/blink/blink.hex", import.meta.url));
+  const seen: boolean[] = [];
+  avr.pin(13).onChange((high) => seen.push(high));
+
+  expect(avr.status().programLoaded).toBe(true);
+  expect(avr.status().clockHz).toBe(16_000_000);
+  avr.runCycles(16);
+  expect(seen).toEqual([true, false]);
+});
+
+test("AVR(URL) reports a missing HEX file", () => {
+  expect(() => AVR(new URL("../examples/blink/missing.hex", import.meta.url))).toThrow("Unable to read HEX file");
+});
+
+test("AVR(path) falls back to the caller module's directory without import.meta.url", () => {
+  // Not present relative to the working directory (the repo root), only to test/.
+  const avr = AVR("../examples/blink/blink.hex");
+  const seen: boolean[] = [];
+  avr.pin(13).onChange((high) => seen.push(high));
+
+  expect(avr.status().programLoaded).toBe(true);
+  avr.runCycles(16);
+  expect(seen).toEqual([true, false]);
+  expect(AVR().useHexFile("../examples/blink/blink.hex").cpu.flash[0]).toBe(0xe200);
+});
+
+test("AVR(path) falls back to the working directory and accepts absolute paths", () => {
+  expect(AVR("./examples/blink/blink.hex").cpu.flash[0]).toBe(0xe200);
+  const absolute = fileURLToPath(new URL("../examples/blink/blink.hex", import.meta.url));
+  expect(AVR(absolute).cpu.flash[0]).toBe(0xe200);
+  expect(AVR(absolute.replaceAll("\\", "/")).cpu.flash[0]).toBe(0xe200);
+});
+
+test("AVR(path) reports both locations tried for a missing relative file", () => {
+  const missing = "../examples/blink/missing.hex";
+  const callerPath = fileURLToPath(new URL(missing, import.meta.url));
+  expect(() => AVR(missing)).toThrow(`Unable to read HEX file "${missing}" (also tried "${callerPath}")`);
 });
 
 test("AVR(options) accepts hexPath and path program sources", () => {

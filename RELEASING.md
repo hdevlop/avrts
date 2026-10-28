@@ -24,6 +24,7 @@ must be recorded as separate outcomes.
    - `bun run oracle:simavr:timing`
    - `bun run oracle:simavr:optiboot`
    - `bun run oracle:simavr:runtime` (retain native timing deviations explicitly)
+   - `bun run evidence:digital-models` (compiled Timer2 handshake in both execution modes; preserve raw native discrepancies)
 6. Inspect `npm pack --dry-run` and verify that only `dist` plus release docs are
    included.
 7. Run `npm publish --dry-run` from the clean release commit.
