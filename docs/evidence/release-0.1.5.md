@@ -34,6 +34,34 @@ answer each conversion at its sample point. See [the changelog](../../CHANGELOG.
 | ADC sampler and references | sampler called at the sample point (13.5 ADC clocks into the first conversion) with channel, cycle and reference; AVcc, AREF and 1.1 V conversions; `undefined` fallback; internal channels not sampled; non-finite values and invalid rails rejected |
 
 Native comparisons retain their stated normalizations and limitations; no
-physical-hardware calibration is claimed. Publication, registry integrity,
-published-consumer acceptance and the release tag are separate gates. Their
-receipt will be recorded after actual publication.
+physical-hardware calibration is claimed.
+
+## Final publication receipt
+
+Published on 2026-11-19 as
+[`@hdevlop/avrts@0.1.5`](https://www.npmjs.com/package/@hdevlop/avrts/v/0.1.5)
+with public access and the `latest` tag, replacing 0.1.4.
+
+The source release commit is
+[`6ddae0b23187dab3f4e3ff8613ca2d0b9434e4fe`](https://github.com/hdevlop/avrts/commit/6ddae0b23187dab3f4e3ff8613ca2d0b9434e4fe).
+This publication receipt was added in a subsequent documentation commit.
+
+| Boundary | Verified result |
+| --- | --- |
+| Git source | Release commit pushed to `origin/main`; worktree clean at publication |
+| Release CI | [Run 44600928383](https://github.com/hdevlop/avrts/actions/runs/44600928383) passed all four jobs: Ubuntu Node 22, Ubuntu Node 24, Windows Node 22 and browser E2E |
+| npm upload | `npm publish --access public` from the clean release commit succeeded; npm's `prepublishOnly` lifecycle (the release gate) ran as part of the command and was not bypassed. Unlike 0.1.4, no separate dry run preceded the upload; the archive inspected during preparation was instead compared byte for byte with the published one below |
+| Archive identity | The published archive's SHA-1 and SHA-512 equal those of the `npm pack` archive inspected and consumer-tested during preparation |
+| Public registry | Anonymous version endpoint returned HTTP 200; `latest` is 0.1.5; registry SHA-1, SHA-512 integrity and 88-file count match the archive |
+| Published consumer | KahrabaLab installed 0.1.5 from the registry (lockfile integrity as below) and passed its 427 engine tests, workspace typecheck and the 19 Uno browser specs |
+| Tag | Annotated `v0.1.5` pushed and verified to identify release source commit `6ddae0b23187dab3f4e3ff8613ca2d0b9434e4fe` |
+
+Artifact: `hdevlop-avrts-0.1.5.tgz`, 88 files, 340,315 packed bytes, 1,787,414 unpacked.
+
+- SHA-1: `0f5f3d1abef49d9fc8129835d7e92de83314c15d`
+- SHA-256: `b06febb6741ec0ea54bfc6e7f418088d2e0776d78cc07886f9f52c12361e4683`
+- npm integrity: `sha512-xMea14YMxdx9x0j57p1rQS7RAjGbZbcVPK3cohYBDv+FbjE3kivKhx4IYoLTn8/VMKRs29hEMNHN3dq60lsIUw==`
+- Registry tarball: <https://registry.npmjs.org/@hdevlop/avrts/-/avrts-0.1.5.tgz>
+
+This local CLI publication did not generate an OIDC provenance attestation.
+Source identity, successful CI and matching archive digests are recorded above.

@@ -6,9 +6,14 @@ the subsequent library correctness review. Current release status is recorded in
 [its evidence](docs/evidence/release-0.1.4.md). The October 6/10 counts,
 candidate identities and publication checklists below remain historical evidence.
 
-Created: 2026-10-06. Updated: 2026-11-19. Status: selected digital implementation and release acceptance completed; 0.1.4 publication is recorded in the October 28 receipt; 0.1.5 (datasheet serial frames and fast-PWM duty, ADC sampler) is prepared.
+Created: 2026-10-06. Updated: 2026-11-19. Status: selected digital implementation and release acceptance completed; 0.1.4 publication is recorded in the October 28 receipt; 0.1.5 (datasheet serial frames and fast-PWM duty, ADC sampler) publication is recorded in the November 19 receipt.
 
 ## Current status and remaining work
+
+The [0.1.5 publication receipt](docs/evidence/release-0.1.5.md) records the
+datasheet USART frame, fast-PWM duty and ADC sampler changes, successful
+release CI, matching registry integrity, published-consumer checks and
+annotated `v0.1.5` tag. No publication gate remains open for that release.
 
 The [0.1.4 publication receipt](docs/evidence/release-0.1.4.md) records the
 erased-flash regression and firmware path fixes, clean-commit publication gate,
