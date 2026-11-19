@@ -120,19 +120,23 @@ describe("Timer0 PWM", () => {
     avr.cpu.writeData(TCCR0A, (1 << WGM01) | (1 << WGM00) | (1 << COM0B1));
     avr.cpu.writeData(TCCR0B, 1); // no prescale
 
-    expect(avr.pin(5).read()).toBe(true); // PWM bottom state
-
-    avr.runCycles(2); // TCNT0 reaches OCR0B; the output holds through this count
-    expect(avr.cpu.readData(TCNT0)).toBe(2);
-    expect(avr.pin(5).read()).toBe(true);
-    avr.runCycles(1); // compare match: leaving OCR0B, (2 + 1) / 256 duty
+    // OC0B is a latch, low after reset. COM connects the pin to it; the control write
+    // is not a BOTTOM, so the first period stays low until the counter wraps.
+    expect(avr.pin(5).read()).toBe(false);
+    avr.runCycles(3); // the match leaving OCR0B clears the already-low latch
     expect(avr.cpu.readData(TCNT0)).toBe(3);
     expect(avr.pin(5).read()).toBe(false);
 
     avr.runCycles(253); // wrap to BOTTOM
     expect(avr.cpu.readData(TCNT0)).toBe(0);
     expect(avr.pin(5).read()).toBe(true);
-    expect(seen).toEqual([true, false, true]);
+    avr.runCycles(2); // TCNT0 reaches OCR0B; the output holds through this count
+    expect(avr.cpu.readData(TCNT0)).toBe(2);
+    expect(avr.pin(5).read()).toBe(true);
+    avr.runCycles(1); // compare match: leaving OCR0B, (2 + 1) / 256 duty
+    expect(avr.cpu.readData(TCNT0)).toBe(3);
+    expect(avr.pin(5).read()).toBe(false);
+    expect(seen).toEqual([true, false]);
   });
 
   test("normal/CTC compare toggle drives the virtual output pin", () => {
@@ -201,8 +205,11 @@ describe("Timer0 PWM", () => {
     const clear = AVR();
     clear.cpu.flash.fill(0);
     clear.cpu.writeData(DDRD, 1 << 5); // D5 / OC0B output
-    clear.cpu.writeData(PORTD, 1 << 5); // start high from the firmware PORT latch
+    clear.cpu.writeData(PORTD, 1 << 5); // PORT is overridden once COM connects OC0B
     clear.cpu.writeData(OCR0B, 2);
+    // Preset the OC0B latch high with a forced set-on-match, as the datasheet advises.
+    clear.cpu.writeData(TCCR0A, (1 << COM0B1) | (1 << COM0B0));
+    clear.cpu.writeData(TCCR0B, 1 << 6); // FOC0B strobe
     clear.cpu.writeData(TCCR0A, 1 << COM0B1); // clear on compare
     clear.cpu.writeData(TCCR0B, 1 << CS00);
 

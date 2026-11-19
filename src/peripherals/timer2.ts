@@ -79,6 +79,9 @@ export class Timer2 implements PwmSource {
   private activeOcrA = 0;
   private activeOcrB = 0;
   private compareBlocked = false;
+  // OC2A/OC2B output-compare latches: low after reset and changed only by compare,
+  // BOTTOM/TOP and force-compare events. COM bits connect the pin to them.
+  private readonly ocLatch: Record<PwmChannel, boolean> = { A: false, B: false };
   private prescalerRemainder = 0;
   private lastCycle = 0;
   private powerReduced = false;
@@ -209,6 +212,7 @@ export class Timer2 implements PwmSource {
     this.cpu.clearClockEvent(this.onAsyncUpdateEvent);
     this.refreshPrescaler();
     this.scheduleClockEvent();
+    this.ocLatch.A = this.ocLatch.B = false;
     this.driveOutput("A", undefined);
     this.driveOutput("B", undefined);
     this.notifyPwm("A");
@@ -1026,27 +1030,26 @@ export class Timer2 implements PwmSource {
     if (mode === 0) {
       this.driveOutput(channel, undefined);
     } else if (mode === 1) {
-      const pin = this.outputPin(channel);
-      this.driveOutput(channel, !this.gpio?.readPin(pin.port, pin.bit));
+      this.driveOutput(channel, !this.ocLatch[channel]);
     } else {
       this.driveOutput(channel, mode === 3);
     }
   }
 
   private syncOutput(channel: PwmChannel): void {
-    if (this.isPwmMode()) {
-      const compare = this.compareMode(channel);
-      if (compare === 0 || (compare === 1 && !this.pwmToggleEnabled(channel))) this.driveOutput(channel, undefined);
-      else if (this.cpu.data[TCNT2] === 0) this.syncPwmOutput(channel, "bottom");
-    } else if (this.compareMode(channel) === 0) this.driveOutput(channel, undefined);
+    // COM bits connect the pin to the OC2x latch. A control write is not a compare or
+    // BOTTOM event, so the pin shows the latch until the waveform next changes it.
+    const compare = this.compareMode(channel);
+    if (compare === 0 || (compare === 1 && this.isPwmMode() && !this.pwmToggleEnabled(channel))) {
+      this.driveOutput(channel, undefined);
+    } else this.driveOutput(channel, this.ocLatch[channel]);
   }
 
   private syncPwmOutput(channel: PwmChannel, edge: "bottom" | "compare", direction: "up" | "down" = "up"): void {
     const mode = this.compareMode(channel);
     if (mode === 1 && this.pwmToggleEnabled(channel)) {
       if (edge === "compare") {
-        const pin = this.outputPin(channel);
-        this.driveOutput(channel, !this.gpio?.readPin(pin.port, pin.bit));
+        this.driveOutput(channel, !this.ocLatch[channel]);
       }
       return;
     }
@@ -1101,6 +1104,7 @@ export class Timer2 implements PwmSource {
   }
 
   private driveOutput(channel: PwmChannel, high: boolean | undefined): void {
+    if (high !== undefined) this.ocLatch[channel] = high;
     const pin = this.outputPin(channel);
     this.gpio?.setPeripheralOutput(pin.port, pin.bit, high);
   }
@@ -1119,6 +1123,7 @@ export class Timer2 implements PwmSource {
       activeOcrA: this.activeOcrA,
       activeOcrB: this.activeOcrB,
       compareBlocked: this.compareBlocked,
+      outputLatches: { ...this.ocLatch },
       prescalerRemainder: this.prescalerRemainder,
       dividerPhase: this.dividerPhase(),
       asyncBusyMask: this.cpu.data[ASSR]! & ASSR_BUSY_MASK,
@@ -1154,6 +1159,8 @@ export class Timer2 implements PwmSource {
     this.activeOcrA = (snap.activeOcrA ?? this.cpu.data[OCR2A]!) & 0xff;
     this.activeOcrB = (snap.activeOcrB ?? this.cpu.data[OCR2B]!) & 0xff;
     this.compareBlocked = snap.compareBlocked ?? false;
+    this.ocLatch.A = snap.outputLatches?.A ?? false;
+    this.ocLatch.B = snap.outputLatches?.B ?? false;
     this.prescalerHeld = false;
     this.powerReduced = false;
     this.sleepPaused = false;

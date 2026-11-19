@@ -245,7 +245,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       expect(changes).toEqual([]);
       avr.runCycles(1);
       expect(avr.pwm(3).read().enabled).toBe(true);
-      expect(avr.pin(3).read()).toBe(true);
+      // COM now connects the pin to the OC2B latch, low until the first BOTTOM.
+      expect(avr.pin(3).read()).toBe(false);
       expect(changes).toEqual([true]);
     });
 

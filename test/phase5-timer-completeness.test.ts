@@ -144,7 +144,9 @@ describe("Phase 5 timer completeness", () => {
     cpu.writeData(TCCR1A, (1 << COM1A1) | (1 << COM1B1) | (1 << WGM11));
     cpu.writeData(TCCR1B, (1 << WGM13) | (1 << WGM12) | (1 << CS10));
 
-    expect(avr.pin(9).read()).toBe(true);
+    // OC1A is a latch, low after reset: enabling COM connects the pin to it, and the
+    // first BOTTOM, not the control write, sets it.
+    expect(avr.pin(9).read()).toBe(false);
     expect(avr.pwm(9).read()).toMatchObject({
       enabled: true,
       mode: "fast-pwm",
@@ -153,7 +155,7 @@ describe("Phase 5 timer completeness", () => {
 
     avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(2);
-    expect(avr.pin(9).read()).toBe(true);
+    expect(avr.pin(9).read()).toBe(false);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
     // The compare match leaves OCR1A: it sets OCF1A and clears OC1A on the same clock.
     avr.runCycles(1);
@@ -187,7 +189,9 @@ describe("Phase 5 timer completeness", () => {
     cpu.writeData(TCCR1A, (1 << COM1A1) | (wgmBits & ((1 << WGM11) | 1)));
     cpu.writeData(TCCR1B, (wgmBits & (1 << WGM13)) | (1 << CS10));
 
-    expect(avr.pin(9).read()).toBe(true);
+    // The OC1A latch is low after reset; the up-count match keeps it low and the
+    // down-count match is the first event that sets it.
+    expect(avr.pin(9).read()).toBe(false);
     expect(avr.pwm(9).read()).toMatchObject({
       enabled: true,
       mode: "phase-correct-pwm",

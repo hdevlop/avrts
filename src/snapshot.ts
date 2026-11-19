@@ -46,6 +46,8 @@ export interface Timer0Snapshot {
   activeOcrA?: number;
   activeOcrB?: number;
   compareBlocked?: boolean;
+  /** OCnA/OCnB output-compare latch levels; absent in older snapshots (low). */
+  outputLatches?: { A: boolean; B: boolean };
 }
 
 export interface Timer1Snapshot {
@@ -60,6 +62,8 @@ export interface Timer1Snapshot {
   activeOcrB?: number;
   /** A committed TCNT1 write suppresses the next timer-clock compare. */
   compareBlocked?: boolean;
+  /** OCnA/OCnB output-compare latch levels; absent in older snapshots (low). */
+  outputLatches?: { A: boolean; B: boolean };
   /** Timer1 dual-slope PWM direction, when running an up/down WGM mode. */
   countingDown?: boolean;
   prescalerRemainder: number;
@@ -85,6 +89,8 @@ export interface Timer2Snapshot {
   activeOcrA?: number;
   activeOcrB?: number;
   compareBlocked?: boolean;
+  /** OCnA/OCnB output-compare latch levels; absent in older snapshots (low). */
+  outputLatches?: { A: boolean; B: boolean };
   /** ASSR update-busy bits (TCN2UB..TCR2BUB) still latching. */
   asyncBusyMask?: number;
   /** Remaining cycles until the pending async register updates latch. */

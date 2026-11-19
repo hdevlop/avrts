@@ -110,6 +110,9 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         for (const value of [0, 8]) {
           test(`phase-correct duty ${value} stays constant with polarity ${inverted}`, () => {
             const avr = setup(5, 8, value, inverted);
+            // The OC latch is low after reset; the first period's events set the steady level.
+            avr.runCycles(2 * 8);
+            expect(avr.pin(t.pinB).read()).toBe(value === 0 ? inverted : !inverted);
             const levels: boolean[] = [];
             avr.pin(t.pinB).onChange(high => levels.push(high));
             avr.runCycles(50);
@@ -130,6 +133,9 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
         test(`fast-PWM full duty stays constant with polarity ${inverted}`, () => {
           const avr = setup(7, 8, 8, inverted);
+          // The OC latch is low after reset; the first period's events set the steady level.
+          avr.runCycles(8 + 1);
+          expect(avr.pin(t.pinB).read()).toBe(!inverted);
           const levels: boolean[] = [];
           avr.pin(t.pinB).onChange(high => levels.push(high));
           avr.runCycles(50);

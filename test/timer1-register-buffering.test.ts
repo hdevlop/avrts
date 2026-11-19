@@ -317,6 +317,9 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       for (const inverted of [false, true]) {
         const zero = setup(10, 8, 0, inverted);
         const full = setup(10, 8, 8, inverted);
+        // The OC1B latch is low after reset; the first period's events set the steady level.
+        zero.runCycles(2 * 8);
+        full.runCycles(2 * 8);
         for (let cycle = 0; cycle < 24; cycle++) {
           zero.runCycles(1);
           full.runCycles(1);
@@ -329,7 +332,14 @@ for (const timing of ["fast", "cycle-exact"] as const) {
     test("fast PWM full duty is constant and zero duty has a one-clock pulse", () => {
       const full = setup(14, 8, 8);
       const zero = setup(14, 8, 0);
+      // The OC1B latch is low after reset; the match on TOP is the first event that sets it.
       full.runCycles(8);
+      expect(full.pin(10).read()).toBe(false);
+      full.runCycles(1);
+      const levels: boolean[] = [];
+      full.pin(10).onChange(high => levels.push(high));
+      full.runCycles(3 * 9);
+      expect(levels).toEqual([]);
       expect(full.pin(10).read()).toBe(true);
       zero.runCycles(8);
       expect(zero.pin(10).read()).toBe(false);
@@ -341,6 +351,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
 
     test("TCNT writes block the following zero-duty compare action", () => {
       const avr = setup(14, 8, 0);
+      avr.runCycles(9); // the first BOTTOM sets the OC1B latch
+      expect(avr.pin(10).read()).toBe(true);
       writeWord(avr, A.TCNT1L, 0);
       avr.runCycles(1);
       expect(avr.pin(10).read()).toBe(true);

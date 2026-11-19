@@ -3,6 +3,22 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.6 - 2026-11-19
+
+Output-compare pins follow the OCnx latch.
+
+### Fixed
+
+- Timer0, Timer1 and Timer2 compare outputs (OC0A/B, OC1A/B, OC2A/B) now show each
+  channel's OCnx latch, which is low after reset and changes only on compare,
+  BOTTOM/TOP and force-compare events. Writing COM bits connects the pin to that
+  latch; it is no longer treated as a BOTTOM. Fast PWM enabled with the counter
+  at 0 therefore stays low until the first TOP -> BOTTOM clock, as on the chip,
+  instead of going high at once. Normal and CTC modes show the latch as soon as
+  COM is set (preset it with FOCnx, as the datasheet advises), and toggle modes
+  toggle the latch rather than the pin's read level.
+- Snapshots record both latches (`outputLatches`); older snapshots restore them low.
+
 ## 0.1.5 - 2026-11-19
 
 Datasheet timing for serial frames and fast PWM, and a host-driven ADC sample point.

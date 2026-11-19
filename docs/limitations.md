@@ -124,6 +124,9 @@ Not machine-checked; keep in sync with the implementation by review.
   three timers; ordinary OCF flags sample equality on the following clock.
   TCNT-written compare TOP and down-counting BOTTOM miss their boundary until
   the counter wraps; compare values above TOP do not generate compare pin edges.
+  Each compare pin shows its OCnx latch (low after reset; changed only by
+  waveform events and FOCnx), so a COM write never acts as a BOTTOM and the
+  first PWM period after enabling an output starts from the latched level.
   Timer1 OCR1A-as-TOP PWM has a dedicated TOP flag. PWM facade duty remains a
   compare-value/TOP description, not a measurement of individual pin pulses.
   Timer1 fast-PWM TOV1 remains at TOP per the mode description; the local
