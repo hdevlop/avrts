@@ -39,6 +39,7 @@ import {
 } from "../cpu";
 import type { CPU } from "../cpu";
 import type { AdcSnapshot } from "../snapshot";
+import type { AdcReference, AdcReferenceVoltages, AdcSampler } from "./types";
 
 const ADC_PRESCALER: Readonly<Record<number, number>> = {
   0b000: 2,
@@ -92,6 +93,10 @@ export class Adc {
   private autoTriggerArmed = false;
   private powerReduced = false;
   private sleepPaused = false;
+  /** Host configuration, kept across chip resets and not part of snapshots. */
+  private sampler: AdcSampler | null = null;
+  private avccVolts = DEFAULT_AVCC_REFERENCE_VOLTS;
+  private arefVolts = DEFAULT_EXTERNAL_REFERENCE_VOLTS;
   private readonly onSampleEvent = (): void => {
     this.sampleRemainingCycles = 0;
     this.sampledResult = this.sampleSelectedChannel();
@@ -180,16 +185,31 @@ export class Adc {
   readChannelValue(channel: number): number {
     const normalized = this.normalizeChannel(channel);
     if (this.voltageEnabled[normalized] === 0) return this.channels[normalized]!;
-    return clamp10((this.channelVoltages[normalized]! / DEFAULT_AVCC_REFERENCE_VOLTS) * 1023);
+    return convert(this.channelVoltages[normalized]!, this.avccVolts);
   }
 
-  setChannelVoltage(channel: number, volts: number, referenceVolts = 5): void {
+  setChannelVoltage(channel: number, volts: number, referenceVolts = this.avccVolts): void {
     const normalized = this.normalizeChannel(channel);
-    const ratio = referenceVolts <= 0 ? 0 : volts / referenceVolts;
     this.channelVoltages[normalized] = Number.isFinite(volts) ? Math.max(0, volts) : 0;
     this.voltageEnabled[normalized] = 1;
-    this.channels[normalized] = clamp10(Math.round(ratio * 1023));
+    this.channels[normalized] = convert(volts, referenceVolts);
     for (const listener of this.channelListeners) listener(normalized);
+  }
+
+  /** Supply ADC0-ADC7 voltages at each conversion's sample point; null restores set values. */
+  setSampler(sampler: AdcSampler | null): void {
+    if (sampler !== null && typeof sampler !== "function")
+      throw new TypeError("useAnalogSampler(sampler) expects a function or null.");
+    this.sampler = sampler;
+  }
+
+  /** Set the AVcc and AREF rails that the AVcc and external references convert against. */
+  setReferenceVoltages(volts: AdcReferenceVoltages): void {
+    for (const [name, value] of Object.entries(volts))
+      if (value !== undefined && (!Number.isFinite(value) || value <= 0))
+        throw new RangeError(`useAnalogReference(${name}) expects a positive voltage, got ${value}.`);
+    if (volts.avcc !== undefined) this.avccVolts = volts.avcc;
+    if (volts.aref !== undefined) this.arefVolts = volts.aref;
   }
 
   /** Notify analog consumers after a host changes a channel's input level. */
@@ -201,7 +221,8 @@ export class Adc {
   readChannelVoltage(channel: number): number {
     const normalized = this.normalizeChannel(channel);
     if (this.voltageEnabled[normalized] !== 0) return this.channelVoltages[normalized]!;
-    return (this.channels[normalized]! / 1023) * DEFAULT_AVCC_REFERENCE_VOLTS;
+    // The lower edge of the code's input range: code * Vref / 1024.
+    return (this.channels[normalized]! * this.avccVolts) / 1024;
   }
 
   setPowerReduced(reduced: boolean): void {
@@ -363,15 +384,27 @@ export class Adc {
   private sampleSelectedChannel(): number {
     const channel = this.selectedChannel();
     if (!this.isSupportedChannel(channel)) return 0;
+    if (this.sampler !== null && channel < 8) {
+      // Ask the host before the reference is read: it may move AVcc for this sample.
+      const volts = this.sampler({ channel, cycles: this.cpu.cycles, reference: this.referenceKind() });
+      if (volts !== undefined) {
+        if (!Number.isFinite(volts)) throw new RangeError(`The ADC sampler returned ${volts} for ADC${channel}.`);
+        return convert(volts, this.referenceVoltage());
+      }
+    }
     if (this.voltageEnabled[channel] === 0) return this.channels[channel]!;
-    return clamp10((this.channelVoltages[channel]! / this.referenceVoltage()) * 1023);
+    return convert(this.channelVoltages[channel]!, this.referenceVoltage());
+  }
+
+  private referenceKind(): AdcReference {
+    const refs = (this.conversionMux >> REFS0) & ((1 << (REFS1 - REFS0 + 1)) - 1);
+    return refs === 0b11 ? "internal" : refs === 0b01 ? "avcc" : "aref";
   }
 
   private referenceVoltage(): number {
-    const refs = (this.conversionMux >> REFS0) & ((1 << (REFS1 - REFS0 + 1)) - 1);
-    if (refs === 0b11) return DEFAULT_INTERNAL_REFERENCE_VOLTS;
-    if (refs === 0b01) return DEFAULT_AVCC_REFERENCE_VOLTS;
-    return DEFAULT_EXTERNAL_REFERENCE_VOLTS;
+    const kind = this.referenceKind();
+    if (kind === "internal") return DEFAULT_INTERNAL_REFERENCE_VOLTS;
+    return kind === "avcc" ? this.avccVolts : this.arefVolts;
   }
 
   private prescaler(): number {
@@ -536,6 +569,12 @@ export class Adc {
     this.refreshAutoTriggerArmed();
     this.scheduleEvents();
   }
+}
+
+/** The datasheet's single-ended result, ADC = Vin * 1024 / Vref, truncated to 0..1023. */
+function convert(volts: number, referenceVolts: number): number {
+  if (!Number.isFinite(volts) || referenceVolts <= 0) return 0;
+  return Math.max(0, Math.min(1023, Math.floor((volts * 1024) / referenceVolts)));
 }
 
 function clamp10(value: number): number {

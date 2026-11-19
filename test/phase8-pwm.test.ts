@@ -122,11 +122,14 @@ describe("Timer0 PWM", () => {
 
     expect(avr.pin(5).read()).toBe(true); // PWM bottom state
 
-    avr.runCycles(2); // compare match at OCR0B
+    avr.runCycles(2); // TCNT0 reaches OCR0B; the output holds through this count
     expect(avr.cpu.readData(TCNT0)).toBe(2);
+    expect(avr.pin(5).read()).toBe(true);
+    avr.runCycles(1); // compare match: leaving OCR0B, (2 + 1) / 256 duty
+    expect(avr.cpu.readData(TCNT0)).toBe(3);
     expect(avr.pin(5).read()).toBe(false);
 
-    avr.runCycles(254); // wrap to BOTTOM
+    avr.runCycles(253); // wrap to BOTTOM
     expect(avr.cpu.readData(TCNT0)).toBe(0);
     expect(avr.pin(5).read()).toBe(true);
     expect(seen).toEqual([true, false, true]);

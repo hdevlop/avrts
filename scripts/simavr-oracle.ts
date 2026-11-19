@@ -931,7 +931,21 @@ function compareTimingScenario(base: Options): TimingComparison {
 
   if (!simavr.completed) differences.push(`simavr did not write the timing result marker within ${simavr.cycles} cycles`);
   if (!avrts.completed) differences.push(`avrts did not write the timing result marker within ${avrts.cycles} cycles`);
-  compareArray(differences, "timing-result", comparableTimingResult(simavr, normalizations), comparableTimingResult(avrts, normalizations));
+  // Recorded native deviation: simavr raises TXC0 one bit time after the frame, an idle
+  // bit avrts no longer adds (the datasheet sets TXC0 when the stop bit has shifted out).
+  // At UBRR0 = 0 a bit is 16 cycles; the fixture polls TXC0 in a 5-cycle loop.
+  const txc = (outcome: TimingOutcome) => (outcome.result[1] ?? 0) | ((outcome.result[2] ?? 0) << 8);
+  const comparable = (outcome: TimingOutcome) => {
+    const result = comparableTimingResult(outcome, normalizations);
+    if (result.length >= TIMING_RESULT_LEN) result[1] = result[2] = 0;
+    return result;
+  };
+  if (simavr.completed && avrts.completed) {
+    const idle = txc(simavr) - txc(avrts);
+    if (Math.abs(idle - 16) > 5) differences.push(`usart-txc: simavr=${txc(simavr)} avrts=${txc(avrts)}, expected simavr to be one 16-cycle bit (within 5) later`);
+    normalizations.push(`USART TXC elapsed compared with native simavr's idle bit removed: simavr=${txc(simavr)} avrts=${txc(avrts)} (16-cycle bit, 5-cycle poll).`);
+  }
+  compareArray(differences, "timing-result", comparable(simavr), comparable(avrts));
   compareArray(differences, "serial", simavr.serial, avrts.serial);
   if (JSON.stringify(simavr.twi) !== JSON.stringify(avrts.twi)) {
     differences.push(`twi: simavr=${stableJson(simavr.twi)} avrts=${stableJson(avrts.twi)}`);

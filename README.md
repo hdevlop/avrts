@@ -241,6 +241,23 @@ Use `setValue(...)` when your test already has a raw 10-bit ADC sample:
 avr.analog(0).setValue(512);
 ```
 
+Conversions follow the datasheet, `ADC = Vin × 1024 / Vref` truncated to 0..1023.
+Fast PWM is high through the compare value, `(OCR + 1) / (TOP + 1)`, as on the chip;
+phase-correct PWM is `OCR / TOP`.
+
+A host that solves the circuit itself (a circuit simulator, for example) can answer
+each conversion when its sample-and-hold closes, instead of setting values ahead of
+time. The sampler runs synchronously at the sample point and returns volts, or
+`undefined` to use the value set on the channel:
+
+```ts
+avr.useAnalogReference({ avcc: 4.8 }); // the board's actual 5 V rail
+avr.useAnalogSampler(({ channel, cycles, reference }) => circuit.voltageAt(channel, cycles));
+```
+
+Only ADC0-ADC7 are sampled; the temperature sensor, bandgap and ground channels keep
+their internal values. Both settings survive resets and are not part of snapshots.
+
 ### Virtual I2C Slave
 
 Connect a virtual device to firmware using the AVR TWI master peripheral:

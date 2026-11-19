@@ -99,6 +99,8 @@ import {
   Watchdog,
 } from "./peripherals";
 import type {
+  AdcReferenceVoltages,
+  AdcSampler,
   AnalogChannelHandle,
   AnalogComparatorHandle,
   PinChangeEvent,
@@ -275,6 +277,7 @@ export interface SerialHandle {
 }
 
 export type AnalogHandle = AnalogChannelHandle;
+export type { AdcReference, AdcReferenceVoltages, AdcSample, AdcSampler } from "./peripherals";
 
 export interface PwmHandle {
   read(): PwmSignal;
@@ -356,6 +359,14 @@ export interface AVR {
   useHex(hex: string): this;
   useHexFile(path: string | URL): this;
   useTiming(timing: AVRTiming): this;
+  /**
+   * Supply ADC0-ADC7 voltages when each conversion samples them, for a host that solves
+   * the circuit itself; return undefined to use the value set through `analog(channel)`.
+   * Pass null to stop. Kept across resets; not part of snapshots.
+   */
+  useAnalogSampler(sampler: AdcSampler | null): this;
+  /** Set the AVcc and AREF rails in volts (5 V each by default). Kept across resets. */
+  useAnalogReference(volts: AdcReferenceVoltages): this;
   setEventCoalescing(options: AVREventCoalescingOptions): this;
   load(options: AVROptions): this;
   loadHex(hex: string): this;
@@ -831,6 +842,16 @@ class AVRRuntime implements AVR {
       throw new Error(`useTiming(timing) expects "fast" or "cycle-exact", got ${timing}.`);
     }
     this.cpu.timing = timing;
+    return this;
+  }
+
+  useAnalogSampler(sampler: AdcSampler | null): this {
+    this.adc.setSampler(sampler);
+    return this;
+  }
+
+  useAnalogReference(volts: AdcReferenceVoltages): this {
+    this.adc.setReferenceVoltages(volts);
     return this;
   }
 

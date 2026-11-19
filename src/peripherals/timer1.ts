@@ -483,9 +483,14 @@ export class Timer1 implements PwmSource {
     const top = this.singleSlopeTop(mode);
     // Fast PWM holds TOP for one clock, giving a TOP+1 period. Its buffered
     // compare values transfer when the following clock reaches BOTTOM.
+    // Fast PWM changes OC1x on the compare match itself, the clock that leaves OCR1x and
+    // sets OCF1x, so the output stays high for OCR1x + 1 clocks: (OCR1x + 1) / (TOP + 1).
+    const fast = this.isFastPwmMode(mode);
     if (top !== undefined && this.count === top && (!blocked || mode === 5 || mode === 6 || mode === 7)) {
       this.count = 0;
-      if (this.isFastPwmMode(mode)) {
+      if (fast) {
+        // A match on TOP clears before BOTTOM sets, with the old compare buffers.
+        if (!blocked) this.handleLeftCompare(top);
         this.updateCompareBuffers();
         this.handleBottom();
         if (top === 0) {
@@ -494,22 +499,20 @@ export class Timer1 implements PwmSource {
         }
       }
       if (mode === 12 && top === 0) this.setTopFlag(mode);
-      if (!this.isFastPwmMode(mode) && top === 0xffff) this.setOverflowFlag();
-      this.handleCompare(0, "up");
+      if (!fast && top === 0xffff) this.setOverflowFlag();
+      if (!fast) this.handleCompare(0, "up");
       return;
     }
 
-    const wasBottom = this.count === 0;
+    const left = this.count;
     this.count = (this.count + 1) & 0xffff;
     if (this.count === 0) {
-      if (this.isFastPwmMode(mode)) this.updateCompareBuffers();
+      if (fast) this.updateCompareBuffers();
       this.handleBottom();
     }
-    if (wasBottom && !blocked && this.isFastPwmMode(mode)) {
-      if (this.activeOcrA === 0) this.handleCompareOutput("A");
-      if (this.activeOcrB === 0) this.handleCompareOutput("B");
-    }
-    this.handleCompare(this.count, "up");
+    if (fast) {
+      if (!blocked) this.handleLeftCompare(left);
+    } else this.handleCompare(this.count, "up");
 
     if (top !== undefined && this.count === top) {
       this.setTopFlag(mode);
@@ -673,6 +676,12 @@ export class Timer1 implements PwmSource {
   private handleCompare(counter: number, direction: "up" | "down"): void {
     if (counter === this.activeOcrA) this.handleCompareOutput("A", direction);
     if (counter === this.activeOcrB) this.handleCompareOutput("B", direction);
+  }
+
+  /** Fast-PWM compare outputs for the value the counter just left. */
+  private handleLeftCompare(counter: number): void {
+    if (counter === this.activeOcrA) this.handleCompareOutput("A");
+    if (counter === this.activeOcrB) this.handleCompareOutput("B");
   }
 
   private requestCompareIfEnabled(channel: PwmChannel): void {

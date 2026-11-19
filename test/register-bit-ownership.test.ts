@@ -117,7 +117,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.cpu.writeData(A.UBRR0H, 0xf0);
       avr.cpu.writeData(A.UCSR0B, bit(A.TXEN0));
       avr.cpu.writeData(A.UDR0, 0x55);
-      avr.runCycles(175);
+      avr.runCycles(159);
       expect(bytes).toEqual([]);
       avr.runCycles(1);
       expect(bytes).toEqual([0x55]);

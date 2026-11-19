@@ -46,7 +46,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           test(`${source} completion during wake, I=${Number(interrupts)}, PRR=${Number(gated)}`, () => {
             const avr = A.AVR({ timing });
             avr.cpu.flash.fill(0);
-            const duration = source === "SPI" ? 32 : source === "USART" ? 176 : 50;
+            const duration = source === "SPI" ? 32 : source === "USART" ? 160 : 50;
             const flagAddr = source === "SPI" ? A.SPSR : source === "USART" ? A.UCSR0A : A.ADCSRA;
             const flagBit = source === "SPI" ? A.SPIF : source === "USART" ? A.TXC0 : A.ADIF;
             const powerBit = source === "SPI" ? A.PRSPI : source === "USART" ? A.PRUSART0 : A.PRADC;

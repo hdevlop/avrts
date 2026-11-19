@@ -148,14 +148,16 @@ describe("Phase 5 timer completeness", () => {
     expect(avr.pwm(9).read()).toMatchObject({
       enabled: true,
       mode: "fast-pwm",
-      duty: 2 / 5,
+      duty: 3 / 6, // (OCR1A + 1) / (TOP + 1)
     });
 
     avr.runCycles(2);
     expect(readTcnt1(avr)).toBe(2);
-    expect(avr.pin(9).read()).toBe(false);
+    expect(avr.pin(9).read()).toBe(true);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(0);
+    // The compare match leaves OCR1A: it sets OCF1A and clears OC1A on the same clock.
     avr.runCycles(1);
+    expect(avr.pin(9).read()).toBe(false);
     expect(cpu.readData(TIFR1) & (1 << OCF1A)).toBe(1 << OCF1A);
 
     avr.runCycles(2);
@@ -311,7 +313,7 @@ describe("Phase 5 timer completeness", () => {
     expect(avr.pwm(9).read()).toMatchObject({
       enabled: true,
       mode: "fast-pwm",
-      duty: 511 / 1023,
+      duty: 512 / 1024,
     });
   });
 

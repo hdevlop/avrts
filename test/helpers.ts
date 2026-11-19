@@ -1,6 +1,7 @@
 export const INTEL_HEX_EOF = ":00000001FF";
 
-export const DEFAULT_USART_FRAME_CYCLES = 176;
+// UBRR0 = 0, 8N1: 10 bits (start, 8 data, stop) of 16 cycles.
+export const DEFAULT_USART_FRAME_CYCLES = 160;
 export const DEFAULT_SPI_TRANSFER_CYCLES = 32;
 export const DEFAULT_TWI_SCL_CYCLES = 16;
 export const DEFAULT_TWI_START_STOP_CYCLES = 1;

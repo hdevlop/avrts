@@ -89,7 +89,8 @@ two-byte receive-buffer overrun path.
 
 - [x] Pace host-injected RX by frame time: bytes queue on the "wire", RXC0 sets
   one frame after the byte starts arriving, using the Phase-1 frame formula
-  from the peripheral timing plan (keeping the simavr-calibrated +1 idle bit).
+  from the peripheral timing plan. (Until 0.1.5 this kept simavr's +1 idle bit;
+  frames now last their datasheet bit count.)
 - [x] Model the 2-level receive FIFO + shift register; overflow sets DOR0
   (sticky until the next UDR0 read; the lost frame is dropped).
 - [x] Add FE0 (host `usart.inject({framingError})`), UPE0 (injected, surfaced

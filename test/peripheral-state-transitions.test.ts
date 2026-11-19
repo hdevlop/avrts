@@ -18,8 +18,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           const vector = source === "RX" ? A.USART_RX_VECTOR : source === "UDRE" ? A.USART_UDRE_VECTOR : A.USART_TX_VECTOR;
           const control = bit(A.RXEN0) | bit(A.TXEN0);
           avr.cpu.writeData(A.UCSR0B, control | bit(mask));
-          if (source === "RX") { avr.serial.write("R"); avr.runCycles(176); }
-          if (source === "TX") { avr.cpu.writeData(A.UDR0, 0x54); avr.runCycles(176); }
+          if (source === "RX") { avr.serial.write("R"); avr.runCycles(160); }
+          if (source === "TX") { avr.cpu.writeData(A.UDR0, 0x54); avr.runCycles(160); }
           expect(pending(avr)).toContain(vector);
           const target = restored(avr, restore);
           target.cpu.writeData(A.UCSR0B, control);
@@ -63,7 +63,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           const mask = source === "RX" ? A.RXCIE0 : A.UDRIE0;
           const vector = source === "RX" ? A.USART_RX_VECTOR : A.USART_UDRE_VECTOR;
           avr.cpu.writeData(A.UCSR0B, bit(A.RXEN0) | bit(mask));
-          if (source === "RX") { avr.serial.write("A"); avr.runCycles(176); }
+          if (source === "RX") { avr.serial.write("A"); avr.runCycles(160); }
           avr.cpu.writeData(A.PRR, bit(A.PRUSART0));
           const target = restored(avr, restore);
           target.cpu.flash[vector] = 0x9518;
@@ -86,7 +86,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           const flagAddr = source === "SPI" ? A.SPSR : source === "USART" ? A.UCSR0A : A.ADCSRA;
           const flagBit = source === "SPI" ? A.SPIF : source === "USART" ? A.TXC0 : A.ADIF;
           const prBit = source === "SPI" ? A.PRSPI : source === "USART" ? A.PRUSART0 : A.PRADC;
-          const duration = source === "SPI" ? 32 : source === "USART" ? 176 : 50;
+          const duration = source === "SPI" ? 32 : source === "USART" ? 160 : 50;
           if (source === "SPI") {
             avr.cpu.writeData(A.DDRB, bit(2));
             avr.cpu.writeData(A.SPCR, bit(A.SPE) | bit(A.MSTR));
@@ -205,7 +205,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.cpu.flash.fill(0);
       avr.cpu.writeData(A.UCSR0B, bit(A.TXEN0) | bit(A.TXCIE0));
       avr.cpu.writeData(A.UDR0, 0x11);
-      avr.runCycles(176);
+      avr.runCycles(160);
       avr.cpu.writeData(A.UDR0, 0x22);
       expect(avr.cpu.readData(A.UCSR0A) & bit(A.TXC0)).toBe(bit(A.TXC0));
       expect(pending(avr)).toContain(A.USART_TX_VECTOR);

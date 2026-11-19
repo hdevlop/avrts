@@ -50,7 +50,11 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           avr.runCycles(1);
           expect(avr.pwm(t.pinB).read().value).toBe(4);
           expect(avr.pwm(t.pinA).read().value).toBe(6);
-          expect(avr.pwm(t.pinB).read().duty).toBe(4 / (mode < 4 ? 255 : 6));
+          // Phase-correct duty is OCR / TOP; fast PWM is high through the clock that leaves
+          // OCR, (OCR + 1) / (TOP + 1).
+          const phase = mode === 1 || mode === 5;
+          const updatedTop = mode < 4 ? 255 : 6;
+          expect(avr.pwm(t.pinB).read().duty).toBe(phase ? 4 / updatedTop : 5 / (updatedTop + 1));
         });
 
         test(`WGM ${mode} has the specified period and overflow edge`, () => {
@@ -81,7 +85,10 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           expect(levels).toEqual([]);
           avr.runCycles(1);
           expect(levels).toEqual([!inverted]);
+          // The new OCR of 6 holds the level through count 6 and changes leaving it.
           avr.runCycles(6);
+          expect(levels).toEqual([!inverted]);
+          avr.runCycles(1);
           expect(levels).toEqual([!inverted, inverted]);
         });
 
@@ -137,7 +144,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
           avr.cpu.writeData(t.port, t.portB);
           avr.cpu.writeData(t.controlA, (mode & 3) | (1 << 6) | (1 << 4));
           const initialA = avr.pin(t.pinA).read();
-          avr.runCycles(8);
+          // WGM 7 toggles on the compare match that leaves TOP (8), after nine clocks.
+          avr.runCycles(mode === 5 ? 8 : 9);
           expect(avr.pin(t.pinA).read()).toBe(!initialA);
           expect(avr.pin(t.pinB).read()).toBe(true);
           const restored = A.AVR({ timing }).restore(avr.snapshot());

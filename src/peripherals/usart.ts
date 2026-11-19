@@ -385,9 +385,11 @@ export class Usart0 {
     // Async: 16 (or 8 with U2X0) clocks per bit; synchronous and MSPIM: 2.
     const perBit =
       mode === MODE_ASYNC ? ((this.cpu.data[UCSR0A]! & (1 << U2X0)) !== 0 ? 8 : 16) : 2;
-    // simavr surfaces TXC0 one bit-time after the raw frame bits have shifted;
-    // MSPIM is a raw 8-bit exchange with no start/stop/idle bits.
-    const bits = mode === MODE_MSPIM ? 8 : this.frameBits() + 1;
+    // A frame lasts its start, data, parity and stop bits, so back-to-back frames
+    // follow each other at that rate, as on the chip (8N1: 10 bit times). Native
+    // simavr adds one idle bit per frame; that is a recorded oracle deviation.
+    // MSPIM is a raw 8-bit exchange with no start/stop bits.
+    const bits = mode === MODE_MSPIM ? 8 : this.frameBits();
     return Math.max(1, (ubrr + 1) * perBit * bits);
   }
 

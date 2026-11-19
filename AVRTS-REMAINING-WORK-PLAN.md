@@ -2,10 +2,11 @@
 
 Release update, 2026-10-24: version 0.1.3 includes the prepared digital models and
 the subsequent library correctness review. Current release status is recorded in
-[0.1.4 release evidence](docs/evidence/release-0.1.4.md). The October 6/10 counts,
+[0.1.5 release evidence](docs/evidence/release-0.1.5.md); 0.1.4 is in
+[its evidence](docs/evidence/release-0.1.4.md). The October 6/10 counts,
 candidate identities and publication checklists below remain historical evidence.
 
-Created: 2026-10-06. Updated: 2026-10-28. Status: selected digital implementation and release acceptance completed; 0.1.4 publication is recorded in the October 28 receipt.
+Created: 2026-10-06. Updated: 2026-11-19. Status: selected digital implementation and release acceptance completed; 0.1.4 publication is recorded in the October 28 receipt; 0.1.5 (datasheet serial frames and fast-PWM duty, ADC sampler) is prepared.
 
 ## Current status and remaining work
 

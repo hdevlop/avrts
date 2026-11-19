@@ -141,7 +141,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         avr.runCycles(70);
         expect(avr.cpu.readData(A.TCNT2)).toBe(0);
         expect(avr.pwm(3).read().value).toBe(4);
-        expect(avr.pwm(3).read().duty).toBe(4 / 6);
+        expect(avr.pwm(3).read().duty).toBe(5 / 7); // fast PWM: (OCR2B + 1) / (TOP + 1)
       });
     }
 

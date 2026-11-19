@@ -3,6 +3,34 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.5 - 2026-11-19
+
+Datasheet timing for serial frames and fast PWM, and a host-driven ADC sample point.
+
+### Added
+
+- `avr.useAnalogSampler(sampler)`: a host that solves the circuit itself supplies
+  ADC0-ADC7 voltages when each conversion's sample-and-hold closes. The sampler
+  receives the channel, cycle and reference and returns volts, or `undefined` for
+  the value set on the channel. Internal channels keep their own values.
+- `avr.useAnalogReference({ avcc, aref })` sets the AVcc and AREF rails (5 V each
+  by default). Both settings survive resets and are not part of snapshots.
+
+### Changed
+
+- USART byte mode paces frames by their start, data, parity and stop bits: 8N1 is
+  10 bit times, both for transmitted bytes and for host bytes received with
+  `serial.write(...)`, and TXC0 sets when the stop bit has shifted out. 0.1.4 added
+  native simavr's extra idle bit to every frame, so serial ran 10% slow. The
+  simavr timing oracle records that one-bit native difference explicitly.
+- Fast PWM (Timer0/2 WGM 3 and 7, Timer1 WGM 5-7, 14 and 15) changes its compare
+  output on the clock that leaves OCR, the same clock that sets OCFnx, so the output
+  is high for OCR + 1 timer clocks: `(OCR + 1) / (TOP + 1)`, the datasheet duty
+  (`analogWrite(5, 191)` is 75%). `pwm(...).read().duty` reports the same.
+  Phase-correct PWM is unchanged (`OCR / TOP`).
+- ADC results use the datasheet conversion, `Vin * 1024 / Vref` truncated, instead
+  of rounding `Vin * 1023 / Vref`.
+
 ## 0.1.4 - 2026-10-28
 
 ### Fixed

@@ -237,7 +237,8 @@ describe("Phase 9 golden fixtures", () => {
       mode: "phase-correct-pwm",
       value: 128,
     });
-    expect(avr.pwm(5).read().duty).toBe(191 / 255);
+    // Timer0's fast PWM is high through OCR0B: (191 + 1) / 256, the chip's 75%.
+    expect(avr.pwm(5).read().duty).toBe(192 / 256);
     expect(avr.pwm(3).read().duty).toBe(128 / 255);
     for (const pin of [5, 9, 10, 11, 3]) {
       expect(pinEvents.get(pin)).toContain(true);

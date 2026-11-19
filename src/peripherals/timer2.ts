@@ -728,16 +728,23 @@ export class Timer2 implements PwmSource {
       return;
     }
 
-    if ((mode === 2 || mode === 3 || mode === 7) && counter === top &&
+    // Fast PWM changes OC2x on the compare match itself, the clock that leaves OCR2x and
+    // sets OCF2x, so the output stays high for OCR2x + 1 clocks: (OCR2x + 1) / 256.
+    const fast = mode === 3 || mode === 7;
+    if ((mode === 2 || fast) && counter === top &&
         (mode === 3 || (!blocked && !this.compareBusy("A")))) {
       this.cpu.data[TCNT2] = 0;
       if (mode !== 2) {
+        // A match on TOP clears before BOTTOM sets, with the old compare buffers.
+        if (!blocked) this.handleLeftCompare(counter);
         this.updateCompareBuffers();
         this.handleBottom();
         // The 8-bit fast-PWM overflow edge is TOP -> BOTTOM (timing diagrams).
         this.setOverflowFlag();
-      } else if (counter === 0xff) this.setOverflowFlag();
-      this.handleCompare(0);
+      } else {
+        if (counter === 0xff) this.setOverflowFlag();
+        this.handleCompare(0);
+      }
       return;
     }
 
@@ -746,13 +753,17 @@ export class Timer2 implements PwmSource {
     if (next === 0) {
       if (this.isPwmMode()) this.updateCompareBuffers();
       this.handleBottom();
-      if (mode !== 3 && mode !== 7) this.setOverflowFlag();
+      if (!fast) this.setOverflowFlag();
     }
-    if (counter === 0 && !blocked && (mode === 3 || mode === 7)) {
-      if (this.activeOcrA === 0) this.handleCompareOutput("A");
-      if (this.activeOcrB === 0) this.handleCompareOutput("B");
-    }
-    this.handleCompare(next);
+    if (fast) {
+      if (!blocked) this.handleLeftCompare(counter);
+    } else this.handleCompare(next);
+  }
+
+  /** Fast-PWM compare outputs for the value the counter just left. */
+  private handleLeftCompare(counter: number): void {
+    if (counter === this.activeOcrA) this.handleCompareOutput("A");
+    if (counter === this.activeOcrB) this.handleCompareOutput("B");
   }
 
   private setOverflowFlag(): void {

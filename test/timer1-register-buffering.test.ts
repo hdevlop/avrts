@@ -189,7 +189,10 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         expect(levels).toEqual([]);
         avr.runCycles(1);
         expect(levels).toEqual([!inverted]);
+        // The new OCR1B of 6 holds the level through count 6 and changes leaving it.
         avr.runCycles(6);
+        expect(levels).toEqual([!inverted]);
+        avr.runCycles(1);
         expect(levels).toEqual([!inverted, inverted]);
       });
     }
@@ -200,10 +203,11 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       writeWord(avr, A.OCR1AL, 4);
       avr.runCycles(3);
       expect(counter(avr)).toBe(10);
-      expect(avr.pwm(10).read().duty).toBe(2 / 10);
+      // Fast PWM duty is (OCR1B + 1) / (TOP + 1).
+      expect(avr.pwm(10).read().duty).toBe(3 / 11);
       avr.runCycles(1);
       expect(counter(avr)).toBe(0);
-      expect(avr.pwm(10).read().duty).toBe(2 / 4);
+      expect(avr.pwm(10).read().duty).toBe(3 / 5);
       avr.runCycles(4);
       expect(counter(avr)).toBe(4);
       avr.runCycles(1);
@@ -244,7 +248,7 @@ for (const timing of ["fast", "cycle-exact"] as const) {
       avr.runCycles(7);
       avr.cpu.writeData(A.TIFR1, 0xff);
       writeWord(avr, A.ICR1L, 4);
-      expect(avr.pwm(10).read().duty).toBe(2 / 4);
+      expect(avr.pwm(10).read().duty).toBe(3 / 5);
       avr.runCycles(1);
       expect(counter(avr)).toBe(8);
       avr.runCycles(65536 - 8);
@@ -351,7 +355,8 @@ for (const timing of ["fast", "cycle-exact"] as const) {
         const avr = setup(mode, 10);
         avr.cpu.writeData(A.PORTB, bit(2));
         avr.cpu.writeData(A.TCCR1A, (mode & 3) | bit(A.COM1A0) | bit(A.COM1B0));
-        const untilMatch = mode === 14 ? 3 : 10;
+        // Fast PWM toggles on the match that leaves OCR1A: 3 in WGM 14, TOP (10) in WGM 15.
+        const untilMatch = mode === 14 ? 4 : mode === 15 ? 11 : 10;
         avr.runCycles(untilMatch);
         expect(avr.pin(9).read()).toBe(true);
         expect(avr.pin(10).read()).toBe(true);

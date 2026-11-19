@@ -35,8 +35,10 @@ Not machine-checked; keep in sync with the implementation by review.
   parity/framing errors come from received bits. Synchronous external XCK and
   master XCK/MSPIM are supported. Serial clocks pause through PRR/sleep and
   snapshots preserve partially shifted frames. Byte injection is rejected in
-  wire mode. The legacy byte mode retains its native-oriented extra idle bit;
-  wire TX completes after its actual start/data/parity/stop bits. Physical
+  wire mode. Since 0.1.5 the byte mode paces frames by their start, data,
+  parity and stop bits too (8N1: 10 bit times), so TXC0 sets when the stop bit
+  has shifted out; native simavr adds one idle bit, a deviation the timing
+  oracle records. Physical
   electrical timing and oscillator error tolerances are not calibrated.
 - **SPI** retains byte responder/host-master APIs by default; `avr.spi.useWire()`
   selects SCK/PB5, MOSI/PB3 and MISO/PB4 for master/slave transfers, all four

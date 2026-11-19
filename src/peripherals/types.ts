@@ -36,6 +36,30 @@ export interface AnalogChannelHandle {
   setVoltage(volts: number, referenceVolts?: number): void;
 }
 
+/** The ADC reference a conversion uses, from ADMUX.REFS1:0. */
+export type AdcReference = "aref" | "avcc" | "internal";
+
+/** One ADC sample point: the sample-and-hold closes now, on this channel. */
+export interface AdcSample {
+  /** ADC0-ADC7; internal channels (temperature, bandgap, ground) are not sampled. */
+  channel: number;
+  /** CPU cycles at the sample point. */
+  cycles: number;
+  reference: AdcReference;
+}
+
+/**
+ * Supplies a pin's voltage when the ADC samples it, or undefined to use the value set
+ * through `analog(channel)`. Called synchronously from the simulation.
+ */
+export type AdcSampler = (sample: AdcSample) => number | undefined;
+
+/** Reference rails in volts: AVcc (default 5) and the AREF pin (default 5). */
+export interface AdcReferenceVoltages {
+  avcc?: number;
+  aref?: number;
+}
+
 export interface AnalogComparatorHandle {
   /** Deterministic CPU-clock delays; defaults to the existing immediate logical comparison. */
   setTiming(options: { propagationCycles: number; settlingCycles?: number }): void;
