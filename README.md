@@ -474,8 +474,8 @@ bun run bench:revision --baseline /path/to/baseline/checkout --output comparison
 ```
 
 The current benchmark policy is documented in
-[docs/performance-summary.md](docs/performance-summary.md) and
-[docs/benchmark-plan.md](docs/benchmark-plan.md). Speed claims should use
+[docs/performance-summary.md](docs/performance-summary.md), including its benchmark
+methodology. Speed claims should use
 isolated runs because production normally runs one firmware per simulator
 instance.
 

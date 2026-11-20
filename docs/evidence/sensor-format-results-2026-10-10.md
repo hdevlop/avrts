@@ -1,7 +1,7 @@
 # Sensor-format result oracle — 2026-10-10
 
 This local development slice completes `sensor-format` result coverage in
-[Phase 1](../../AVRTS-REMAINING-WORK-PLAN.md#5-phase-1--complete-benchmark-result-fidelity).
+Phase 1 of the remaining-work plan (removed 2026-11-20; its text is in git history at `f17ba76`).
 It follows the arithmetic slice on baseline commit
 `859b7fef58ac5864618c01d484c6bcf64b077d89`. Changes remain uncommitted.
 Emulator library source and public APIs are unchanged by this slice.

@@ -1,12 +1,13 @@
 # Documentation reconciliation evidence
 
 Date: 2026-10-06. Baseline source revision: `859b7fef58ac5864618c01d484c6bcf64b077d89`.
-Scope: Phase 0 of the [root remaining-work plan](../../AVRTS-REMAINING-WORK-PLAN.md).
+Scope: Phase 0 of the root remaining-work plan. That plan and the others named below
+were removed on 2026-11-20; their text is in git history at `f17ba76`.
 
 ## Changes
 
-- Marked the completed [ATmega328P roadmap](../complete-atmega328p-plan.md),
-  [review fix plan](../PLAN.md) and [peripheral timing plan](../real-peripheral-timing-plan.md)
+- Marked the completed ATmega328P roadmap,
+  review fix plan and peripheral timing plan
   as historical implementation records, with links to the active root queue.
 - Replaced broad silicon/simulator equivalence claims with the actual boundaries:
   register/vector classification, selected result scenarios, native probes and
@@ -18,7 +19,7 @@ Scope: Phase 0 of the [root remaining-work plan](../../AVRTS-REMAINING-WORK-PLAN
 - Added the missing native result-suite gate to [RELEASING.md](../../RELEASING.md)
   and documented the native toolchain boundary separately from CI.
 - Added explicit result coverage and activity classifications to the
-  [benchmark plan](../benchmark-plan.md). Seven external workloads still need
+  benchmark plan. Seven external workloads still need
   result/state coverage; `serial-print-listener` shares serial firmware.
 - Qualified the [performance summary](../performance-summary.md): one-shot serial
   startup output followed by idle execution cannot establish continuous UART

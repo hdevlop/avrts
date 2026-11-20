@@ -1,7 +1,7 @@
 # Float and bit-bang result-oracle evidence
 
 Date: 2026-10-06. Baseline library revision: `859b7fef58ac5864618c01d484c6bcf64b077d89`.
-Scope: the first implementation slice of [Phase 1](../../AVRTS-REMAINING-WORK-PLAN.md#5-phase-1--complete-benchmark-result-fidelity).
+Scope: the first implementation slice of Phase 1 of the remaining-work plan (removed 2026-11-20; its text is in git history at `f17ba76`).
 
 ## Result coverage
 

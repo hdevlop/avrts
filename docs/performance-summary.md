@@ -4,11 +4,11 @@ The single source of truth for avrts performance. It folds in the earlier
 performance docs — the original FastBlock/generated-core arc, the concluded
 monolithic-core experiment, and the real-code dispatch + FastBlock levers — which
 have been consolidated here and removed. (The benchmark harness / external-simulator
-methodology lives separately in [`benchmark-plan.md`](benchmark-plan.md).)
+methodology is in [Benchmark methodology](#benchmark-methodology) below.)
 
-Status: dated measurements and optimization rationale. Current implementation
-priorities and remaining correctness/release obligations are in the
-[root remaining-work plan](../AVRTS-REMAINING-WORK-PLAN.md).
+Status: dated measurements and optimization rationale. Open work is listed in
+[limitations](limitations.md#open-work) and release obligations in
+[RELEASING.md](../RELEASING.md).
 
 ## How the engine works
 
@@ -40,7 +40,7 @@ five 50-million-cycle trials per workload in isolated processes.
 post-warmup cycle rate does not establish continuous UART throughput.
 `analog-write` has an idle foreground with active hardware PWM. The IO/peripheral
 row groups different activity patterns; see the
-[workload activity audit](benchmark-plan.md#remaining-result-coverage-and-workload-activity)
+[workload activity notes](#workload-activity)
 for interpretation and outstanding result checks. The recorded ratios remain
 unchanged; this qualification narrows what they support.
 
@@ -207,3 +207,114 @@ and narrow before/after performance comparisons. Physical calibration remains
 unrun. Earlier measurements above remain
 dated history; [current performance evidence](evidence/runtime-performance-2026-10-10.md)
 uses identical candidate firmware on both revisions.
+
+## Benchmark methodology
+
+Moved here from the benchmark plan (removed 2026-11-20; its text is in git history at `f17ba76`), which also holds its per-fixture
+history. Measurements live in the [evidence](evidence/) records.
+
+### Workload activity
+
+| Coverage | Workloads |
+| --- | --- |
+| Result comparisons against both avr8js and native simavr | `peripheral-mix`, `isr-heavy`, `string-heavy`, `dsp-fixed`, `peripheral-bound`, `float-math`, `bitbang-crc`, `sensor-format` |
+| Additional completed result/state/waveform comparisons | `serial-print`, `analog-write`, `delay-blink`, `tight-loop` |
+| Shared-fixture delivery check completed | `serial-print-listener`, in fast and cycle-exact modes |
+
+The [arithmetic oracle slice](evidence/arithmetic-results-2026-10-06.md) covers
+32 float iterations and 32 bit-banged transfers, expected output bytes and both
+clock-edge counts, with four input patterns and no new normalizations. The
+[sensor-format slice](evidence/sensor-format-results-2026-10-10.md) adds complete
+history, exact UART output, counter wrap and PWM endpoints at five starting
+indices, also without new normalizations. The [completion batch](evidence/workload-results-2026-10-10.md) adds the four remaining cases and shared listener check. All twelve external fixtures now have result/state checks. Native phase-correct PWM GPIO traces remain explicitly unsupported in this build; SRAM/configuration still compare and both JS engines check all five waveforms.
+
+The current `serial-print` sketch prints `hello avrts` once at startup and then
+has an empty loop. Its listener variant uses the same sketch. After warmup,
+the timed region may contain only idle foreground/timer work, so neither rate
+establishes sustained USART transmission or listener delivery throughput.
+`analog-write` also has an empty loop, but its five hardware PWM outputs remain
+active; its appropriate fidelity check observes waveforms and timer state.
+The mixed and peripheral-bound fixtures run continuous batches in speed mode.
+Keep these activity classifications alongside any ratio, and add a separately
+named continuous serial fixture if sustained UART work is needed.
+
+### Fixtures and toolchains (2026-10-06)
+
+The vendored AVR compiler, installed Arduino AVR 1.8.8 core and its AVR GCC
+7.3.0 tools, and local MSYS2 compiler/simavr headers and static library are
+present. This is a file-availability check, not a rebuild or a native test run.
+The October fixture build used that core/toolchain with cached Uno core objects
+because Arduino CLI was unavailable; see the
+[fixture build record](../examples/arduino-peripheral-bound/README.md).
+
+Normal `bun run fixtures:arduino` regeneration requires a working Arduino CLI
+and installed Uno board core; `ARDUINO_CLI` can select the CLI. Both fixture
+scripts accept `AVR_GCC_BIN` for compiler/binutils selection. Native probes
+accept `SIMAVR_PREFIX` and `SIMAVR_CC`; the Windows harness uses local MSYS2
+bash when available. The existing CI does not provision these native dependencies.
+Committed HEX files let ordinary source/package tests run without rebuilding
+fixtures. Record the actual compiler flags and artifact digests on regeneration.
+
+### Adding a fixture
+
+Each fixture must target a **distinct** instruction mix, or it adds noise, not
+signal. Add a fixture only with a one-line note on what it stresses that the
+others don't. Adding one means: drop a compiled `.ino.hex` in `examples/`, add an
+entry to `createBenchmarkCases()` for `bench` and `profile:opcodes`, add a matching
+entry to `scripts/benchmark-compare.ts`'s `WORKLOADS` for avr8js comparison, and
+wire `bench:result` only when the fixture has a useful final-state oracle.
+
+Accept criteria for each new fixture: it lands with (a) a profiled hot-opcode
+table showing it exercises a *different* mix, and (b) a recorded `bench:compare`
+ratio. If two fixtures profile nearly identically, drop one.
+
+### Measuring (keep the numbers honest)
+
+- **`--isolate` is mandatory for real-code claims.** `bench:compare --isolate` runs
+  one firmware per subprocess (fresh heap), which is how the simulator is used in
+  production and keeps each fixture's hot methods monomorphic. The single-process
+  default co-runs all firmwares and **megamorphically deoptimizes avrts's shared
+  hot path ~3x** (avr8js is nearly immune), so it under-reports real-code throughput
+  badly. Use the default only for the synthetic/IO-bound fixtures, which are
+  insensitive to the artifact. Every real-code ratio below is `--isolate`.
+- **Steady-state, not setup.** Use cycle budgets large enough that fixture
+  startup is a small fraction. The comparison now excludes construction and
+  runs 500,000 warm-up cycles per trial by default (`--warmup-cycles` overrides
+  it). Raw samples separately record construction time and actual simulated
+  cycles; `--output FILE` saves JSON and `--json` prints it. `bun run bench`
+  remains a construction-inclusive regression floor; `bench:startup` separately
+  measures construction. Their rates are not interchangeable.
+- **Hold firmware constant across revisions.** `bench:revision` loads the
+  candidate checkout's HEX for both engines and records `fixtureRoot` in JSON.
+  Fixture rebuilds must not turn an emulator comparison into different programs.
+- **Exercise the same environment and keep work active.** The comparison gives
+  both engines ADC raw 512, D2 high and the same ACKing TWI slave. Continuous
+  `peripheral-mix` resets its round accumulators; result runners select halt
+  mode with SRAM `0x02ff=0x42`. Per-sample TWI STOP counts verify that measured
+  execution still completes bus work after warm-up. Earlier mixed-fixture
+  speed runs included a halted tail; the avr8js speed runner also omitted TWI.
+  Those rates do not establish mixed-peripheral throughput.
+- **Noise.** Throughput is machine-load sensitive — a uniform dip across *all*
+  fixtures is load, not a regression. Use `--repeats 5` (best-of-N) and re-run
+  before believing a drop. A real regression hits *specific* fixtures.
+- **Cycle% ≠ host-time%.** The profiler attributes *simulated AVR cycles*, which
+  is a proxy for host time, not host time itself. A row that's 14% of cycles can
+  be more or less than 14% of host time depending on what those instructions do.
+  Treat cycle% as a ranking hint, then confirm with `bench:compare`.
+- **Profile first.** Start every optimization slice from
+  `profile:opcodes --mode fast`; keep a patch only if `bench:compare` is
+  neutral-or-better on the full mix.
+- **Measure speed *and* fidelity.** A speed win that changes output is a bug.
+  Pair every throughput fixture with a final-state oracle check (see comparison targets below).
+
+### Comparison targets
+
+- **avr8js** (JS/TS) is the fair speed competitor and the primary `bench:compare` target.
+- **Native simavr** is the accuracy oracle: `oracle:simavr` dumps state,
+  `oracle:simavr:compare` checks normalized core state, `oracle:simavr:result` compares
+  result RAM, registers and serial output for the result fixtures, and
+  `oracle:simavr:timing` compares peripheral timing.
+- Not pursued: a general fidelity benchmark (every speed fixture paired with a
+  final-state oracle check); a simavr-to-WASM speed ceiling, out of scope while the
+  translate-once JIT / WASM path is not being pursued; and simulavr or qemu-system-avr,
+  only worth adding to settle an accuracy dispute.

@@ -1,9 +1,8 @@
 # Release Process
 
-Release scope and remaining obligations are tracked in the
-[root remaining-work plan](AVRTS-REMAINING-WORK-PLAN.md). Prepared artifact
-evidence, Git/CI success, npm publication and published-consumer acceptance
-must be recorded as separate outcomes.
+Prepared artifact evidence, Git/CI success, npm publication and published-consumer
+acceptance must be recorded as separate outcomes. Each release has a receipt in
+[docs/evidence](docs/evidence/) (`release-X.Y.Z.md`).
 
 ## One-time owner decisions
 
@@ -35,3 +34,29 @@ Never publish from a dirty worktree or by bypassing `prepublishOnly`.
 Native simavr gates require the local compiler and simavr headers/libraries;
 the current GitHub CI jobs do not install or run them. Record a missing native
 environment as blocked, rather than inferring native success from CI.
+
+## Acceptance and rollback
+
+Keep the acceptance states separate: source validated; browser validated; native
+probes validated; artifact prepared; Git/CI verified; npm published; published
+consumer validated. Do not report a dry run, local archive, Git push or green workflow
+as npm publication.
+
+Before publishing, replace a bad candidate and repeat the affected checks. After
+publishing, use a corrective version and the registry's policies; never overwrite a
+published version or rewrite published Git history.
+
+## Everyday verification
+
+Run focused tests while working, then the applicable gates once after the final
+change; do not rerun an unchanged full suite without a reason.
+
+- `bun run verify`: source, generated core and all Bun tests.
+- `bun run build:lib` and `bun run package:smoke`: built package and consumer exports.
+- `bun run bench:result`: result fidelity against avr8js.
+- `bun run evidence:digital-models` after changes to Timer2 asynchronous
+  source/reset/flag-clear handshakes (it needs the native oracle environment).
+- `git diff --check` before committing.
+
+Keep fixture rebuilds (`fixtures:arduino`, `fixtures:avr-gcc`) separate from ordinary
+source testing, and record missing local toolchains honestly.

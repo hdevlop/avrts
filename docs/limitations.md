@@ -5,9 +5,8 @@ The unmodeled register/vector tables are machine-checked:
 interrupt vector is classified as modeled, plain storage, reserved, or listed
 here as unmodeled. Inconsistent table rows and installed hooks fail the test.
 The behavioral paragraphs below are maintained by review, not by that matrix.
-Current phase assignments for every known limitation are in the
-[root remaining-work inventory](../AVRTS-REMAINING-WORK-PLAN.md#11-full-limitation-disposition-inventory).
-The [chip-level roadmap](complete-atmega328p-plan.md) records completed historical phases.
+Every known limitation was reconciled against the remaining-work plan (removed 2026-11-20; its text is in git history at `f17ba76`);
+what is still open is under [Open work](#open-work).
 
 ## Unmodeled registers
 
@@ -220,3 +219,14 @@ is historical. The user selected the deferred digital models for implementation.
 Physical calibration, electrical noise/current, wear and debugWIRE require
 separate hardware evidence or remain permanent non-goals. Local tests establish
 these logical models; they do not establish every physical silicon behavior.
+
+## Open work
+
+There is no unfinished digital implementation queue. What remains:
+
+- Physical timing calibration is unrun. It needs a separately selected hardware scope
+  and captured measurements; mark hardware acceptance unrun until measurements exist.
+- Optional: a reproducible native-oracle CI lane, once the toolchain is pinned and its
+  installation is demonstrated on the runner (CI does not run the native simavr gates
+  today), and npm trusted publishing/provenance.
+- Physical electrical effects, memory wear and debugWIRE keep their exclusions above.

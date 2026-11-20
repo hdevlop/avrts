@@ -5,7 +5,7 @@ import { AVR } from "../src";
 import * as cpuConstants from "../src/cpu";
 
 /**
- * Phase 0 of docs/complete-atmega328p-plan.md: the register & vector coverage
+ * Phase 0 of the ATmega328P plan (removed; in git history at f17ba76): the register & vector coverage
  * matrix. Every ATmega328P IO/extended-IO address (0x20-0xff) and all 26
  * interrupt vectors are classified here, and the classification is checked
  * against the live simulator (installed hooks) and docs/limitations.md so the
