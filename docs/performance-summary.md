@@ -105,7 +105,36 @@ and 68.3 after both (median of five 80M-cycle runs). The same-session
 avr8js's own rates moved by up to 4% between the two runs; the ratios use each
 run's own pair. `bench:result` still matches avr8js on all 12 workloads, and the
 fast core still matches `tick()` on every benchmark case. float-math and
-bitbang-crc gained least: their time is in handler fallbacks, not the tail.
+bitbang-crc gained least. (This note first said their time was in handler
+fallbacks; for bitbang-crc that was wrong, see the next section.)
+
+## 2026-11-20: pin-change notification
+
+bitbang-crc's hot instructions all run inline. Its time was in what each `SBI`/`CBI`
+on a port sets off: `Gpio.notify` copied the port's subscriber set into a new array,
+and the AVR's watcher for each of the port's pins recomputed the whole level byte
+(`effectivePinByte`), six times per PORTB write. Together about 35% of the run.
+Subscribers are now a copy-on-write array (same order, and a notification still walks
+the list it started with), and pin watchers share one level byte, recomputed only after
+a callback has caused a nested notification. Every level change through `Gpio` ends in
+one, so the byte cannot go stale; `test/gpio-notify.test.ts` covers listeners that
+change a later or earlier pin of the same port (with the recompute disabled, the first
+fails).
+
+`bench:compare --isolate --repeats 5`, three rounds alternating before and after, median
+avrts rate in Mcycles/s:
+
+| workload | before | after | change |
+| -------- | -----: | ----: | -----: |
+| bitbang-crc | 20.3 | 31.6 | +55% |
+| peripheral-mix | 110.2 | 132.1 | +20% |
+| peripheral-bound | 26.4 | 30.1 | +14% |
+| isr-heavy | 71.7 | 80.4 | +12% |
+
+The others moved within their run-to-run spread: sensor-format (median -7%) ranged
+53.9-84.6 before and 56.7-87.1 after, string-heavy (-5%) 68.8-71.2 and 55.5-69.4.
+avr8js ran bitbang-crc at about 41M/s in these runs, so avrts went from about 0.44x
+to 0.62-0.77x. `bench:result` still matches avr8js on all 12 workloads.
 
 ## What we learned (the important part)
 

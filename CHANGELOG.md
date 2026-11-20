@@ -3,6 +3,17 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.8 - 2026-11-20
+
+Cheaper pin changes.
+
+### Changed
+
+- A write to PORTx, DDRx or PINx no longer copies the port's subscribers or recomputes
+  the port's level once per watched pin; pin watchers share one computed level. Bit-
+  banging firmware runs about 55% faster (bitbang-crc), and port-heavy workloads 12-20%
+  faster. Listener order and results are unchanged.
+
 ## 0.1.7 - 2026-11-20
 
 A faster generated core.

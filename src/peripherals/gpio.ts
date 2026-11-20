@@ -21,12 +21,28 @@ const DDR_ADDR: Record<PortName, number> = { B: DDRB, C: DDRC, D: DDRD };
 const PIN_ADDR: Record<PortName, number> = { B: PINB, C: PINC, D: PIND };
 
 /**
+ * One subscriber to a port, in subscription order: a pin watcher (`pin`, checked
+ * against the port's level byte) or any other callback (`touched`). One shape for
+ * both keeps `notify` monomorphic.
+ */
+interface PortWatcher {
+  readonly bit: number;
+  prev: boolean;
+  readonly pin: ((high: boolean) => void) | undefined;
+  readonly ignoreRestore: boolean;
+  readonly touched: ((restored: boolean) => void) | undefined;
+}
+
+/**
  * Digital I/O for ports B, C and D. The @OnWrite hooks fire when the CPU writes a
  * PORT or DDR register; each notifies that port's subscribers, which then re-read
  * and report any actual change. External input is injected via `setInput`.
  */
 export class Gpio {
-  private readonly touched = new Map<PortName, Set<(restored: boolean) => void>>();
+  /** Replaced, never mutated, on (un)subscribe: a notify walks the list it started with. */
+  private readonly watchers: Record<PortName, readonly PortWatcher[]> = { B: [], C: [], D: [] };
+  /** Counts notifications; every change to a pin's level through Gpio ends in one. */
+  private notifications = 0;
   private readonly peripheralMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
   private readonly peripheralValue: Record<PortName, number> = { B: 0, C: 0, D: 0 };
   private readonly forcedMask: Record<PortName, number> = { B: 0, C: 0, D: 0 };
@@ -182,14 +198,8 @@ export class Gpio {
 
   /** Subscribe to effective level changes of a single pin. */
   onPinChange(port: PortName, bit: number, listener: (high: boolean) => void, ignoreRestore = false): () => void {
-    let prev = this.readPin(port, bit);
-    return this.onTouched(port, (restored) => {
-      const high = this.readPin(port, bit);
-      if (high !== prev) {
-        prev = high;
-        if (!restored || !ignoreRestore) listener(high);
-      }
-    });
+    const prev = this.readPin(port, bit);
+    return this.watch(port, { bit, prev, pin: listener, ignoreRestore, touched: undefined });
   }
 
   /** Effective levels of all 8 pins of a port, packed into a byte (for PCINT). */
@@ -222,20 +232,41 @@ export class Gpio {
 
   /** Low-level: run `cb` whenever anything on `port` is touched (PORT/DDR/PIN). */
   private onTouched(port: PortName, cb: (restored: boolean) => void): () => void {
-    let set = this.touched.get(port);
-    if (!set) {
-      set = new Set();
-      this.touched.set(port, set);
-    }
-    set.add(cb);
+    return this.watch(port, { bit: -1, prev: false, pin: undefined, ignoreRestore: false, touched: cb });
+  }
+
+  private watch(port: PortName, watcher: PortWatcher): () => void {
+    this.watchers[port] = [...this.watchers[port], watcher];
     return () => {
-      set.delete(cb);
+      this.watchers[port] = this.watchers[port].filter((entry) => entry !== watcher);
     };
   }
 
+  /**
+   * Tell the port's subscribers, in order, that it was touched. Pin watchers share one
+   * computed level byte: an AVR watches every pin, and recomputing it per watcher cost
+   * more than the write. A callback that changes a level does so through Gpio, which
+   * notifies again, so the byte is recomputed only after such a nested notification.
+   */
   private notify(port: PortName, restored = false): void {
-    const set = this.touched.get(port);
-    if (set) for (const cb of [...set]) cb(restored);
+    const watchers = this.watchers[port];
+    let seen = ++this.notifications;
+    let byte = -1;
+    for (let i = 0; i < watchers.length; i += 1) {
+      const watcher = watchers[i]!;
+      if (watcher.touched !== undefined) watcher.touched(restored);
+      else {
+        if (byte < 0) byte = this.effectivePinByte(port);
+        const high = ((byte >> watcher.bit) & 1) === 1;
+        if (high === watcher.prev) continue;
+        watcher.prev = high;
+        if (!restored || !watcher.ignoreRestore) watcher.pin!(high);
+      }
+      if (this.notifications !== seen) {
+        seen = this.notifications;
+        byte = -1;
+      }
+    }
   }
 
   private togglePortFromPinWrite(port: PortName, value: number, oldValue: number): void {
