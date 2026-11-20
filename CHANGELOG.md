@@ -3,6 +3,18 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.7 - 2026-11-20
+
+A faster generated core.
+
+### Changed
+
+- `cpu.run()` no longer calls the interrupt service routine after every instruction
+  when no stall or interrupt is pending, and adds instruction cycles without the
+  `cycles` setter when no cycle listener or cycle-exact timing needs it. An
+  arithmetic loop runs about 60% faster; the comparison workloads 0-36% faster
+  (see the performance summary). Results are unchanged.
+
 ## 0.1.6 - 2026-11-19
 
 Output-compare pins follow the OCnx latch.

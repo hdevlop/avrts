@@ -44,13 +44,13 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       }
       else if (opcode === 0x0000 || opcode === 0xffff) {
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0xc000) {
         const k = opcode & 0x0fff;
         if ((k === 0x0fff || k === 0x0ffc || k === 0x0ffa) && cpu.tryRunFastBlock(pc, opcode, target)) continue;
         cpu.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfc00) === 0xf000) {
         if ((data[SREG_ADDR]! & (1 << (opcode & 0x07))) !== 0) {
@@ -89,17 +89,17 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xf000) === 0xe000) {
         data[regD4(opcode)] = imm8(opcode);
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x2c00) {
         data[regD5(opcode)] = data[regR5(opcode)]!;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xff00) === 0x0100) {
         const d = ((opcode >> 4) & 0x0f) << 1;
@@ -107,7 +107,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[d] = data[r]!;
         data[d + 1] = data[r + 1]!;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1800 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -129,7 +129,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x0800) {
         const d = regD5(opcode);
@@ -150,7 +150,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0x5000) {
         const d = regD4(opcode);
@@ -169,7 +169,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0x4000) {
         const d = regD4(opcode);
@@ -190,7 +190,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1400) {
         const d = regD5(opcode);
@@ -208,7 +208,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x0400) {
         const d = regD5(opcode);
@@ -228,7 +228,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0x3000) {
         const d = regD4(opcode);
@@ -246,12 +246,12 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1000) {
         const skip = data[regD5(opcode)]! === data[regR5(opcode)]!;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
@@ -273,7 +273,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x2400) {
         const d = regD5(opcode);
@@ -284,7 +284,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x2800) {
         const d = regD5(opcode);
@@ -295,7 +295,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0x6000) {
         const d = regD4(opcode);
@@ -306,7 +306,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf000) === 0x7000) {
         const d = regD4(opcode);
@@ -317,7 +317,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x0c00 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -338,7 +338,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if (opcode === 0x1f66 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -367,7 +367,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x1c00) {
         const d = regD5(opcode);
@@ -388,7 +388,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xff00) === 0x9600) {
         const d = 24 + (((opcode >> 4) & 0x03) * 2);
@@ -408,7 +408,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_WORD_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if (opcode === 0xb73f && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -416,86 +416,86 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if ((opcode & 0xf800) === 0xb000) {
         data[regD5(opcode)] = cpu.readIo((opcode & 0x0f) | ((opcode >> 5) & 0x30));
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xf800) === 0xb800) {
         cpu.writeIo((opcode & 0x0f) | ((opcode >> 5) & 0x30), data[regD5(opcode)]!);
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x920f) {
         cpu.pushByte(data[regD5(opcode)]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x900f) {
         data[regD5(opcode)] = cpu.popByte();
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0e) === 0x940e) {
         cpu.pushWord(pc + 2);
         const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
         cpu.pc = (high << 16) | flash[pc + 1]!;
-        cpu.cycles += 4;
+        if (cpu.plainCycles) { cpu._cycles += 4; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 4;
       }
       else if ((opcode & 0xfe0e) === 0x940c) {
         const high = ((opcode & 0x01f0) >> 3) | (opcode & 0x0001);
         cpu.pc = (high << 16) | flash[pc + 1]!;
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if ((opcode & 0xf000) === 0xd000) {
         cpu.pushWord(pc + 1);
         const k = opcode & 0x0fff;
         cpu.pc += (k >= 0x800 ? k - 0x1000 : k) + 1;
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if (opcode === 0x9508) {
         cpu.pc = cpu.popWord();
-        cpu.cycles += 4;
+        if (cpu.plainCycles) { cpu._cycles += 4; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 4;
       }
       else if (opcode === 0x9518) {
         cpu.pc = cpu.popWord();
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
         cpu.deferInterrupts();
-        cpu.cycles += 4;
+        if (cpu.plainCycles) { cpu._cycles += 4; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 4;
       }
       else if (opcode === 0x9478) {
         data[SREG_ADDR] = data[SREG_ADDR]! | SREG_I;
         cpu.deferInterrupts();
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if (opcode === 0x94f8) {
         data[SREG_ADDR] = data[SREG_ADDR]! & ~SREG_I;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if (opcode === 0x9409) {
         cpu.pc = data[30]! | (data[31]! << 8);
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if (opcode === 0x9509) {
         cpu.pushWord(pc + 1);
         cpu.pc = data[30]! | (data[31]! << 8);
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if ((opcode & 0xff8f) === 0x9408) {
         data[SREG_ADDR] = data[SREG_ADDR]! | (1 << ((opcode >> 4) & 0x07));
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xff8f) === 0x9488) {
         data[SREG_ADDR] = data[SREG_ADDR]! & ~(1 << ((opcode >> 4) & 0x07));
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9402) {
         const d = regD5(opcode);
         const value = data[d]!;
         data[d] = ((value << 4) | (value >> 4)) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9406) {
         const d = regD5(opcode);
@@ -513,7 +513,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9407) {
         const d = regD5(opcode);
@@ -531,7 +531,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9405) {
         const d = regD5(opcode);
@@ -549,12 +549,12 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_N | SREG_Z | SREG_V | SREG_S)) | flags;
         data[d] = result;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xff00) === 0x9900) {
         const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
@@ -570,7 +570,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if ((opcode & 0xff00) === 0x9b00) {
         const skip = ((cpu.readIo((opcode >> 3) & 0x1f) >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
@@ -588,52 +588,52 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const mask = 1 << (opcode & 0x07);
         cpu.writeIo(a, cpu.readIo(a) | mask, mask);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff00) === 0x9800) {
         const a = (opcode >> 3) & 0x1f;
         const mask = 1 << (opcode & 0x07);
         cpu.writeIo(a, cpu.readIo(a) & ~ mask, mask);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9000) {
         data[regD5(opcode)] = cpu.readData(flash[pc + 1]!);
         cpu.pc += 2;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9200) {
         cpu.writeData(flash[pc + 1]!, data[regD5(opcode)]!);
         cpu.pc += 2;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xd208) === 0x8008) {
         const q = (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);
         const addr = ((data[28]! | (data[29]! << 8)) + q) & 0xffff;
         data[regD5(opcode)] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xd208) === 0x8000) {
         const q = (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);
         const addr = ((data[30]! | (data[31]! << 8)) + q) & 0xffff;
         data[regD5(opcode)] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xd208) === 0x8208) {
         const q = (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);
         const addr = ((data[28]! | (data[29]! << 8)) + q) & 0xffff;
         cpu.writeData(addr, data[regD5(opcode)]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xd208) === 0x8200) {
         const q = (opcode & 0x07) | ((opcode >> 7) & 0x18) | ((opcode >> 8) & 0x20);
         const addr = ((data[30]! | (data[31]! << 8)) + q) & 0xffff;
         cpu.writeData(addr, data[regD5(opcode)]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9001 && (flash[pc + 1]! & 0xfe0f) === 0x920d && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -643,7 +643,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const addr = data[26]! | (data[27]! << 8);
         data[d] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x900d) {
         const d = regD5(opcode);
@@ -653,7 +653,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[26] = next & 0xff;
         data[27] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x900e) {
         const d = regD5(opcode);
@@ -662,7 +662,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[27] = (addr >> 8) & 0xff;
         data[d] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9009) {
         const d = regD5(opcode);
@@ -672,7 +672,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[28] = next & 0xff;
         data[29] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x900a) {
         const d = regD5(opcode);
@@ -681,7 +681,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[29] = (addr >> 8) & 0xff;
         data[d] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9001) {
         const d = regD5(opcode);
@@ -691,7 +691,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[30] = next & 0xff;
         data[31] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9002) {
         const d = regD5(opcode);
@@ -700,14 +700,14 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[31] = (addr >> 8) & 0xff;
         data[d] = cpu.readData(addr);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x920c) {
         const r = regD5(opcode);
         const addr = data[26]! | (data[27]! << 8);
         cpu.writeData(addr, data[r]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x920d) {
         const r = regD5(opcode);
@@ -717,7 +717,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[26] = next & 0xff;
         data[27] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x920e) {
         const r = regD5(opcode);
@@ -726,7 +726,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[27] = (addr >> 8) & 0xff;
         cpu.writeData(addr, data[r]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9209) {
         const r = regD5(opcode);
@@ -736,7 +736,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[28] = next & 0xff;
         data[29] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x920a) {
         const r = regD5(opcode);
@@ -745,7 +745,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[29] = (addr >> 8) & 0xff;
         cpu.writeData(addr, data[r]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9201) {
         const r = regD5(opcode);
@@ -755,7 +755,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[30] = next & 0xff;
         data[31] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xfe0f) === 0x9202) {
         const r = regD5(opcode);
@@ -764,21 +764,21 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[31] = (addr >> 8) & 0xff;
         cpu.writeData(addr, data[r]!);
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if (opcode === 0x95c8) {
         const ld = 0;
         const z = data[30]! | (data[31]! << 8);
         data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9004) {
         const ld = regD5(opcode);
         const z = data[30]! | (data[31]! << 8);
         data[ld] = cpu.readProgramByte(z);
         cpu.pc += 1;
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if ((opcode & 0xfe0f) === 0x9005) {
         const ld = regD5(opcode);
@@ -788,7 +788,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         data[30] = next & 0xff;
         data[31] = (next >> 8) & 0xff;
         cpu.pc += 1;
-        cpu.cycles += 3;
+        if (cpu.plainCycles) { cpu._cycles += 3; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 3;
       }
       else if (opcode === 0xfd57 && cpu.tryRunFastBlock(pc, opcode, target)) {
         continue;
@@ -796,7 +796,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if ((opcode & 0xfe08) === 0xfc00) {
         const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 0;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
@@ -812,7 +812,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       else if ((opcode & 0xfe08) === 0xfe00) {
         const skip = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         if (skip) {
           const nextOpcode = flash[pc + 1]!;
           const twoWord =
@@ -838,7 +838,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9400) {
         const d = regD5(opcode);
@@ -850,7 +850,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_V | SREG_N | SREG_Z | SREG_S)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe0f) === 0x9401) {
         const d = regD5(opcode);
@@ -868,20 +868,20 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
           (n !== v ? SREG_S : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~SREG_ARITH_MASK) | flags;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe08) === 0xfa00) {
         const set = ((data[regD5(opcode)]! >> (opcode & 0x07)) & 1) === 1;
         data[SREG_ADDR] = set ? data[SREG_ADDR]! | SREG_T : data[SREG_ADDR]! & ~SREG_T;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfe08) === 0xf800) {
         const d = regD5(opcode);
         const mask = 1 << (opcode & 0x07);
         data[d] = (data[SREG_ADDR]! & SREG_T) !== 0 ? data[d]! | mask : data[d]! & ~mask;
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if ((opcode & 0xfc00) === 0x9c00) {
         const dv = data[regD5(opcode)]!;
@@ -893,7 +893,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff00) === 0x0200) {
         const dv = data[16 + ((opcode >> 4) & 0x0f)]!;
@@ -905,7 +905,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff88) === 0x0300) {
         const dv = data[16 + ((opcode >> 4) & 0x07)]!;
@@ -917,7 +917,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff88) === 0x0308) {
         const dv = data[16 + ((opcode >> 4) & 0x07)]!;
@@ -929,7 +929,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff88) === 0x0380) {
         const dv = data[16 + ((opcode >> 4) & 0x07)]!;
@@ -941,7 +941,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if ((opcode & 0xff88) === 0x0388) {
         const dv = data[16 + ((opcode >> 4) & 0x07)]!;
@@ -953,22 +953,22 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         const flags = (((product >> 15) & 1) === 1 ? SREG_C : 0) | (result === 0 ? SREG_Z : 0);
         data[SREG_ADDR] = (data[SREG_ADDR]! & ~(SREG_C | SREG_Z)) | flags;
         cpu.pc += 1;
-        cpu.cycles += 2;
+        if (cpu.plainCycles) { cpu._cycles += 2; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 2;
       }
       else if (opcode === 0x9588) {
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
         cpu.sleep();
       }
       else if (opcode === 0x95a8) {
         cpu.kickWatchdog();
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else if (opcode === 0x95e8) {
         cpu.executeSpmInstruction(pc);
         cpu.pc += 1;
-        cpu.cycles += 4;
+        if (cpu.plainCycles) { cpu._cycles += 4; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 4;
         if (cpu.hasInstructionBarrier) {
           cpu.serviceInterrupts();
           cpu.runTicksUntil(target);
@@ -977,7 +977,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
       }
       else if (opcode === 0x9598) {
         cpu.pc += 1;
-        cpu.cycles += 1;
+        if (cpu.plainCycles) { cpu._cycles += 1; if (cpu._cycles >= cpu.nextEventAt) cpu.runDueClockEvents(); } else cpu.cycles += 1;
       }
       else {
         let handler = decodeCache[pc];
@@ -993,7 +993,7 @@ export function runGeneratedFastCore(cpu: CPU, target: number): void {
         }
         handler(cpu, opcode);
       }
-      cpu.serviceInterrupts();
+      if (cpu.pendingStallCycles !== 0 || cpu.interruptDeferred || cpu.pendingInterrupts.length !== 0) cpu.serviceInterrupts();
     }
     if (
       cpu.breakpoints.size !== 0 ||

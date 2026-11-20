@@ -70,6 +70,43 @@ coverage. The historical source-revision samples remain in
 [peripheral patch evidence](evidence/peripheral-performance.md); their old
 mixed-fixture rate describes a halted tail, not continuous peripheral activity.
 
+## 2026-11-20: the per-instruction tail
+
+A profile of the fast core on an arithmetic busy loop (no FastBlock applies) put
+about a quarter of the time in two calls every instruction made:
+`serviceInterrupts()` (and `serviceNextInterrupt()`), which almost always found
+nothing to do, and the `cycles` setter. Two changes in the generated plain core
+(the profiled twin is unchanged):
+
+- The instruction tail calls `serviceInterrupts()` only when a stall, a deferred
+  interrupt or a pending interrupt exists.
+- Inline arms add their cycles to `_cycles` directly and check the next clock
+  event themselves, unless a cycle listener or cycle-exact timing needs the
+  setter (`plainCycles`, kept by `onCycles`, listener removal and `timing`).
+
+On KahrabaLab's arithmetic busy loop, 42.5 -> 52.3 Mcycles/s after the first change
+and 68.3 after both (median of five 80M-cycle runs). The same-session
+`bench:compare --isolate --repeats 3`, before and after:
+
+| workload | avrts before | avrts after | ratio vs avr8js before -> after |
+| -------- | -----------: | ----------: | ------------------------------: |
+| delay-blink | 46.7M/s | 62.9M/s | 0.93x -> 1.30x |
+| serial-print | 274.9M/s | 324.1M/s | 3.79x -> 4.41x |
+| analog-write | 230.1M/s | 247.6M/s | 3.06x -> 3.25x |
+| sensor-format | 51.4M/s | 57.6M/s | 1.03x -> 1.15x |
+| float-math | 30.2M/s | 32.0M/s | 0.73x -> 0.78x |
+| bitbang-crc | 16.8M/s | 17.4M/s | 0.41x -> 0.42x |
+| peripheral-mix | 83.0M/s | 113.0M/s | 1.83x -> 2.60x |
+| isr-heavy | 56.9M/s | 73.2M/s | 1.28x -> 1.61x |
+| string-heavy | 52.0M/s | 66.0M/s | 0.99x -> 1.28x |
+| dsp-fixed | 57.4M/s | 62.5M/s | 1.13x -> 1.25x |
+| peripheral-bound | 24.0M/s | 24.1M/s | 0.94x -> 0.95x |
+
+avr8js's own rates moved by up to 4% between the two runs; the ratios use each
+run's own pair. `bench:result` still matches avr8js on all 12 workloads, and the
+fast core still matches `tick()` on every benchmark case. float-math and
+bitbang-crc gained least: their time is in handler fallbacks, not the tail.
+
 ## What we learned (the important part)
 
 1. **FastBlocks are avrts's unique weapon.** They *bulk-skip* busy-wait/delay/poll
@@ -81,9 +118,11 @@ mixed-fixture rate describes a halted tail, not continuous peripheral activity.
    matrix, rather than a universal dispatch claim, determines which paths trail.
 3. **Many hypothesized costs were measured to be dead ends** — settled, do not
    revisit: handler-fallback dispatch (monolithic core removed it → no production
-   gain), `notifyCycles`, the `cycles` accessor, clock-event re-arm, decode-ladder
+   gain), `notifyCycles`, clock-event re-arm, decode-ladder
    *ordering* (~10% ceiling), and several block-JIT/bucketed-core prototypes
-   (correct but slower — all reverted).
+   (correct but slower — all reverted). The `cycles` accessor was on this list
+   until 2026-11-20, when bypassing it in the generated core measured +30% on an
+   arithmetic loop (see above): the earlier change reshaped the setter, not the call.
 4. **The historical "real code loses at 0.20x" scare was a benchmark artifact** — co-running
    11 firmwares megamorphically deoptimized avrts. Production is one firmware per
    process (`--isolate`). The old ratios also included construction and should

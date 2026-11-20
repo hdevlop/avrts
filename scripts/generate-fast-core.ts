@@ -1242,7 +1242,7 @@ function generateMethodLines(method: string, variant: LadderVariant): string[] {
         "        this.serviceInterrupts();",
         '        listener(this.profileState(pc, opcode, before, "instruction"));',
       ]
-    : ["        this.serviceInterrupts();"];
+    : ["        if (this.pendingStallCycles !== 0 || this.interruptDeferred || this.pendingInterrupts.length !== 0) this.serviceInterrupts();"];
   const bail = profiled ? "this.runProfiledTicks(target, listener);" : "this.runTicksUntil(target);";
   return [
     signature,
@@ -1275,7 +1275,7 @@ function generateMethodLines(method: string, variant: LadderVariant): string[] {
 }
 
 function armBody(arm: GeneratedArm, variant: LadderVariant): readonly string[] {
-  if (variant !== "profiled") return arm.body;
+  if (variant !== "profiled") return arm.body.map(directCycles);
   if (arm.profiledBody) return arm.profiledBody;
   // Whole-block arms (a bare `continue` after a tryRunFastBlock guard) emit a
   // profile event for the block before continuing.
@@ -1283,6 +1283,18 @@ function armBody(arm: GeneratedArm, variant: LadderVariant): readonly string[] {
     return ["this.profileFastBlock(listener, pc, opcode, before);", "continue;"];
   }
   return arm.body;
+}
+
+/**
+ * In the plain core, add an instruction's cycles without the `cycles` setter when no
+ * cycle listener or cycle-exact mode needs it: the setter's call was about a tenth
+ * of a busy loop's time. The due-event check is the setter's own.
+ */
+function directCycles(line: string): string {
+  const match = /^this\.cycles \+= (\d+);$/.exec(line);
+  if (!match) return line;
+  const n = match[1];
+  return `if (this.plainCycles) { this._cycles += ${n}; if (this._cycles >= this.nextEventAt) this.runDueClockEvents(); } else this.cycles += ${n};`;
 }
 
 function generateLadderLines(variant: LadderVariant): string[] {

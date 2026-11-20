@@ -108,3 +108,40 @@ describe("generated fast core", () => {
     });
   }
 });
+
+describe("generated fast core cycle accounting", () => {
+  // The plain core adds cycles directly while nothing needs the `cycles` setter;
+  // a cycle listener or cycle-exact timing switches it back to the setter.
+  test("tracks whether the setter is needed", () => {
+    const avr = AVR();
+    expect(avr.cpu.plainCycles).toBe(true);
+    const stop = avr.cpu.onCycles(() => {});
+    expect(avr.cpu.plainCycles).toBe(false);
+    stop();
+    expect(avr.cpu.plainCycles).toBe(true);
+    avr.cpu.timing = "cycle-exact";
+    expect(avr.cpu.plainCycles).toBe(false);
+    avr.cpu.timing = "fast";
+    expect(avr.cpu.plainCycles).toBe(true);
+  });
+
+  for (const testCase of createBenchmarkCases()) {
+    test(`a cycle listener sees every cycle and changes nothing for ${testCase.name}`, () => {
+      const expected = captureSignature(testCase);
+      const avr = testCase.create();
+      const start = avr.cpu.cycles;
+      let summed = 0;
+      avr.cpu.onCycles((cycles) => {
+        summed += cycles;
+      });
+      avr.runCycles(testCase.cycles);
+      expect({
+        pc: avr.cpu.pc,
+        cycles: avr.cpu.cycles,
+        data: Array.from(avr.cpu.data),
+        serialText: avr.serial.getText(),
+      }).toEqual(expected);
+      expect(summed).toBe(avr.cpu.cycles - start);
+    });
+  }
+});

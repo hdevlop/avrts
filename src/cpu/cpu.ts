@@ -149,9 +149,12 @@ export class CPU {
   private readonly pendingCycleListenerRemovals: CycleListener[] = [];
   private readonly pendingCycleListenerRemovalDepths = new Map<CycleListener, number>();
   private cycleListenerDispatchDepth = 0;
-  private readonly pendingInterrupts: PendingInterrupt[] = [];
-  private interruptDeferred = false;
-  private pendingStallCycles = 0;
+  /** @internal */
+  readonly pendingInterrupts: PendingInterrupt[] = [];
+  /** @internal */
+  interruptDeferred = false;
+  /** @internal */
+  pendingStallCycles = 0;
   private instructionBarrier: (() => boolean) | undefined;
 
   /** Queue a firmware access stall; instruction execution is never nested in an I/O hook. */
@@ -187,7 +190,8 @@ export class CPU {
   // Scalar mirror of `nextClockEvent?.cycles ?? +Infinity`, read on the
   // per-instruction hot path (cycles setter) so it never dereferences the queue
   // head there. Kept in sync at the few cold head-mutation sites.
-  private nextEventAt = Number.POSITIVE_INFINITY;
+  /** @internal */
+  nextEventAt = Number.POSITIVE_INFINITY;
   private readonly clockEventPool: ClockEvent[] = [];
   /** @internal generated-core surface (see generated/cores.ts). */
   sleeping = false;
@@ -227,12 +231,18 @@ export class CPU {
   private _timing: "fast" | "cycle-exact" = "fast";
   /** Mirror of `_timing === "cycle-exact"`, read on the per-instruction hot path. */
   private cycleExact = false;
+  /**
+   * @internal True while neither cycle-exact timing nor a cycle listener needs the
+   * `cycles` setter, so the generated core may add cycles directly.
+   */
+  plainCycles = true;
   get timing(): "fast" | "cycle-exact" {
     return this._timing;
   }
   set timing(value: "fast" | "cycle-exact") {
     this._timing = value;
     this.cycleExact = value === "cycle-exact";
+    this.updatePlainCycles();
   }
 
   constructor(flash?: Uint16Array) {
@@ -424,6 +434,7 @@ export class CPU {
   /** Register a peripheral clock listener fired after every instruction. */
   onCycles(listener: CycleListener): () => void {
     this.cycleListeners.push(listener);
+    this.updatePlainCycles();
     return () => this.removeCycleListener(listener);
   }
 
@@ -481,8 +492,8 @@ export class CPU {
     return 0;
   }
 
-  /** Fire every event whose cycle boundary has been reached. */
-  private runDueClockEvents(): void {
+  /** @internal Fire every event whose cycle boundary has been reached. */
+  runDueClockEvents(): void {
     let event = this.nextClockEvent;
     while (event !== undefined && event.cycles <= this._cycles) {
       this.nextClockEvent = event.next;
@@ -848,6 +859,11 @@ export class CPU {
   private spliceCycleListener(listener: CycleListener): void {
     const index = this.cycleListeners.indexOf(listener);
     if (index >= 0) this.cycleListeners.splice(index, 1);
+    this.updatePlainCycles();
+  }
+
+  private updatePlainCycles(): void {
+    this.plainCycles = !this.cycleExact && this.cycleListeners.length === 0;
   }
 
   /** Fire cycle listeners for `elapsed` consumed cycles (peripherals advance time). */
