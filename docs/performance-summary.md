@@ -152,6 +152,15 @@ to 0.62-0.77x. `bench:result` still matches avr8js on all 12 workloads.
    (correct but slower — all reverted). The `cycles` accessor was on this list
    until 2026-11-20, when bypassing it in the generated core measured +30% on an
    arithmetic loop (see above): the earlier change reshaped the setter, not the call.
+   Also tried on 2026-11-20 and reverted: dropping `Object.freeze` from the decode
+   tables (it takes about 45 of `AVR()`'s 50 ms, and in a microbenchmark a frozen
+   65,536-entry array read about 11x slower) and sharing one table between Decoders
+   (`AVR()` then 0.2 ms). Neither sped up a workload, float-math included: handler
+   fallbacks are rare enough. Sharing put sensor-format at 61-63 Mcycles/s in every
+   run against 81-84; without the freeze alone it was 80-82 in two single-case runs
+   and 63-65 in three full runs. sensor-format had also ranged 54-85 on unchanged
+   code that day, so its speed has two modes and these runs cannot separate the
+   change from them; a 45 ms startup saving was not worth that risk.
 4. **The historical "real code loses at 0.20x" scare was a benchmark artifact** — co-running
    11 firmwares megamorphically deoptimized avrts. Production is one firmware per
    process (`--isolate`). The old ratios also included construction and should
