@@ -54,6 +54,13 @@ export class PinChangeInterrupt {
     }
   }
 
+  /** The pin has been at `high` all along: its next change is measured from it. */
+  settle(port: PortName, bit: number, high: boolean): void {
+    if (!this.snapshots.has(port)) return;
+    const snapshot = this.snapshots.get(port)!;
+    this.snapshots.set(port, high ? snapshot | (1 << bit) : snapshot & ~(1 << bit));
+  }
+
   @OnWrite(PCIFR)
   onWritePcifr(_cpu: CPU, _addr: number, value: number, oldValue: number, mask = 0xff): void {
     this.cpu.data[PCIFR] = oldValue & 0x07 & ~(value & mask); // flags are write-1-to-clear

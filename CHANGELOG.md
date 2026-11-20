@@ -3,6 +3,18 @@
 All notable user-facing changes are recorded here. This project follows
 Semantic Versioning once a version is published.
 
+## 0.1.9 - 2026-11-20
+
+A pin input a host learns late.
+
+### Added
+
+- `avr.pin(n).settleInput(high)`: sets a pin's external input to a level it has held for
+  a while, which a host that samples its circuit lazily learns only now. The INT0/INT1
+  and pin-change interrupt detectors, including samples still in the INT0/INT1
+  synchronizer, take it as their last sample, so it raises no flag; the next change is
+  an edge as usual. For an output pin they take its driven level.
+
 ## 0.1.8 - 2026-11-20
 
 Cheaper pin changes.

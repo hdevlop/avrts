@@ -184,6 +184,16 @@ button.setInput(false);
 avr.runFor(20);
 ```
 
+A host that solves its own circuit and samples it lazily (only when firmware reads a
+pin, say) can learn of a level change late. `settleInput` hands the chip such a level as
+one it has held all along: the external (INT0/INT1) and pin-change interrupt detectors
+take it as their last sample, so it raises no flag, and its next change is an edge as
+usual.
+
+```ts
+button.settleInput(true); // high since before INT0 was configured: no edge
+```
+
 Use port-level observation when you care about the whole register value:
 
 ```ts

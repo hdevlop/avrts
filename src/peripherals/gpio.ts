@@ -113,6 +113,17 @@ export class Gpio {
     return ((this.effectivePinByte(port) >> bit) & 1) === 1;
   }
 
+  /** The pin's effective level if its external input were `high` (see `readPin`). */
+  levelWithInput(port: PortName, bit: number, high: boolean): boolean {
+    const addr = PIN_ADDR[port];
+    const current = this.cpu.data[addr]!;
+    const mask = 1 << bit;
+    this.cpu.data[addr] = high ? current | mask : current & ~mask;
+    const level = this.readPin(port, bit);
+    this.cpu.data[addr] = current;
+    return level;
+  }
+
   /** Inject an external input level onto a pin (writes the PIN register, then notifies). */
   setInput(port: PortName, bit: number, high: boolean): void {
     const mask = (1 << bit) & (port === "C" ? 0x7f : 0xff);

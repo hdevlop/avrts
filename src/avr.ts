@@ -242,6 +242,13 @@ interface RuntimeResetOptions {
 export interface PinHandle {
   read(): boolean;
   setInput(high: boolean): void;
+  /**
+   * Set the external input to a level it has held for a while, which the host learns
+   * only now (a host that samples its circuit lazily). The external and pin-change
+   * interrupt detectors take it as their last sample, so it raises no flag; a later
+   * change is an edge as usual.
+   */
+  settleInput(high: boolean): void;
   pulse(ms: number): void;
   onChange(handler: (high: boolean, event: PinChangeEvent) => void): () => void;
 }
@@ -951,6 +958,12 @@ class AVRRuntime implements AVR {
     return {
       read: () => this.gpioPeripheral.readPin(info.port, info.bit),
       setInput: (high) => {
+        this.gpioPeripheral.setInput(info.port, info.bit, high);
+      },
+      settleInput: (high) => {
+        const level = this.gpioPeripheral.levelWithInput(info.port, info.bit, high);
+        this.exti.settle(info.port, info.bit, level);
+        this.pcint.settle(info.port, info.bit, level);
         this.gpioPeripheral.setInput(info.port, info.bit, high);
       },
       pulse: (ms) => {

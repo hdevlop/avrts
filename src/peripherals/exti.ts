@@ -143,6 +143,18 @@ export class ExternalInterrupts {
     this.scheduleLevelEvent();
   }
 
+  /**
+   * INT0 (PD2) or INT1 (PD3) has been at `high` all along: it becomes the last sample,
+   * including samples still in the synchronizer, so the level makes no edge.
+   */
+  settle(port: "B" | "C" | "D", bit: number, high: boolean): void {
+    if (port !== "D" || (bit !== 2 && bit !== 3)) return;
+    const key = bit === 2 ? "int0" : "int1";
+    this.prevPinLevels[key] = high;
+    this.sampled = { ...this.sampled, [key]: high };
+    for (const stage of this.stages) stage[key] = high;
+  }
+
   tick(): void {
     if (!this.levelModeActive) return;
     this.updateInterrupts();
